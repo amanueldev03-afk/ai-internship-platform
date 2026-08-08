@@ -1,5 +1,6 @@
 from pathlib import Path
 from decouple import Csv, config
+from datetime import timedelta
 
 # --------------------------------------------------
 # Paths
@@ -39,12 +40,17 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt",
     "django_filters",
     "drf_spectacular",
+    "rest_framework_simplejwt.token_blacklist",
+    # Allauth
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "django.contrib.sites",
 ]
 
 LOCAL_APPS = [
-    # We'll add our apps after creating them
-        "apps.accounts",
-        
+    "apps.accounts",
 ]
 
 INSTALLED_APPS = (
@@ -52,6 +58,8 @@ INSTALLED_APPS = (
     + THIRD_PARTY_APPS
     + LOCAL_APPS
 )
+
+SITE_ID = 1
 
 # --------------------------------------------------
 # Middleware
@@ -65,6 +73,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 # --------------------------------------------------
@@ -173,3 +182,88 @@ MEDIA_ROOT = BASE_DIR / "media"
 # --------------------------------------------------
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --------------------------------------------------
+# custom user setting
+# --------------------------------------------------
+
+AUTH_USER_MODEL = "accounts.User"
+
+
+# --------------------------------------------------
+    # Global DRF Settings
+# --------------------------------------------------
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.AllowAny",
+    ),
+
+    "DEFAULT_RENDERER_CLASSES": (
+        "rest_framework.renderers.JSONRenderer",
+    ),
+
+    "DEFAULT_PARSER_CLASSES": (
+        "rest_framework.parsers.JSONParser",
+    ),
+}
+
+SIMPLE_JWT = {
+
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+
+    "ROTATE_REFRESH_TOKENS": True,
+
+    "BLACKLIST_AFTER_ROTATION": True,
+
+    "UPDATE_LAST_LOGIN": True,
+}
+
+EMAIL_BACKEND = config("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+
+EMAIL_HOST = config("EMAIL_HOST")
+EMAIL_PORT = config("EMAIL_PORT", cast=int)
+
+EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+
+EMAIL_USE_TLS = config(
+    "EMAIL_USE_TLS",
+    cast=bool,
+)
+
+DEFAULT_FROM_EMAIL = config(
+    "DEFAULT_FROM_EMAIL"
+)
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APPS": [
+            {
+                "client_id": config("GOOGLE_CLIENT_ID"),
+                "secret": config("GOOGLE_CLIENT_SECRET"),
+                "key": "",
+            },
+        ],
+        "SCOPE": [
+            "profile",
+            "email",
+        ],
+        "AUTH_PARAMS": {
+            "access_type": "online",
+        },
+        "EMAIL_AUTHENTICATION": True,
+    },
+}
