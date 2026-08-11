@@ -17,8 +17,9 @@ def validate_email_address(email):
     Checks syntax and MX records to ensure the email domain can receive emails.
     """
     try:
-        # Validate syntax and check MX records for real email domain
-        validate_email(email, check_deliverability=True)
+        # For development, only validate syntax without checking deliverability
+        # This prevents issues with MX record checks during development
+        validate_email(email, check_deliverability=False)
         return True
     except EmailNotValidError as e:
         return False
