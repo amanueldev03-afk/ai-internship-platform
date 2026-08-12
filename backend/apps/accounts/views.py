@@ -6,13 +6,11 @@ from rest_framework.permissions import (
     AllowAny,
     IsAuthenticated
     )
-from django.contrib.auth import login
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .jwt import CustomTokenObtainPairSerializer
+from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer
 from .serializers import ( 
-                      LoginSerializer,
                       EmailVerificationSerializer,
                       StudentRegistrationSerializer,
                       LogoutSerializer,
@@ -62,38 +60,6 @@ class StudentRegistrationView(generics.CreateAPIView):
         )
     
 
-class LoginView(APIView):
-    """
-    Login student.
-    """
-    permission_classes = [
-        AllowAny,
-    ]
-
-    def post(self, request):
-
-        serializer = LoginSerializer(
-            data=request.data
-        )
-
-        serializer.is_valid(raise_exception=True)
-
-        user = serializer.validated_data["user"]
-
-        login(request, user)
-
-        return Response(
-            {
-                "message": "Login successful.",
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "role": user.role,
-                },
-            },
-            status=status.HTTP_200_OK,
-        )
 
 
 class LogoutView(APIView):
@@ -133,8 +99,18 @@ class CurrentUserView(APIView):
 
         return Response(serializer.data)
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
+class AdminLoginView(TokenObtainPairView):
+    """
+    Admin login endpoint using username/password.
+    """
+    serializer_class = AdminTokenObtainPairSerializer
+
+
+class StudentLoginView(TokenObtainPairView):
+    """
+    Student login endpoint using email/password.
+    """
+    serializer_class = StudentTokenObtainPairSerializer
 
 
 class EmailVerificationView(APIView):

@@ -6,7 +6,6 @@ from .services import (
     send_password_reset_email,
     validate_email_address,
 )
-from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
@@ -90,44 +89,6 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 
-class LoginSerializer(serializers.Serializer):
-    """
-    Serializer for user login.
-    """
-
-    email = serializers.EmailField()
-
-    password = serializers.CharField(
-        write_only=True,
-    )
-
-    def validate(self, attrs):
-
-        email = attrs.get("email")
-        password = attrs.get("password")
-
-        user = authenticate(
-            username=email,
-            password=password,
-        )
-
-        if user is None:
-            raise serializers.ValidationError(
-                {
-                    "detail": "Invalid email or password."
-                }
-            )
-
-        if not user.is_active:
-            raise serializers.ValidationError(
-                {
-                    "detail": "Your account is inactive."
-                }
-            )
-
-        attrs["user"] = user
-
-        return attrs
 
 class UserSerializer(serializers.ModelSerializer):
     """
