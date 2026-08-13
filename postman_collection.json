@@ -1,0 +1,585 @@
+{
+  "info": {
+    "name": "AI Internship Platform API",
+    "description": "Complete API collection for testing the AI Internship Recommendation Platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Student Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"username\": \"teststudent\",\n  \"password\": \"SecurePass123!\",\n  \"password_confirm\": \"SecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/register/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "register", ""]
+            }
+          }
+        },
+        {
+          "name": "Student Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/student/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "student", "login", ""]
+            },
+            "description": "After successful login, copy the access_token and refresh_token to collection variables"
+          }
+        },
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"AdminPass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/admin/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "admin", "login", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/accounts/me/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "me", ""]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/token/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "token", "refresh", ""]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "logout", ""]
+            }
+          }
+        },
+        {
+          "name": "Verify Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": \"MQ\",\n  \"token\": \"sample_token_here\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/verify-email/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "verify-email", ""]
+            },
+            "description": "Use uid and token from email verification link"
+          }
+        },
+        {
+          "name": "Resend Verification Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/resend-verification/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "resend-verification", ""]
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/forgot-password/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "forgot-password", ""]
+            }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": \"MQ\",\n  \"token\": \"sample_token_here\",\n  \"password\": \"NewSecurePass123!\",\n  \"password_confirm\": \"NewSecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/reset-password/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "reset-password", ""]
+            },
+            "description": "Use uid and token from password reset email"
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"SecurePass123!\",\n  \"new_password\": \"AnotherSecure456!\",\n  \"new_password_confirm\": \"AnotherSecure456!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/accounts/change-password/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "accounts", "change-password", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Student Profile",
+      "item": [
+        {
+          "name": "Get Student Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "profile", ""]
+            }
+          }
+        },
+        {
+          "name": "Update/Create Student Profile",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+1234567890\",\n  \"country\": \"United States\",\n  \"city\": \"New York\",\n  \"date_of_birth\": \"2000-01-15\",\n  \"bio\": \"Computer Science student passionate about AI and machine learning.\",\n  \"education_level\": \"undergraduate\",\n  \"field_of_study\": \"Computer Science\",\n  \"university\": \"MIT\",\n  \"skills\": [\"Python\", \"JavaScript\", \"Machine Learning\", \"React\"],\n  \"interests\": [\"AI\", \"Web Development\", \"Data Science\"],\n  \"experience\": \"2 years of web development experience\",\n  \"internship_type\": \"full-time\",\n  \"work_type\": \"remote\",\n  \"compensation_preference\": \"paid\",\n  \"minimum_compensation\": 1500,\n  \"maximum_compensation\": 3000,\n  \"compensation_currency\": \"USD\",\n  \"preferred_locations\": [\"New York\", \"San Francisco\", \"Remote\"],\n  \"willing_to_relocate\": true,\n  \"preferred_industries\": [\"Technology\", \"Finance\", \"Healthcare\"],\n  \"preferred_roles\": [\"Software Engineer\", \"Data Scientist\", \"ML Engineer\"],\n  \"internship_duration_min_weeks\": 8,\n  \"internship_duration_max_weeks\": 12,\n  \"available_from\": \"2024-06-01\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "profile", ""]
+            }
+          }
+        },
+        {
+          "name": "Upload CV",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "cv",
+                  "type": "file",
+                  "src": "/path/to/your/cv.pdf"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/profile/cv/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "profile", "cv", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Internships",
+      "item": [
+        {
+          "name": "List All Internships",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Internship Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "1", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Latest Internships",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/latest/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "latest", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin: Create Internship",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Machine Learning Engineer Intern\",\n  \"organization_name\": \"Tech Innovations Inc\",\n  \"description\": \"Join our team to work on cutting-edge ML projects. You will be involved in developing and deploying machine learning models for real-world applications.\",\n  \"category\": \"Engineering\",\n  \"country\": \"United States\",\n  \"city\": \"San Francisco\",\n  \"location_text\": \"San Francisco, CA (Hybrid)\",\n  \"internship_type\": \"full-time\",\n  \"work_type\": \"hybrid\",\n  \"compensation_type\": \"paid\",\n  \"minimum_compensation\": 2000,\n  \"maximum_compensation\": 3500,\n  \"compensation_currency\": \"USD\",\n  \"compensation_period\": \"monthly\",\n  \"required_skills\": [\"Python\", \"TensorFlow\", \"PyTorch\", \"SQL\"],\n  \"preferred_skills\": [\"AWS\", \"Docker\", \"Git\"],\n  \"duration_min_weeks\": 12,\n  \"duration_max_weeks\": 16,\n  \"application_url\": \"https://techinnovations.com/apply/ml-intern\",\n  \"source\": 1,\n  \"source_url\": \"https://techinnovations.com/careers\",\n  \"external_id\": \"ML-2024-001\",\n  \"application_deadline\": \"2024-12-31\",\n  \"is_verified\": true,\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/internships/admin/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "admin", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin: List All Internships",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/admin/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "admin", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin: Get Internship Detail",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/admin/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "admin", "1", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin: Update Internship",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Machine Learning Engineer Intern (Updated)\",\n  \"organization_name\": \"Tech Innovations Inc\",\n  \"description\": \"Join our team to work on cutting-edge ML projects. You will be involved in developing and deploying machine learning models for real-world applications.\",\n  \"category\": \"Engineering\",\n  \"country\": \"United States\",\n  \"city\": \"San Francisco\",\n  \"location_text\": \"San Francisco, CA (Hybrid)\",\n  \"internship_type\": \"full-time\",\n  \"work_type\": \"hybrid\",\n  \"compensation_type\": \"paid\",\n  \"minimum_compensation\": 2500,\n  \"maximum_compensation\": 4000,\n  \"compensation_currency\": \"USD\",\n  \"compensation_period\": \"monthly\",\n  \"required_skills\": [\"Python\", \"TensorFlow\", \"PyTorch\", \"SQL\"],\n  \"preferred_skills\": [\"AWS\", \"Docker\", \"Git\"],\n  \"duration_min_weeks\": 12,\n  \"duration_max_weeks\": 16,\n  \"application_url\": \"https://techinnovations.com/apply/ml-intern\",\n  \"source\": 1,\n  \"source_url\": \"https://techinnovations.com/careers\",\n  \"external_id\": \"ML-2024-001\",\n  \"application_deadline\": \"2024-12-31\",\n  \"is_verified\": true,\n  \"status\": \"active\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/internships/admin/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "admin", "1", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin: Delete Internship",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/internships/admin/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "internships", "admin", "1", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Documentation",
+      "item": [
+        {
+          "name": "OpenAPI Schema",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schema/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schema", ""]
+            }
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/docs/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "docs", ""]
+            }
+          }
+        },
+        {
+          "name": "ReDoc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/redoc/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "redoc", ""]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
