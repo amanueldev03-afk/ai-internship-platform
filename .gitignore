@@ -40,11 +40,11 @@ htmlcov/
 /generated/prisma
 
 
- node_modules/
+backend/node_modules
 
- .windsurf/
+ backend/.windsurf
 
- .claude/
+ backend/.claude
 
- POSTMAN_GUIDE.md
+ backend/POSTMAN_GUIDE.md
 
