@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from apps.internships.models import Skill
 
 
 class StudentProfile(models.Model):
@@ -95,9 +96,10 @@ class StudentProfile(models.Model):
     # SKILLS & EXPERIENCE
     # ==========================================================
 
-    skills = models.JSONField(
-        default=list,
+    skills = models.ManyToManyField(
+        Skill,
         blank=True,
+        related_name="student_profiles",
     )
 
     interests = models.JSONField(

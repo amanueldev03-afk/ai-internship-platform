@@ -37,3 +37,7 @@ htmlcov/
 
 # Migrations cache
 **/__pycache__/
+/generated/prisma
+
+
+ 

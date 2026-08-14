@@ -1,6 +1,41 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.conf import settings
+
+
+class Skill(models.Model):
+    """
+    Reusable skill used by students and internships.
+    """
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
 
 
 class InternshipSource(models.Model):
@@ -78,11 +113,16 @@ class Internship(models.Model):
         ("part_time", "Part-time"),
     ]
 
+    STATUS_DRAFT = "draft"
+    STATUS_ACTIVE = "active"
+    STATUS_REJECTED = "rejected"
+    STATUS_EXPIRED = "expired"
+
     STATUS_CHOICES = [
-        ("draft", "Draft"),
-        ("active", "Active"),
-        ("expired", "Expired"),
-        ("closed", "Closed"),
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_REJECTED, "Rejected"),
+        (STATUS_EXPIRED, "Expired"),
     ]
 
     # ==========================================================
@@ -176,9 +216,10 @@ class Internship(models.Model):
     # SKILLS
     # ==========================================================
 
-    required_skills = models.JSONField(
-        default=list,
+    required_skills = models.ManyToManyField(
+        Skill,
         blank=True,
+        related_name="internships",
     )
 
     preferred_skills = models.JSONField(
@@ -246,9 +287,25 @@ class Internship(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="draft",
+        default=STATUS_DRAFT,
     )
 
+    verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_internships",
+    )
+
+    rejection_reason = models.TextField(
+        blank=True,
+    )
     # ==========================================================
     # TIMESTAMPS
     # ==========================================================
@@ -375,3 +432,186 @@ class Internship(models.Model):
                 name="unique_internship_source_external_id",
             ),
         ]
+
+
+
+
+class InternshipCollectionLog(models.Model):
+    """
+    Records the result of an internship collection run.
+    """
+
+    STATUS_CHOICES = [
+        ("running", "Running"),
+        ("success", "Success"),
+        ("partial", "Partial"),
+        ("failed", "Failed"),
+    ]
+
+    source = models.ForeignKey(
+        InternshipSource,
+        on_delete=models.CASCADE,
+        related_name="collection_logs",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="running",
+    )
+
+    started_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    records_found = models.PositiveIntegerField(
+        default=0,
+    )
+
+    records_created = models.PositiveIntegerField(
+        default=0,
+    )
+
+    records_updated = models.PositiveIntegerField(
+        default=0,
+    )
+
+    records_failed = models.PositiveIntegerField(
+        default=0,
+    )
+
+    error_message = models.TextField(
+        blank=True,
+    )
+
+    def __str__(self):
+        return (
+            f"{self.source.name} - "
+            f"{self.status} - "
+            f"{self.started_at}"
+        )
+
+    class Meta:
+        ordering = ["-started_at"]
+
+
+
+
+class SavedInternship(models.Model):
+    """
+    An internship saved by a student.
+    """
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_internships",
+    )
+
+    internship = models.ForeignKey(
+        Internship,
+        on_delete=models.CASCADE,
+        related_name="saved_by_students",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "student",
+                    "internship",
+                ],
+                name="unique_student_saved_internship",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.student.email} - "
+            f"{self.internship.title}"
+        )
+
+
+
+class InternshipApplication(models.Model):
+    """
+    Tracks a student's application to an internship.
+
+    The actual application is submitted on the
+    official organization's website.
+    """
+
+    STATUS_APPLIED = "applied"
+    STATUS_INTERVIEW = "interview"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+    STATUS_WITHDRAWN = "withdrawn"
+
+    STATUS_CHOICES = [
+        (STATUS_APPLIED, "Applied"),
+        (STATUS_INTERVIEW, "Interview"),
+        (STATUS_ACCEPTED, "Accepted"),
+        (STATUS_REJECTED, "Rejected"),
+        (STATUS_WITHDRAWN, "Withdrawn"),
+    ]
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="internship_applications",
+    )
+
+    internship = models.ForeignKey(
+        Internship,
+        on_delete=models.CASCADE,
+        related_name="student_applications",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_APPLIED,
+    )
+
+    applied_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-applied_at"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "student",
+                    "internship",
+                ],
+                name="unique_student_internship_application",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.student.email} - "
+            f"{self.internship.title} - "
+            f"{self.status}"
+        )

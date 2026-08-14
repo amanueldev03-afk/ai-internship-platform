@@ -42,6 +42,7 @@ THIRD_PARTY_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
+    "django_celery_beat",
     # Allauth
     "allauth",
     "allauth.account",
@@ -119,16 +120,43 @@ ASGI_APPLICATION = "config.asgi.application"
 # Database
 # --------------------------------------------------
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DB_NAME"),
-        "USER": config("DB_USER"),
-        "PASSWORD": config("DB_PASSWORD"),
-        "HOST": config("DB_HOST"),
-        "PORT": config("DB_PORT"),
+import dj_database_url
+from urllib.parse import urlparse, parse_qs
+
+# Try to use DATABASE_URL first, fall back to individual variables
+database_url = config("DATABASE_URL", default=None)
+
+if database_url:
+    # Parse the database URL and remove pgbouncer parameter
+    parsed = urlparse(database_url)
+    query_dict = parse_qs(parsed.query)
+    
+    # Remove pgbouncer parameter if present
+    if 'pgbouncer' in query_dict:
+        del query_dict['pgbouncer']
+    
+    # Rebuild the query string
+    new_query = '&'.join(f"{k}={v[0]}" for k, v in query_dict.items())
+    
+    # Rebuild the URL without pgbouncer
+    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    if new_query:
+        clean_url += f"?{new_query}"
+    
+    DATABASES = {
+        "default": dj_database_url.parse(clean_url)
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": config("DB_NAME"),
+            "USER": config("DB_USER"),
+            "PASSWORD": config("DB_PASSWORD"),
+            "HOST": config("DB_HOST"),
+            "PORT": config("DB_PORT"),
+        }
+    }
 
 # --------------------------------------------------
 # Password Validation
@@ -330,3 +358,23 @@ SOCIALACCOUNT_PROVIDERS = {
         "EMAIL_AUTHENTICATION": True,
     },
 }
+
+CELERY_BEAT_SCHEDULER = (
+    "django_celery_beat.schedulers:DatabaseScheduler"
+)
+
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+
+CELERY_ACCEPT_CONTENT = [
+    "json",
+]
+
+CELERY_TASK_SERIALIZER = "json"
+
+CELERY_RESULT_SERIALIZER = "json"
+
+CELERY_TIMEZONE = "UTC"
+
+CELERY_ENABLE_UTC = True

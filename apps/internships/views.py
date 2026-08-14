@@ -1,19 +1,44 @@
-from django.db.models import Q
-from rest_framework import generics
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.filters import SearchFilter, OrderingFilter
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.permissions import IsAdminUser
+from django.db.models import Count, Q
 from django.utils import timezone
+from rest_framework import generics, status
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.views import APIView
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
+from django.db import IntegrityError
+from django.contrib.auth import get_user_model
 
-from .models import Internship
-from .serializers import InternshipSerializer
+from .models import (
+    Internship,
+    InternshipSource,
+    InternshipCollectionLog,
+    SavedInternship,
+    InternshipApplication,
+    Skill,
+
+)
+from .serializers import (
+    InternshipSerializer,
+    InternshipSourceSerializer,
+    InternshipCollectionLogSerializer,
+    SavedInternshipSerializer,
+    InternshipApplicationSerializer,
+    InternshipVerificationSerializer,
+    SkillSerializer,
+
+)
 from .filters import InternshipFilter
 from .permissions import IsAdminRole
+from .services.collector import collect_source
+from .tasks import collect_internships_from_source
+
+
+User = get_user_model()
 
 
 class InternshipPagination(PageNumberPagination):
@@ -123,7 +148,7 @@ class InternshipListView(generics.ListAPIView):
         return (
             Internship.objects
             .filter(
-                status="active",
+                status=Internship.STATUS_ACTIVE,
                 is_verified=True,
             )
             .filter(
@@ -161,7 +186,7 @@ class InternshipDetailView(generics.RetrieveAPIView):
         return (
             Internship.objects
             .filter(
-                status="active",
+                status=Internship.STATUS_ACTIVE,
                 is_verified=True,
             )
             .filter(
@@ -315,3 +340,784 @@ class LatestInternshipListView(generics.ListAPIView):
             .select_related("source")
             .order_by("-posted_at", "-created_at")[:20]
         )
+
+
+
+class AdminInternshipSourceListCreateView(
+    generics.ListCreateAPIView
+):
+    """
+    Admin can list and create internship sources.
+    """
+
+    queryset = InternshipSource.objects.all().order_by(
+        "-created_at"
+    )
+
+    serializer_class = InternshipSourceSerializer
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+
+
+class AdminInternshipSourceDetailView(
+    generics.RetrieveUpdateDestroyAPIView
+):
+    """
+    Admin can retrieve, update, and delete
+    an internship source.
+    """
+
+    queryset = InternshipSource.objects.all()
+
+    serializer_class = InternshipSourceSerializer
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+
+class AdminCollectionLogListView(
+    generics.ListAPIView
+):
+    """
+    Admin can view internship collection history.
+    """
+
+    queryset = (
+        InternshipCollectionLog.objects
+        .select_related("source")
+        .all()
+        .order_by("-started_at")
+    )
+
+    serializer_class = (
+        InternshipCollectionLogSerializer
+    )
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+
+
+class AdminSourceCollectView(APIView):
+    """
+    Queue internship collection as a background task.
+    """
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+    def post(self, request, pk):
+
+        try:
+            source = InternshipSource.objects.get(
+                pk=pk
+            )
+
+        except InternshipSource.DoesNotExist:
+            return Response(
+                {
+                    "detail": (
+                        "Internship source not found."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not source.is_active:
+            return Response(
+                {
+                    "detail": (
+                        "This internship source "
+                        "is inactive."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        task = collect_internships_from_source.delay(
+            source.id
+        )
+
+        return Response(
+            {
+                "message": (
+                    "Internship collection "
+                    "started."
+                ),
+                "source": source.name,
+                "task_id": task.id,
+                "status": "queued",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class StudentSaveInternshipView(
+    generics.CreateAPIView
+):
+    """
+    Save an internship for the authenticated student.
+    """
+
+    serializer_class = SavedInternshipSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def perform_create(self, serializer):
+
+        if self.request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can save internships."
+            )
+
+        internship = serializer.validated_data[
+            "internship"
+        ]
+
+        if internship.status != "active":
+            raise serializers.ValidationError(
+                {
+                    "internship": (
+                        "This internship is not "
+                        "currently available."
+                    )
+                }
+            )
+
+        try:
+            serializer.save(
+                student=self.request.user
+            )
+
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {
+                    "internship": (
+                        "You have already saved "
+                        "this internship."
+                    )
+                }
+            )
+
+
+class StudentSavedInternshipListView(
+    generics.ListAPIView
+):
+    """
+    Return internships saved by the authenticated
+    student.
+    """
+
+    serializer_class = SavedInternshipSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get_queryset(self):
+
+        if self.request.user.role != "student":
+            return SavedInternship.objects.none()
+
+        return (
+            SavedInternship.objects
+            .filter(
+                student=self.request.user
+            )
+            .select_related("internship")
+            .order_by("-created_at")
+        )
+
+
+class StudentUnsaveInternshipView(
+    generics.DestroyAPIView
+):
+    """
+    Remove a saved internship.
+    """
+
+    serializer_class = SavedInternshipSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    lookup_url_kwarg = "internship_id"
+
+    def get_queryset(self):
+
+        if self.request.user.role != "student":
+            return SavedInternship.objects.none()
+
+        return SavedInternship.objects.filter(
+            student=self.request.user
+        )
+
+    def destroy(self, request, *args, **kwargs):
+
+        instance = self.get_object()
+
+        instance.delete()
+
+        return Response(
+            {
+                "message": (
+                    "Internship removed from "
+                    "saved internships."
+                )
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class StudentApplicationCreateView(
+    generics.CreateAPIView
+):
+    """
+    Record that the authenticated student has
+    applied for an internship.
+    """
+
+    serializer_class = (
+        InternshipApplicationSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def perform_create(self, serializer):
+
+        if self.request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can track internship applications."
+            )
+
+        internship = serializer.validated_data[
+            "internship"
+        ]
+
+        try:
+            serializer.save(
+                student=self.request.user
+            )
+
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {
+                    "internship": (
+                        "You have already recorded "
+                        "an application for this internship."
+                    )
+                }
+            )
+
+
+class StudentApplicationListView(
+    generics.ListAPIView
+):
+    """
+    Return applications belonging only to the
+    authenticated student.
+    """
+
+    serializer_class = (
+        InternshipApplicationSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get_queryset(self):
+
+        if self.request.user.role != "student":
+            return InternshipApplication.objects.none()
+
+        return (
+            InternshipApplication.objects
+            .filter(
+                student=self.request.user
+            )
+            .select_related("internship")
+            .order_by("-applied_at")
+        )
+
+
+class StudentApplicationDetailView(
+    generics.RetrieveUpdateAPIView
+):
+    """
+    Retrieve or update an application belonging
+    to the authenticated student.
+    """
+
+    serializer_class = (
+        InternshipApplicationSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get_queryset(self):
+
+        if self.request.user.role != "student":
+            return InternshipApplication.objects.none()
+
+        return InternshipApplication.objects.filter(
+            student=self.request.user
+        )
+
+
+
+class AdminInternshipVerificationView(
+    APIView
+):
+    """
+    Verify or reject an internship.
+    """
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+    def post(self, request, pk):
+
+        try:
+            internship = Internship.objects.get(
+                pk=pk
+            )
+
+        except Internship.DoesNotExist:
+            return Response(
+                {
+                    "detail": (
+                        "Internship not found."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = (
+            InternshipVerificationSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        action = serializer.validated_data[
+            "action"
+        ]
+
+        if action == "verify":
+
+            internship.status = (
+                Internship.STATUS_ACTIVE
+            )
+
+            internship.verified_at = (
+                timezone.now()
+            )
+
+            internship.verified_by = (
+                request.user
+            )
+
+            internship.rejection_reason = ""
+
+            internship.save(
+                update_fields=[
+                    "status",
+                    "verified_at",
+                    "verified_by",
+                    "rejection_reason",
+                    "updated_at",
+                ]
+            )
+
+            return Response(
+                {
+                    "message": (
+                        "Internship verified "
+                        "successfully."
+                    ),
+                    "internship_id": internship.id,
+                    "status": internship.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        rejection_reason = (
+            serializer.validated_data[
+                "rejection_reason"
+            ]
+        )
+
+        internship.status = (
+            Internship.STATUS_REJECTED
+        )
+
+        internship.rejection_reason = (
+            rejection_reason
+        )
+
+        internship.verified_at = None
+        internship.verified_by = None
+
+        internship.save(
+            update_fields=[
+                "status",
+                "rejection_reason",
+                "verified_at",
+                "verified_by",
+                "updated_at",
+            ]
+        )
+
+        return Response(
+            {
+                "message": (
+                    "Internship rejected."
+                ),
+                "internship_id": internship.id,
+                "status": internship.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+
+class StudentDashboardView(APIView):
+    """
+    Return internship statistics and recent
+    activity for the authenticated student.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request):
+
+        if request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can access the "
+                "student dashboard."
+            )
+
+        saved_count = (
+            SavedInternship.objects
+            .filter(
+                student=request.user
+            )
+            .count()
+        )
+
+        applications = (
+            InternshipApplication.objects
+            .filter(
+                student=request.user
+            )
+        )
+
+        total_applications = applications.count()
+
+        applied_count = applications.filter(
+            status=InternshipApplication.STATUS_APPLIED
+        ).count()
+
+        interview_count = applications.filter(
+            status=InternshipApplication.STATUS_INTERVIEW
+        ).count()
+
+        accepted_count = applications.filter(
+            status=InternshipApplication.STATUS_ACCEPTED
+        ).count()
+
+        rejected_count = applications.filter(
+            status=InternshipApplication.STATUS_REJECTED
+        ).count()
+
+        withdrawn_count = applications.filter(
+            status=InternshipApplication.STATUS_WITHDRAWN
+        ).count()
+
+        recent_applications = (
+            applications
+            .select_related("internship")
+            .order_by("-updated_at")[:5]
+        )
+
+        recent_saved = (
+            SavedInternship.objects
+            .filter(
+                student=request.user
+            )
+            .select_related("internship")
+            .order_by("-created_at")[:5]
+        )
+
+        active_saved_count = (
+            SavedInternship.objects
+            .filter(
+                student=request.user,
+                internship__status=(
+                    Internship.STATUS_ACTIVE
+                ),
+            )
+            .count()
+        )
+
+        return Response(
+            {
+                "saved_internships": saved_count,
+
+                "total_applications": (
+                    total_applications
+                ),
+
+                "applied_applications": (
+                    applied_count
+                ),
+
+                "interview_applications": (
+                    interview_count
+                ),
+
+                "accepted_applications": (
+                    accepted_count
+                ),
+
+                "rejected_applications": (
+                    rejected_count
+                ),
+
+                "withdrawn_applications": (
+                    withdrawn_count
+                ),
+
+                "active_saved_internships": active_saved_count,
+
+                "recent_applications": (
+                    InternshipApplicationSerializer(
+                        recent_applications,
+                        many=True,
+                    ).data
+                ),
+
+                "recent_saved_internships": (
+                    SavedInternshipSerializer(
+                        recent_saved,
+                        many=True,
+                    ).data
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminDashboardView(APIView):
+    """
+    Platform-wide dashboard for administrators.
+    """
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+    def get(self, request):
+
+        total_students = User.objects.filter(
+            role="student"
+        ).count()
+
+        total_internships = Internship.objects.count()
+
+        draft_internships = Internship.objects.filter(
+            status=Internship.STATUS_DRAFT
+        ).count()
+
+        active_internships = Internship.objects.filter(
+            status=Internship.STATUS_ACTIVE
+        ).count()
+
+        rejected_internships = Internship.objects.filter(
+            status=Internship.STATUS_REJECTED
+        ).count()
+
+        expired_internships = Internship.objects.filter(
+            status=Internship.STATUS_EXPIRED
+        ).count()
+
+        applications = InternshipApplication.objects.all()
+
+        total_applications = applications.count()
+
+        applied_applications = applications.filter(
+            status=InternshipApplication.STATUS_APPLIED
+        ).count()
+
+        interview_applications = applications.filter(
+            status=InternshipApplication.STATUS_INTERVIEW
+        ).count()
+
+        accepted_applications = applications.filter(
+            status=InternshipApplication.STATUS_ACCEPTED
+        ).count()
+
+        rejected_applications = applications.filter(
+            status=InternshipApplication.STATUS_REJECTED
+        ).count()
+
+        withdrawn_applications = applications.filter(
+            status=InternshipApplication.STATUS_WITHDRAWN
+        ).count()
+
+        total_collection_logs = (
+            InternshipCollectionLog.objects.count()
+        )
+
+        successful_collections = (
+            InternshipCollectionLog.objects.filter(
+                status="success"
+            ).count()
+        )
+
+        failed_collections = (
+            InternshipCollectionLog.objects.filter(
+                status="failed"
+            ).count()
+        )
+
+        pending_verification = Internship.objects.filter(
+            status=Internship.STATUS_DRAFT
+        ).count()
+
+
+        recent_internships = (
+            Internship.objects
+            .order_by("-created_at")[:10]
+        )
+
+        latest_collection_logs = (
+            InternshipCollectionLog.objects
+            .order_by("-started_at")[:5]
+        )
+
+        return Response(
+            {
+                "total_students": total_students,
+
+                "total_internships": total_internships,
+
+                "draft_internships": draft_internships,
+
+                "active_internships": active_internships,
+
+                "rejected_internships": (
+                    rejected_internships
+                ),
+
+                "expired_internships": (
+                    expired_internships
+                ),
+
+                "total_applications": (
+                    total_applications
+                ),
+
+                "applied_applications": (
+                    applied_applications
+                ),
+
+                "interview_applications": (
+                    interview_applications
+                ),
+
+                "accepted_applications": (
+                    accepted_applications
+                ),
+
+                "rejected_applications": (
+                    rejected_applications
+                ),
+
+                "withdrawn_applications": (
+                    withdrawn_applications
+                ),
+
+                "total_collection_logs": (
+                    total_collection_logs
+                ),
+
+                "successful_collections": (
+                    successful_collections
+                ),
+
+                "failed_collections": (
+                    failed_collections
+                ),
+
+                "pending_verification": (
+                    pending_verification,
+                ),
+                "recent_internships": (
+                    AdminRecentInternshipSerializer(
+                        recent_internships,
+                        many=True,
+                    ).data
+                ),
+                "latest_collection_logs": (
+                    AdminCollectionLogSerializer(
+                        latest_collection_logs,
+                        many=True,
+                    ).data
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminSkillListCreateView(
+    generics.ListCreateAPIView
+):
+    """
+    Admin manages reusable skills.
+    """
+
+    serializer_class = SkillSerializer
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+    queryset = Skill.objects.all()
+
+
+
+class AdminSkillDetailView(
+    generics.RetrieveUpdateDestroyAPIView
+):
+    """
+    Admin manages an individual skill.
+    """
+
+    serializer_class = SkillSerializer
+
+    permission_classes = [
+        IsAdminRole,
+    ]
+
+    queryset = Skill.objects.all()

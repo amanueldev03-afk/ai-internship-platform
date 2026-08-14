@@ -2,7 +2,15 @@ from rest_framework import serializers
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, OpenApiTypes
 
-from .models import Internship, InternshipSource
+from .models import (
+    Internship,
+    InternshipSource,
+    InternshipCollectionLog,
+    SavedInternship,
+    InternshipApplication,
+    Skill,
+
+)
 
 
 class InternshipSourceSerializer(serializers.ModelSerializer):
@@ -214,3 +222,402 @@ class InternshipSerializer(serializers.ModelSerializer):
         """
 
         return obj.is_expired()
+
+
+
+
+class InternshipCollectionLogSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Serializer for collection logs.
+    """
+
+    source_name = serializers.CharField(
+        source="source.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = InternshipCollectionLog
+
+        fields = [
+            "id",
+            "source",
+            "source_name",
+            "status",
+            "started_at",
+            "completed_at",
+            "records_found",
+            "records_created",
+            "records_updated",
+            "records_failed",
+            "error_message",
+        ]
+
+        read_only_fields = [
+            "id",
+            "source_name",
+            "status",
+            "started_at",
+            "completed_at",
+            "records_found",
+            "records_created",
+            "records_updated",
+            "records_failed",
+            "error_message",
+        ]
+
+
+
+class SavedInternshipSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Serializer for a student's saved internship.
+    """
+
+    internship_title = serializers.CharField(
+        source="internship.title",
+        read_only=True,
+    )
+
+    organization_name = serializers.CharField(
+        source="internship.organization_name",
+        read_only=True,
+    )
+
+    application_url = serializers.URLField(
+        source="internship.application_url",
+        read_only=True,
+    )
+
+    source_url = serializers.URLField(
+        source="internship.source_url",
+        read_only=True,
+    )
+
+    class Meta:
+        model = SavedInternship
+
+        fields = [
+            "id",
+            "internship",
+            "internship_title",
+            "organization_name",
+            "application_url",
+            "source_url",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "internship_title",
+            "organization_name",
+            "application_url",
+            "source_url",
+            "created_at",
+        ]
+
+    def validate_internship(self, internship):
+
+        if internship.status != Internship.STATUS_ACTIVE:
+            raise serializers.ValidationError(
+                "Only active internships can be saved."
+            )
+
+        return internship
+
+class InternshipApplicationSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Serializer for student internship applications.
+    """
+
+    internship_title = serializers.CharField(
+        source="internship.title",
+        read_only=True,
+    )
+
+    organization_name = serializers.CharField(
+        source="internship.organization_name",
+        read_only=True,
+    )
+
+    application_url = serializers.URLField(
+        source="internship.application_url",
+        read_only=True,
+    )
+
+    class Meta:
+        model = InternshipApplication
+
+        fields = [
+            "id",
+            "internship",
+            "internship_title",
+            "organization_name",
+            "application_url",
+            "status",
+            "applied_at",
+            "updated_at",
+            "notes",
+        ]
+
+        read_only_fields = [
+            "id",
+            "internship_title",
+            "organization_name",
+            "application_url",
+            "applied_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+
+        internship = attrs.get("internship")
+
+        if internship.status != Internship.STATUS_ACTIVE:
+            raise serializers.ValidationError(
+                {
+                    "internship": (
+                        "This internship is no longer "
+                        "available for applications."
+                    )
+                }
+            )
+
+        if (
+            internship.application_deadline
+            and internship.application_deadline
+            <= timezone.now()
+        ):
+            raise serializers.ValidationError(
+                {
+                    "internship": (
+                        "The application deadline "
+                        "has passed."
+                    )
+                }
+            )
+
+        return attrs
+
+
+
+class InternshipVerificationSerializer(
+    serializers.Serializer
+):
+    """
+    Serializer used by Admin to verify or reject
+    an internship.
+    """
+
+    action = serializers.ChoiceField(
+        choices=[
+            "verify",
+            "reject",
+        ]
+    )
+
+    rejection_reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+    )
+
+    def validate(self, attrs):
+
+        action = attrs["action"]
+        reason = attrs.get(
+            "rejection_reason",
+            "",
+        ).strip()
+
+        if action == "reject" and not reason:
+            raise serializers.ValidationError(
+                {
+                    "rejection_reason": (
+                        "A rejection reason is required."
+                    )
+                }
+            )
+
+        return attrs
+
+
+class AdminInternshipSerializer(
+    serializers.ModelSerializer
+):
+    verified_by_email = serializers.EmailField(
+        source="verified_by.email",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Internship
+
+        fields = [
+            "id",
+            "title",
+            "description",
+            "organization_name",
+            "application_url",
+            "status",
+            "verified_at",
+            "verified_by",
+            "verified_by_email",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "verified_at",
+            "verified_by",
+            "verified_by_email",
+            "created_at",
+            "updated_at",
+        ]
+
+
+    def validate_application_deadline(self, value):
+
+        if value is not None and value <= timezone.now():
+            raise serializers.ValidationError(
+                "Application deadline must be in the future."
+            )
+
+        return value
+
+
+
+
+class StudentDashboardSerializer(
+    serializers.Serializer
+):
+    saved_internships = serializers.IntegerField()
+
+    total_applications = serializers.IntegerField()
+
+    applied_applications = serializers.IntegerField()
+
+    interview_applications = serializers.IntegerField()
+
+    accepted_applications = serializers.IntegerField()
+
+    rejected_applications = serializers.IntegerField()
+
+    withdrawn_applications = serializers.IntegerField()
+
+    recent_applications = (
+        InternshipApplicationSerializer(
+            many=True
+        )
+    )
+
+    recent_saved_internships = (
+        SavedInternshipSerializer(
+            many=True
+        )
+    )
+
+
+class AdminRecentInternshipSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Internship
+
+        fields = [
+            "id",
+            "title",
+            "organization_name",
+            "status",
+            "application_deadline",
+            "created_at",
+        ]
+
+
+class AdminCollectionLogSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = InternshipCollectionLog
+
+        fields = [
+            "id",
+            "status",
+            "started_at",
+            "completed_at",
+            "created_count",
+            "updated_count",
+            "error_message",
+        ]
+
+
+class AdminDashboardSerializer(serializers.Serializer):
+    """
+    Platform-wide statistics for Admin.
+    """
+
+    total_students = serializers.IntegerField()
+
+    total_internships = serializers.IntegerField()
+
+    draft_internships = serializers.IntegerField()
+
+    active_internships = serializers.IntegerField()
+
+    rejected_internships = serializers.IntegerField()
+
+    expired_internships = serializers.IntegerField()
+
+    total_applications = serializers.IntegerField()
+
+    applied_applications = serializers.IntegerField()
+
+    interview_applications = serializers.IntegerField()
+
+    accepted_applications = serializers.IntegerField()
+
+    rejected_applications = serializers.IntegerField()
+
+    withdrawn_applications = serializers.IntegerField()
+
+    total_collection_logs = serializers.IntegerField()
+
+    successful_collections = serializers.IntegerField()
+
+    failed_collections = serializers.IntegerField()
+
+    pending_verification = serializers.IntegerField()
+
+    recent_internships = (
+        AdminRecentInternshipSerializer(
+            many=True
+        )
+    )
+
+
+
+class SkillSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Skill
+
+        fields = [
+            "id",
+            "name",
+            "description",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]
