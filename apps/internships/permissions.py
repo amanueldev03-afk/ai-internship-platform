@@ -4,7 +4,7 @@ from rest_framework.permissions import BasePermission
 class IsAdminRole(BasePermission):
     """
     Allow access only to authenticated users
-    whose application role is ADMIN, is_superuser, or is_staff.
+    whose application role is admin, is_superuser, or is_staff.
     """
 
     message = "Only administrators can perform this action."
@@ -15,9 +15,9 @@ class IsAdminRole(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        # Check if user is admin (role == ADMIN, is_superuser, or is_staff)
+        # Check if user is admin (role == admin, is_superuser, or is_staff)
         is_admin = (
-            user.role == "ADMIN" 
+            user.role == "admin" 
             or user.is_superuser 
             or user.is_staff
         )

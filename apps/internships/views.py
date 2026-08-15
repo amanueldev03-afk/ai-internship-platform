@@ -1,14 +1,14 @@
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model

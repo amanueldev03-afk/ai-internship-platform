@@ -1,6 +1,7 @@
 from celery import shared_task
+from django.utils import timezone
 
-from .models import InternshipSource
+from .models import Internship, InternshipSource
 from .services.collector import collect_source
 
 

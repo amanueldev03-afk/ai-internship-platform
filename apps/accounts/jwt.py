@@ -41,9 +41,9 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
                 }
             )
 
-        # Check if user is admin (role == ADMIN, is_superuser, or is_staff)
+        # Check if user is admin (role == admin, is_superuser, or is_staff)
         is_admin = (
-            user.role == "ADMIN" 
+            user.role == "admin" 
             or user.is_superuser 
             or user.is_staff
         )

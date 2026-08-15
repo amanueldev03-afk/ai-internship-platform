@@ -11,6 +11,7 @@ from .models import (
     Skill,
 
 )
+from .validators import validate_internship_is_available
 
 
 class InternshipSourceSerializer(serializers.ModelSerializer):
@@ -320,12 +321,7 @@ class SavedInternshipSerializer(
         ]
 
     def validate_internship(self, internship):
-
-        if internship.status != Internship.STATUS_ACTIVE:
-            raise serializers.ValidationError(
-                "Only active internships can be saved."
-            )
-
+        validate_internship_is_available(internship)
         return internship
 
 class InternshipApplicationSerializer(
@@ -375,33 +371,8 @@ class InternshipApplicationSerializer(
         ]
 
     def validate(self, attrs):
-
         internship = attrs.get("internship")
-
-        if internship.status != Internship.STATUS_ACTIVE:
-            raise serializers.ValidationError(
-                {
-                    "internship": (
-                        "This internship is no longer "
-                        "available for applications."
-                    )
-                }
-            )
-
-        if (
-            internship.application_deadline
-            and internship.application_deadline
-            <= timezone.now()
-        ):
-            raise serializers.ValidationError(
-                {
-                    "internship": (
-                        "The application deadline "
-                        "has passed."
-                    )
-                }
-            )
-
+        validate_internship_is_available(internship)
         return attrs
 
 
