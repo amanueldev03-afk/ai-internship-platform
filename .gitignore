@@ -41,6 +41,10 @@ htmlcov/
 
 # Node modules
 node_modules/
+package.json
+package-lock.json
+prisma.config.ts
+prisma/
 
 # AI tools
 .windsurf/
