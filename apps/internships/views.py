@@ -2,13 +2,14 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.generics import GenericAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
@@ -403,7 +404,7 @@ class AdminCollectionLogListView(
 
 
 
-class AdminSourceCollectView(APIView):
+class AdminSourceCollectView(GenericAPIView):
     """
     Queue internship collection as a background task.
     """
@@ -412,6 +413,9 @@ class AdminSourceCollectView(APIView):
         IsAdminRole,
     ]
 
+    @extend_schema(
+        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'task_id': {'type': 'string'}}}}
+    )
     def post(self, request, pk):
 
         try:
@@ -680,7 +684,7 @@ class StudentApplicationDetailView(
 
 
 class AdminInternshipVerificationView(
-    APIView
+    GenericAPIView
 ):
     """
     Verify or reject an internship.
@@ -689,7 +693,20 @@ class AdminInternshipVerificationView(
     permission_classes = [
         IsAdminRole,
     ]
+    serializer_class = InternshipVerificationSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Verify Internship",
+                value={"status": "active"},
+            ),
+            OpenApiExample(
+                "Reject Internship",
+                value={"status": "rejected", "rejection_reason": "Not suitable"},
+            )
+        ]
+    )
     def post(self, request, pk):
 
         try:
@@ -707,10 +724,8 @@ class AdminInternshipVerificationView(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        serializer = (
-            InternshipVerificationSerializer(
-                data=request.data
-            )
+        serializer = self.get_serializer(
+            data=request.data
         )
 
         serializer.is_valid(
@@ -799,7 +814,7 @@ class AdminInternshipVerificationView(
 
 
 
-class StudentDashboardView(APIView):
+class StudentDashboardView(GenericAPIView):
     """
     Return internship statistics and recent
     activity for the authenticated student.
@@ -809,6 +824,23 @@ class StudentDashboardView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'saved_internships': {'type': 'integer'},
+                'total_applications': {'type': 'integer'},
+                'applied_applications': {'type': 'integer'},
+                'interview_applications': {'type': 'integer'},
+                'accepted_applications': {'type': 'integer'},
+                'rejected_applications': {'type': 'integer'},
+                'withdrawn_applications': {'type': 'integer'},
+                'active_saved_internships': {'type': 'integer'},
+                'recent_applications': {'type': 'array'},
+                'recent_saved': {'type': 'array'},
+            }
+        }}
+    )
     def get(self, request):
 
         if request.user.role != "student":
@@ -928,7 +960,7 @@ class StudentDashboardView(APIView):
         )
 
 
-class AdminDashboardView(APIView):
+class AdminDashboardView(GenericAPIView):
     """
     Platform-wide dashboard for administrators.
     """
@@ -937,6 +969,31 @@ class AdminDashboardView(APIView):
         IsAdminRole,
     ]
 
+    @extend_schema(
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'total_students': {'type': 'integer'},
+                'total_internships': {'type': 'integer'},
+                'draft_internships': {'type': 'integer'},
+                'active_internships': {'type': 'integer'},
+                'rejected_internships': {'type': 'integer'},
+                'expired_internships': {'type': 'integer'},
+                'total_applications': {'type': 'integer'},
+                'applied_applications': {'type': 'integer'},
+                'interview_applications': {'type': 'integer'},
+                'accepted_applications': {'type': 'integer'},
+                'rejected_applications': {'type': 'integer'},
+                'withdrawn_applications': {'type': 'integer'},
+                'total_collection_logs': {'type': 'integer'},
+                'successful_collections': {'type': 'integer'},
+                'failed_collections': {'type': 'integer'},
+                'pending_verification': {'type': 'integer'},
+                'recent_internships': {'type': 'array'},
+                'latest_collection_logs': {'type': 'array'},
+            }
+        }}
+    )
     def get(self, request):
 
         total_students = User.objects.filter(

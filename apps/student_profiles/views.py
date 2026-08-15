@@ -1,19 +1,23 @@
 from rest_framework import status
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 
 from .models import StudentProfile
 from .serializers import StudentProfileSerializer
 
 from rest_framework.parsers import MultiPartParser, FormParser
 
-class StudentProfileView(APIView):
+class StudentProfileView(GenericAPIView):
     """
     Get or update the authenticated student's profile.
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = StudentProfileSerializer
 
     def get_profile(self, user):
         profile, created = StudentProfile.objects.get_or_create(
@@ -22,6 +26,9 @@ class StudentProfileView(APIView):
 
         return profile
 
+    @extend_schema(
+        responses={200: StudentProfileSerializer}
+    )
     def get(self, request):
         """
         Return the authenticated student's profile.
@@ -29,13 +36,17 @@ class StudentProfileView(APIView):
 
         profile = self.get_profile(request.user)
 
-        serializer = StudentProfileSerializer(profile)
+        serializer = self.get_serializer(profile)
 
         return Response(
             serializer.data,
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        request=StudentProfileSerializer,
+        responses={200: StudentProfileSerializer}
+    )
     def patch(self, request):
         """
         Partially update the authenticated student's profile.
@@ -43,7 +54,7 @@ class StudentProfileView(APIView):
 
         profile = self.get_profile(request.user)
 
-        serializer = StudentProfileSerializer(
+        serializer = self.get_serializer(
             profile,
             data=request.data,
             partial=True,
@@ -59,12 +70,13 @@ class StudentProfileView(APIView):
         )
 
 
-class StudentCVView(APIView):
+class StudentCVView(GenericAPIView):
     """
     Upload, replace, or remove the authenticated student's CV.
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = StudentProfileSerializer
 
     parser_classes = [
         MultiPartParser,
@@ -78,6 +90,16 @@ class StudentCVView(APIView):
 
         return profile
 
+    @extend_schema(
+        request={'multipart/form-data': {
+            'type': 'object',
+            'properties': {
+                'cv': {'type': 'string', 'format': 'binary'}
+            },
+            'required': ['cv']
+        }},
+        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'profile': {'type': 'object'}}}}
+    )
     def post(self, request):
         """
         Upload or replace the student's CV.
@@ -134,7 +156,7 @@ class StudentCVView(APIView):
         profile.cv = cv_file
         profile.save(update_fields=["cv", "updated_at"])
 
-        serializer = StudentProfileSerializer(profile)
+        serializer = self.get_serializer(profile)
 
         return Response(
             {
@@ -144,6 +166,9 @@ class StudentCVView(APIView):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
+    )
     def delete(self, request):
         """
         Remove the student's CV.

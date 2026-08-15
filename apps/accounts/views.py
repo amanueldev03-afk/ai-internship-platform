@@ -65,16 +65,25 @@ class StudentRegistrationView(generics.CreateAPIView):
 
 
 
-class LogoutView(APIView):
+class LogoutView(GenericAPIView):
     """
     JWT Logout.
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Logout",
+                value={"refresh": "string"},
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = LogoutSerializer(
+        serializer = self.get_serializer(
             data=request.data
         )
 
@@ -89,16 +98,17 @@ class LogoutView(APIView):
             status=status.HTTP_200_OK,
         )
 
-class CurrentUserView(APIView):
+class CurrentUserView(GenericAPIView):
     """
     Return the currently authenticated user.
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
 
     def get(self, request):
 
-        serializer = UserSerializer(request.user)
+        serializer = self.get_serializer(request.user)
 
         return Response(serializer.data)
 
@@ -190,16 +200,25 @@ class ResendVerificationView(GenericAPIView):
         )
 
 
-class ForgotPasswordView(APIView):
+class ForgotPasswordView(GenericAPIView):
     """
     Request a password reset email.
     """
 
     permission_classes = [AllowAny]
+    serializer_class = ForgotPasswordSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Forgot Password",
+                value={"email": "user@example.com"},
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = ForgotPasswordSerializer(
+        serializer = self.get_serializer(
             data=request.data
         )
 
@@ -221,16 +240,29 @@ class ForgotPasswordView(APIView):
         )
 
 
-class ResetPasswordView(APIView):
+class ResetPasswordView(GenericAPIView):
     """
     Reset password using a valid reset token.
     """
 
     permission_classes = [AllowAny]
+    serializer_class = ResetPasswordSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Reset Password",
+                value={
+                    "uid": "MQ",
+                    "token": "abc123xyz",
+                    "new_password": "newSecurePassword123"
+                },
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = ResetPasswordSerializer(
+        serializer = self.get_serializer(
             data=request.data
         )
 
@@ -249,16 +281,28 @@ class ResetPasswordView(APIView):
         )
 
 
-class ChangePasswordView(APIView):
+class ChangePasswordView(GenericAPIView):
     """
     Change password for the authenticated user.
     """
 
     permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Change Password",
+                value={
+                    "old_password": "oldPassword123",
+                    "new_password": "newSecurePassword123"
+                },
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = ChangePasswordSerializer(
+        serializer = self.get_serializer(
             data=request.data,
             context={
                 "request": request
