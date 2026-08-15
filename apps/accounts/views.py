@@ -2,6 +2,7 @@ from rest_framework import (
     generics,
     status
     )
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import (
     AllowAny,
     IsAuthenticated
@@ -9,6 +10,8 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer
 from .serializers import ( 
                       EmailVerificationSerializer,
@@ -113,16 +116,25 @@ class StudentLoginView(TokenObtainPairView):
     serializer_class = StudentTokenObtainPairSerializer
 
 
-class EmailVerificationView(APIView):
+class EmailVerificationView(GenericAPIView):
     """
     Verify a student's email address.
     """
 
     permission_classes = [AllowAny]
+    serializer_class = EmailVerificationSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Email Verification",
+                value={"uid": "MQ", "token": "abc123xyz"},
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = EmailVerificationSerializer(
+        serializer = self.get_serializer(
             data=request.data
         )
 
