@@ -151,16 +151,25 @@ class EmailVerificationView(GenericAPIView):
             status=status.HTTP_200_OK,
         )
 
-class ResendVerificationView(APIView):
+class ResendVerificationView(GenericAPIView):
     """
     Resend email verification link.
     """
 
     permission_classes = [AllowAny]
+    serializer_class = ResendVerificationSerializer
 
+    @extend_schema(
+        examples=[
+            OpenApiExample(
+                "Resend Verification",
+                value={"email": "user@example.com"},
+            )
+        ]
+    )
     def post(self, request):
 
-        serializer = ResendVerificationSerializer(
+        serializer = self.get_serializer(
             data=request.data
         )
 
