@@ -1,13 +1,13 @@
 # Virtual Environment
-.venv/
+backend/.venv/
 
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
 # Environment
-.env
+backend/.env
 
 # SQLite
 db.sqlite3
@@ -17,10 +17,10 @@ logs/
 *.log
 
 # Media
-media/
+backend/media/
 
 # Static
-staticfiles/
+backend/staticfiles/
 
 # IDE
 .vscode/
@@ -39,18 +39,9 @@ htmlcov/
 **/__pycache__/
 /generated/prisma
 
-# Node modules
-node_modules/
-package.json
-package-lock.json
-prisma.config.ts
-prisma/
+ 
 
-# AI tools
-.windsurf/
-.claude/
-.agents/
+ 
 
-# Documentation
-POSTMAN_GUIDE.md
+ 
 
