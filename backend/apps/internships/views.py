@@ -14,6 +14,10 @@ from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 
+from .services.recommendations import (
+    get_student_recommendations,
+)
+
 from .models import (
     Internship,
     InternshipSource,
@@ -1178,3 +1182,72 @@ class AdminSkillDetailView(
     ]
 
     queryset = Skill.objects.all()
+
+
+
+
+class StudentRecommendationView(APIView):
+    """
+    Return internships ranked for the
+    authenticated student.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request):
+
+        if request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can receive "
+                "recommendations."
+            )
+
+        profile = request.user.student_profile
+
+        internships = (
+            Internship.objects
+            .filter(
+                status=Internship.STATUS_ACTIVE
+            )
+            .prefetch_related(
+                "required_skills"
+            )
+        )
+
+        recommendations = (
+            get_student_recommendations(
+                profile,
+                internships,
+            )
+        )
+
+        results = []
+
+        for item in recommendations:
+
+            internship = item[
+                "internship"
+            ]
+
+            results.append(
+                {
+                    "internship": (
+                        InternshipSerializer(
+                            internship
+                        ).data
+                    ),
+                    "match_score": (
+                        item["score"]
+                    ),
+                    "score_breakdown": (
+                        item["scores"]
+                    ),
+                }
+            )
+
+        return Response(
+            results,
+            status=status.HTTP_200_OK,
+        )

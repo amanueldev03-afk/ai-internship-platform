@@ -21,6 +21,7 @@ from .views import (
     AdminDashboardView,
     AdminSkillListCreateView,
     AdminSkillDetailView,
+    StudentRecommendationView,
 
 )
 
@@ -144,5 +145,11 @@ urlpatterns = [
         "dashboard/",
         StudentDashboardView.as_view(),
         name="student-dashboard",
+    ),
+
+    path(
+        "recommendations/",
+        StudentRecommendationView.as_view(),
+        name="student-recommendations",
     ),
 ]
