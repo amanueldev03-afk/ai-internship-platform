@@ -54,15 +54,17 @@ def calculate_work_mode_score(
     student_profile,
     internship,
 ):
-    preferred_modes = set(
-        student_profile.preferred_work_modes
-        or []
-    )
+    preferred_modes = set()
+    if student_profile.work_type == "full_time":
+        preferred_modes.add("full_time")
+    elif student_profile.work_type == "part_time":
+        preferred_modes.add("part_time")
+    # "either" means no preference
 
     if not preferred_modes:
         return 50.0
 
-    internship_mode = internship.work_mode
+    internship_mode = internship.work_type
 
     if internship_mode in preferred_modes:
         return 100.0
@@ -86,15 +88,25 @@ def calculate_location_score(
     if not preferred_locations:
         return 50.0
 
-    internship_location = (
-        internship.location or ""
-    ).lower()
+    # Combine city and country for location matching
+    internship_location_parts = []
+    if internship.city:
+        internship_location_parts.append(internship.city.lower())
+    if internship.country:
+        internship_location_parts.append(internship.country.lower())
+    if internship.location_text:
+        internship_location_parts.append(internship.location_text.lower())
 
-    if internship_location in preferred_locations:
-        return 100.0
+    internship_location = " ".join(internship_location_parts)
 
+    # Check if any preferred location matches
+    for loc in preferred_locations:
+        if loc and loc in internship_location:
+            return 100.0
+
+    # Check for remote preference
     if "remote" in preferred_locations:
-        if internship.work_mode == "remote":
+        if internship.internship_type == "remote":
             return 100.0
 
     return 0.0
@@ -104,15 +116,15 @@ def calculate_payment_score(
     internship,
 ):
     preference = (
-        student_profile.payment_preference
-        or "any"
+        student_profile.compensation_preference
+        or "either"
     )
 
     internship_payment_type = (
-        internship.payment_type
+        internship.compensation_type
     )
 
-    if preference == "any":
+    if preference == "either":
         return 100.0
 
     if (
@@ -131,19 +143,19 @@ def calculate_payment_score(
         return 100.0
 
     student_min = (
-        student_profile.minimum_payment
+        student_profile.minimum_compensation
     )
 
     student_max = (
-        student_profile.maximum_payment
+        student_profile.maximum_compensation
     )
 
     internship_min = (
-        internship.min_payment
+        internship.minimum_compensation
     )
 
     internship_max = (
-        internship.max_payment
+        internship.maximum_compensation
     )
 
     if (
@@ -167,15 +179,12 @@ def calculate_internship_type_score(
     student_profile,
     internship,
 ):
-    preferred_types = set(
-        student_profile.preferred_internship_types
-        or []
-    )
+    preferred_type = student_profile.internship_type
 
-    if not preferred_types:
+    if preferred_type == "any":
         return 50.0
 
-    if internship.internship_type in preferred_types:
+    if internship.internship_type == preferred_type:
         return 100.0
 
     return 0.0
@@ -196,8 +205,9 @@ def calculate_industry_score(
     if not preferred_industries:
         return 50.0
 
+    # Use category field instead of industry
     internship_industry = (
-        internship.industry or ""
+        internship.category or ""
     ).lower()
 
     if internship_industry in preferred_industries:
@@ -211,19 +221,19 @@ def calculate_duration_score(
     internship,
 ):
     student_min = (
-        student_profile.preferred_duration_min
+        student_profile.internship_duration_min_weeks
     )
 
     student_max = (
-        student_profile.preferred_duration_max
+        student_profile.internship_duration_max_weeks
     )
 
     internship_min = (
-        internship.duration_min
+        internship.duration_min_weeks
     )
 
     internship_max = (
-        internship.duration_max
+        internship.duration_max_weeks
     )
 
     if (
@@ -256,16 +266,16 @@ def passes_hard_filters(
         return False
 
     if (
-        student_profile.payment_preference
+        student_profile.compensation_preference
         == "paid"
-        and internship.payment_type != "paid"
+        and internship.compensation_type != "paid"
     ):
         return False
 
     if (
-        student_profile.payment_preference
+        student_profile.compensation_preference
         == "unpaid"
-        and internship.payment_type != "unpaid"
+        and internship.compensation_type != "unpaid"
     ):
         return False
 

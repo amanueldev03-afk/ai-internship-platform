@@ -1196,6 +1196,12 @@ class StudentRecommendationView(APIView):
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        operation_id="student_recommendations",
+        description="Get personalized internship recommendations based on student profile preferences including skills, location, compensation, and work type.",
+        responses={200: OpenApiTypes.OBJECT},
+        tags=["Student Internships"]
+    )
     def get(self, request):
 
         if request.user.role != "student":

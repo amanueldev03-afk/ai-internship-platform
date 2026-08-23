@@ -97,6 +97,7 @@ class InternshipModelTest(TestCase):
             description='Expired',
             application_url='https://example.com/apply',
             source=self.source,
+            external_id='expired_1',
             application_deadline=past_deadline
         )
 
@@ -136,8 +137,6 @@ class SavedInternshipModelTest(TestCase):
         self.user = User.objects.create_user(
             email='test@example.com',
             username='testuser',
-            first_name='Test',
-            last_name='User',
             password='testpass123'
         )
         self.source = InternshipSource.objects.create(
@@ -149,7 +148,8 @@ class SavedInternshipModelTest(TestCase):
             organization_name='Tech Company',
             description='Software engineering internship',
             application_url='https://example.com/apply',
-            source=self.source
+            source=self.source,
+            status=Internship.STATUS_ACTIVE
         )
 
     def test_save_internship(self):
@@ -182,8 +182,6 @@ class InternshipApplicationModelTest(TestCase):
         self.user = User.objects.create_user(
             email='test@example.com',
             username='testuser',
-            first_name='Test',
-            last_name='User',
             password='testpass123'
         )
         self.source = InternshipSource.objects.create(
@@ -219,3 +217,127 @@ class InternshipApplicationModelTest(TestCase):
                 student=self.user,
                 internship=self.internship
             )
+
+
+class InternshipAPITest(TestCase):
+    """Test cases for Internship API endpoints"""
+
+    def setUp(self):
+        """Set up test data and client"""
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='test@example.com',
+            username='testuser',
+            password='testpass123'
+        )
+        self.admin = User.objects.create_superuser(
+            email='admin@example.com',
+            username='admin',
+            password='adminpass123'
+        )
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api'
+        )
+        self.skill = Skill.objects.create(name='Python')
+        self.internship = Internship.objects.create(
+            title='Software Engineer Intern',
+            organization_name='Tech Company',
+            description='Software engineering internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True
+        )
+        self.internship.required_skills.add(self.skill)
+
+    def test_list_internships(self):
+        """Test listing internships"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/internships/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_internship_detail(self):
+        """Test getting internship details"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f'/api/internships/{self.internship.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], 'Software Engineer Intern')
+
+    def test_latest_internships(self):
+        """Test getting latest internships"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/internships/latest/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_save_internship(self):
+        """Test saving an internship"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/internships/saved/add/', {
+            'internship': self.internship.id
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_saved_internships_list(self):
+        """Test listing saved internships"""
+        SavedInternship.objects.create(
+            student=self.user,
+            internship=self.internship
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/internships/saved/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_create_application(self):
+        """Test creating an application"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/internships/applications/add/', {
+            'internship': self.internship.id
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_applications_list(self):
+        """Test listing applications"""
+        InternshipApplication.objects.create(
+            student=self.user,
+            internship=self.internship
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/internships/applications/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_student_dashboard(self):
+        """Test student dashboard"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/internships/dashboard/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('saved_internships', response.data)
+        self.assertIn('total_applications', response.data)
+
+    def test_student_recommendations(self):
+        """Test student recommendations endpoint"""
+        from apps.student_profiles.models import StudentProfile
+        from apps.accounts.services import create_student_user
+        
+        # Create student with profile
+        student = create_student_user(
+            email='student@example.com',
+            username='student',
+            password='testpass123'
+        )
+        student.is_email_verified = True
+        student.save()
+        
+        profile = StudentProfile.objects.create(
+            user=student,
+            preferred_locations=['Remote'],
+            compensation_preference='either',
+            work_type='either',
+            internship_type='any'
+        )
+        profile.skills.add(self.skill)
+        
+        self.client.force_authenticate(user=student)
+        response = self.client.get('/api/internships/recommendations/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
