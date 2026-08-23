@@ -2,9 +2,8 @@ from .preference_matching import (
     calculate_preference_match,
 )
 
-
-from .preference_matching import (
-    calculate_preference_match,
+from .hybrid_matching import (
+    calculate_hybrid_match,
 )
 
 
@@ -12,11 +11,15 @@ def get_student_recommendations(
     student_profile,
     internships,
 ):
+    """
+    Generate hybrid recommendations.
+    """
+
     recommendations = []
 
     for internship in internships:
 
-        result = calculate_preference_match(
+        result = calculate_hybrid_match(
             student_profile,
             internship,
         )
@@ -28,9 +31,25 @@ def get_student_recommendations(
             {
                 "internship": internship,
                 "score": result["score"],
-                "scores": result["scores"],
+                "preference_score": (
+                    result[
+                        "preference_score"
+                    ]
+                ),
+                "semantic_score": (
+                    result[
+                        "semantic_score"
+                    ]
+                ),
+                "score_breakdown": (
+                    result[
+                        "score_breakdown"
+                    ]
+                ),
                 "explanation": (
-                    result["explanation"]
+                    result[
+                        "explanation"
+                    ]
                 ),
             }
         )

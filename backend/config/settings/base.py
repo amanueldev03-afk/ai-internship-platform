@@ -378,3 +378,19 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 
 CELERY_ENABLE_UTC = True
+
+CACHES = {
+    "default": {
+        "BACKEND": (
+            "django.core.cache.backends.redis."
+            "RedisCache"
+        ),
+        "LOCATION": "redis://127.0.0.1:6379/1",
+    }
+}
+
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
+SEMANTIC_MATCH_WEIGHT = 0.40
+
+PREFERENCE_MATCH_WEIGHT = 0.60
