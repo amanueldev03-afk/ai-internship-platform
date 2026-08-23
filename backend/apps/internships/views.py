@@ -13,6 +13,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 
 from .services.recommendations import (
     get_student_recommendations,
@@ -1195,7 +1196,13 @@ class StudentRecommendationView(APIView):
         IsAuthenticated,
     ]
 
+
     def get(self, request):
+
+        cache_key = (
+            f"recommendations:"
+            f"user:{request.user.id}"
+        )
 
         if request.user.role != "student":
             raise PermissionDenied(
@@ -1203,7 +1210,13 @@ class StudentRecommendationView(APIView):
                 "recommendations."
             )
 
-        profile = request.user.student_profile
+        try:
+            profile = request.user.student_profile
+        except Exception:
+            from apps.student_profiles.models import StudentProfile
+            profile, created = StudentProfile.objects.get_or_create(
+                user=request.user
+            )
 
         internships = (
             Internship.objects
@@ -1215,12 +1228,27 @@ class StudentRecommendationView(APIView):
             )
         )
 
-        recommendations = (
-            get_student_recommendations(
-                profile,
-                internships,
-            )
+        cached_recommendations = cache.get(
+            cache_key
         )
+
+        if cached_recommendations is not None:
+            recommendations = cached_recommendations
+
+        else:
+            recommendations = (
+                get_student_recommendations(
+                    profile,
+                    internships,
+                )
+            )
+
+            cache.set(
+                cache_key,
+                recommendations,
+                timeout=None,
+            )
+
 
         paginator = (
             RecommendationPagination()

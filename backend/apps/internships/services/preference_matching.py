@@ -414,7 +414,7 @@ def generate_match_explanation(
 
     if scores["work_mode"] >= 100:
         preferences_matched.append(
-            internship.work_mode
+            internship.work_type
         )
 
     if scores["payment"] >= 100:
