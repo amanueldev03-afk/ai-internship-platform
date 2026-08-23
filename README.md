@@ -14,12 +14,19 @@ This platform consists of three main components:
 ### Backend Features
 - **User Authentication**: Custom user model with email-based authentication
 - **User Roles**: Student and Administrator roles
+- **JWT Authentication**: Token-based authentication with SimpleJWT
+- **Email Verification**: Email verification for new user registration
+- **Password Reset**: Forgot password and reset password functionality
 - **Student Profiles**: Comprehensive profile management with skills, education, and preferences
 - **Internship Management**: Full CRUD operations for internship listings
 - **Skill Matching**: AI-powered skill matching between students and internships
+- **Recommendation Engine**: Personalized internship recommendations based on student preferences
 - **Application Tracking**: Track internship applications and their status
 - **Saved Internships**: Allow students to save interesting opportunities
-- **API Documentation**: RESTful API with DRF Spectacular for OpenAPI documentation
+- **Admin Dashboard**: Dashboard for admins to manage internships and view statistics
+- **Student Dashboard**: Dashboard for students to view saved internships and applications
+- **CV Upload**: Upload and manage CV files
+- **API Documentation**: RESTful API with DRF Spectacular for OpenAPI documentation (Swagger/ReDoc)
 
 ## 🏗️ Project Structure
 
@@ -28,11 +35,13 @@ ai-internship-platform/
 ├── backend/                    # Django REST Framework Backend
 │   ├── apps/
 │   │   ├── accounts/          # User authentication and management
-│   │   │   ├── models.py       # Custom User model
-│   │   │   ├── views.py        # User API views
+│   │   │   ├── models.py       # Custom User model with UserManager
+│   │   │   ├── views.py        # User API views (registration, login, logout, etc.)
 │   │   │   ├── serializers.py  # User serializers
 │   │   │   ├── urls.py         # User URL routes
 │   │   │   ├── admin.py        # Admin configuration
+│   │   │   ├── services.py     # User service functions (email, validation)
+│   │   │   ├── jwt.py          # Custom JWT serializers
 │   │   │   └── tests.py        # User tests
 │   │   ├── internships/       # Internship management
 │   │   │   ├── models.py       # Internship, Skill, Source models
@@ -40,6 +49,9 @@ ai-internship-platform/
 │   │   │   ├── serializers.py  # Internship serializers
 │   │   │   ├── urls.py         # Internship URL routes
 │   │   │   ├── admin.py        # Admin configuration
+│   │   │   ├── services/       # Internship services
+│   │   │   │   ├── recommendations.py     # Recommendation logic
+│   │   │   │   └── preference_matching.py   # Preference matching algorithm
 │   │   │   └── tests.py        # Internship tests
 │   │   └── student_profiles/  # Student profile management
 │   │       ├── models.py       # StudentProfile model
@@ -55,10 +67,12 @@ ai-internship-platform/
 │   │   │   └── production.py   # Production settings
 │   │   ├── urls.py             # Main URL configuration
 │   │   ├── wsgi.py             # WSGI configuration
-│   │   └── asgi.py             # ASGI configuration
+│   │   ├── asgi.py             # ASGI configuration
+│   │   └── celery.py          # Celery configuration
 │   ├── manage.py               # Django management script
 │   ├── requirements.txt        # Python dependencies
-│   └── .env                    # Environment variables
+│   ├── .env                    # Environment variables
+│   └── .env.example           # Environment variables template
 ├── frontend/                   # Frontend application (To be implemented)
 ├── ai_engine/                  # AI recommendation engine (To be implemented)
 ├── .gitignore                  # Git ignore rules
@@ -169,27 +183,64 @@ TIME_ZONE=UTC
 ## 📚 API Endpoints
 
 ### Authentication
-- `POST /api/accounts/users/register/` - Register new user
-- `POST /api/accounts/users/login/` - User login
-- `GET /api/accounts/users/me/` - Get current user profile
-- `GET /api/accounts/users/` - List all users (admin only)
-- `GET /api/accounts/users/{id}/` - Get user details
-- `PUT /api/accounts/users/{id}/` - Update user
-- `DELETE /api/accounts/users/{id}/` - Delete user
+- `POST /api/accounts/register/` - Register new student
+- `POST /api/accounts/admin/login/` - Admin login (username/password)
+- `POST /api/accounts/student/login/` - Student login (email/password)
+- `POST /api/accounts/logout/` - Logout (blacklist refresh token)
+- `GET /api/accounts/me/` - Get current user profile
+- `POST /api/accounts/verify-email/` - Verify email address
+- `POST /api/accounts/resend-verification/` - Resend verification email
+- `POST /api/accounts/forgot-password/` - Request password reset
+- `POST /api/accounts/reset-password/` - Reset password with token
+- `POST /api/accounts/change-password/` - Change password (authenticated)
+- `POST /api/accounts/token/refresh/` - Refresh access token
 
-### Internships
-- `GET /api/internships/internships/` - List all internships
-- `POST /api/internships/internships/` - Create internship (admin)
-- `GET /api/internships/internships/{id}/` - Get internship details
-- `PUT /api/internships/internships/{id}/` - Update internship (admin)
-- `DELETE /api/internships/internships/{id}/` - Delete internship (admin)
+### Internships (Public)
+- `GET /api/internships/` - List all internships (with filtering)
+- `GET /api/internships/{id}/` - Get internship details
+- `GET /api/internships/latest/` - Get latest internships
+
+### Internships (Admin)
+- `POST /api/internships/admin/` - Create internship
+- `GET /api/internships/admin/` - List internships (admin view)
+- `GET /api/internships/admin/{id}/` - Get internship details (admin)
+- `PUT /api/internships/admin/{id}/` - Update internship
+- `DELETE /api/internships/admin/{id}/` - Delete internship
+- `POST /api/internships/admin/sources/` - Create internship source
+- `GET /api/internships/admin/sources/` - List internship sources
+- `GET /api/internships/admin/sources/{id}/` - Get source details
+- `PUT /api/internships/admin/sources/{id}/` - Update source
+- `DELETE /api/internships/admin/sources/{id}/` - Delete source
+- `POST /api/internships/admin/sources/{id}/collect/` - Collect internships from source
+- `GET /api/internships/admin/collection-logs/` - View collection logs
+- `POST /api/internships/admin/internships/{id}/verify/` - Verify internship
+- `GET /api/internships/admin/dashboard/` - Admin dashboard statistics
+- `POST /api/internships/admin/skills/` - Create skill
+- `GET /api/internships/admin/skills/` - List skills
+- `GET /api/internships/admin/skills/{id}/` - Get skill details
+- `PUT /api/internships/admin/skills/{id}/` - Update skill
+- `DELETE /api/internships/admin/skills/{id}/` - Delete skill
+
+### Internships (Student)
+- `POST /api/internships/saved/add/` - Save internship
+- `GET /api/internships/saved/` - List saved internships
+- `DELETE /api/internships/saved/{internship_id}/` - Unsave internship
+- `POST /api/internships/applications/add/` - Apply to internship
+- `GET /api/internships/applications/` - List applications
+- `GET /api/internships/applications/{id}/` - Get application details
+- `GET /api/internships/dashboard/` - Student dashboard
+- `GET /api/internships/recommendations/` - Get personalized recommendations
 
 ### Student Profiles
-- `GET /api/profiles/profiles/` - List all profiles
-- `POST /api/profiles/profiles/` - Create student profile
-- `GET /api/profiles/profiles/{id}/` - Get profile details
-- `PUT /api/profiles/profiles/{id}/` - Update profile
-- `DELETE /api/profiles/profiles/{id}/` - Delete profile
+- `GET /api/profile/` - Get student profile (auto-created if not exists)
+- `PATCH /api/profile/` - Update student profile
+- `POST /api/profile/cv/` - Upload CV
+- `DELETE /api/profile/cv/` - Delete CV
+
+### API Documentation
+- `GET /api/docs/` - Swagger UI
+- `GET /api/redoc/` - ReDoc
+- `GET /api/schema/` - OpenAPI schema
 
 ### Admin Panel
 - `GET /admin/` - Django admin panel
@@ -258,33 +309,40 @@ coverage report
 ### ✅ Completed
 - Backend project structure
 - Django apps configuration
-- User authentication system
-- Custom user model with roles
+- User authentication system with JWT
+- Custom user model with UserManager
+- Email verification system
+- Password reset functionality
 - Internship management models
 - Student profile models
 - API serializers and views
 - URL routing
 - Admin configuration
-- Comprehensive test coverage
+- Comprehensive test coverage (56 tests passing)
 - Database migrations
 - PostgreSQL integration
 - Environment configuration
+- Recommendation engine with preference matching
+- Internship application tracking
+- Saved internships functionality
+- Student and admin dashboards
+- CV upload functionality
+- API documentation (Swagger/ReDoc)
 
-### 🔄 In Progress
+### � In Progress
 - Frontend application
-- AI recommendation engine
+- Celery background task integration
+- Real email service integration
 
 ### 📋 Planned
-- Email verification
-- Password reset functionality
 - OAuth integration (Google)
 - Advanced filtering and search
-- Recommendation algorithm
 - Real-time notifications
-- File upload handling (CVs)
 - API rate limiting
 - Caching optimization
 - Performance monitoring
+- Data seeding and sample data
+- Frontend development
 
 ## 🤝 Contributing
 
@@ -313,7 +371,21 @@ For support and questions:
 
 ## 🔄 Version History
 
-### v0.1.0 (Current)
+### v0.2.0 (Current)
+- Enhanced authentication with JWT
+- Email verification system
+- Password reset functionality
+- Recommendation engine with preference matching
+- Internship application tracking
+- Saved internships functionality
+- Student and admin dashboards
+- CV upload functionality
+- Comprehensive test coverage (56 tests)
+- Updated API documentation
+- Fixed field name mismatches in recommendation algorithm
+- All API endpoints properly documented with Swagger
+
+### v0.1.0
 - Initial backend implementation
 - User authentication system
 - Internship management
