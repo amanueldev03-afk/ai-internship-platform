@@ -41,6 +41,9 @@ from .filters import InternshipFilter
 from .permissions import IsAdminRole
 from .services.collector import collect_source
 from .tasks import collect_internships_from_source
+from .pagination import (
+    RecommendationPagination,
+)
 
 
 User = get_user_model()
@@ -1187,21 +1190,11 @@ class AdminSkillDetailView(
 
 
 class StudentRecommendationView(APIView):
-    """
-    Return internships ranked for the
-    authenticated student.
-    """
 
     permission_classes = [
         IsAuthenticated,
     ]
 
-    @extend_schema(
-        operation_id="student_recommendations",
-        description="Get personalized internship recommendations based on student profile preferences including skills, location, compensation, and work type.",
-        responses={200: OpenApiTypes.OBJECT},
-        tags=["Student Internships"]
-    )
     def get(self, request):
 
         if request.user.role != "student":
@@ -1229,9 +1222,18 @@ class StudentRecommendationView(APIView):
             )
         )
 
+        paginator = (
+            RecommendationPagination()
+        )
+
+        page = paginator.paginate_queryset(
+            recommendations,
+            request,
+        )
+
         results = []
 
-        for item in recommendations:
+        for item in page:
 
             internship = item[
                 "internship"
@@ -1250,10 +1252,12 @@ class StudentRecommendationView(APIView):
                     "score_breakdown": (
                         item["scores"]
                     ),
+                    "explanation": (
+                        item["explanation"]
+                    ),
                 }
             )
 
-        return Response(
-            results,
-            status=status.HTTP_200_OK,
+        return paginator.get_paginated_response(
+            results
         )

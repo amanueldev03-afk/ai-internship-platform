@@ -340,4 +340,5 @@ class InternshipAPITest(TestCase):
         self.client.force_authenticate(user=student)
         response = self.client.get('/api/internships/recommendations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
+        self.assertIn('results', response.data)
+        self.assertIsInstance(response.data['results'], list)

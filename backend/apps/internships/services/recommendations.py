@@ -3,6 +3,11 @@ from .preference_matching import (
 )
 
 
+from .preference_matching import (
+    calculate_preference_match,
+)
+
+
 def get_student_recommendations(
     student_profile,
     internships,
@@ -24,6 +29,9 @@ def get_student_recommendations(
                 "internship": internship,
                 "score": result["score"],
                 "scores": result["scores"],
+                "explanation": (
+                    result["explanation"]
+                ),
             }
         )
 

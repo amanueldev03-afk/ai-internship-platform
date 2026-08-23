@@ -348,6 +348,12 @@ def calculate_preference_match(
         for key in scores
     )
 
+    explanation = generate_match_explanation(
+        student_profile,
+        internship,
+        scores,
+    )
+
     return {
         "eligible": True,
         "score": round(
@@ -355,4 +361,127 @@ def calculate_preference_match(
             2,
         ),
         "scores": scores,
+        "explanation": explanation,
+    }
+
+
+
+def get_skill_match_details(
+    student_profile,
+    internship,
+):
+    required_skills = set(
+        internship.required_skills.all()
+    )
+
+    student_skills = set(
+        student_profile.skills.all()
+    )
+
+    matched_skills = (
+        required_skills & student_skills
+    )
+
+    missing_skills = (
+        required_skills - student_skills
+    )
+
+    return {
+        "matched_skills": [
+            skill.name
+            for skill in matched_skills
+        ],
+        "missing_skills": [
+            skill.name
+            for skill in missing_skills
+        ],
+    }
+
+
+
+
+def generate_match_explanation(
+    student_profile,
+    internship,
+    scores,
+):
+    skill_details = get_skill_match_details(
+        student_profile,
+        internship,
+    )
+
+    preferences_matched = []
+
+    if scores["work_mode"] >= 100:
+        preferences_matched.append(
+            internship.work_mode
+        )
+
+    if scores["payment"] >= 100:
+        preferences_matched.append(
+            "Payment preference"
+        )
+
+    if scores["location"] >= 100:
+        preferences_matched.append(
+            "Preferred location"
+        )
+
+    if scores["internship_type"] >= 100:
+        preferences_matched.append(
+            "Preferred internship type"
+        )
+
+    if scores["industry"] >= 100:
+        preferences_matched.append(
+            "Preferred industry"
+        )
+
+    if scores["duration"] >= 100:
+        preferences_matched.append(
+            "Preferred duration"
+        )
+
+    score = sum(
+        scores[key] * WEIGHTS[key]
+        for key in scores
+    )
+
+    if score >= 80:
+        summary = (
+            "Strong match for your internship preferences."
+        )
+    elif score >= 60:
+        summary = (
+            "Good match for your internship preferences."
+        )
+    elif score >= 40:
+        summary = (
+            "Partial match for your internship preferences."
+        )
+    else:
+        summary = (
+            "Low match for your internship preferences."
+        )
+
+    return {
+        "summary": summary,
+        "matched_skills": skill_details[
+            "matched_skills"
+        ],
+        "missing_skills": skill_details[
+            "missing_skills"
+        ],
+        "preferences_matched": (
+            preferences_matched
+        ),
+        "payment_match": (
+            scores["payment"] >= 100
+        ),
+        "location_match": (
+            scores["location"] >= 100
+        ),
+        "duration_match": (
+            scores["duration"] >= 100
+        ),
     }
