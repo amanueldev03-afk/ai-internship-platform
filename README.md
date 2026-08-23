@@ -21,6 +21,8 @@ This platform consists of three main components:
 - **Internship Management**: Full CRUD operations for internship listings
 - **Skill Matching**: AI-powered skill matching between students and internships
 - **Recommendation Engine**: Personalized internship recommendations based on student preferences
+- **Semantic Matching**: Uses sentence transformers to match student profiles with internship descriptions using embeddings
+- **Hybrid Matching**: Combines preference-based matching with semantic similarity for more accurate recommendations
 - **Application Tracking**: Track internship applications and their status
 - **Saved Internships**: Allow students to save interesting opportunities
 - **Admin Dashboard**: Dashboard for admins to manage internships and view statistics
@@ -51,7 +53,9 @@ ai-internship-platform/
 │   │   │   ├── admin.py        # Admin configuration
 │   │   │   ├── services/       # Internship services
 │   │   │   │   ├── recommendations.py     # Recommendation logic
-│   │   │   │   └── preference_matching.py   # Preference matching algorithm
+│   │   │   │   ├── preference_matching.py   # Preference matching algorithm
+│   │   │   │   ├── semantic_matching.py     # Semantic matching with embeddings
+│   │   │   │   └── hybrid_matching.py       # Hybrid matching (preference + semantic)
 │   │   │   └── tests.py        # Internship tests
 │   │   └── student_profiles/  # Student profile management
 │   │       ├── models.py       # StudentProfile model
@@ -318,11 +322,13 @@ coverage report
 - API serializers and views
 - URL routing
 - Admin configuration
-- Comprehensive test coverage (56 tests passing)
+- Comprehensive test coverage (65 tests passing)
 - Database migrations
 - PostgreSQL integration
 - Environment configuration
 - Recommendation engine with preference matching
+- Semantic matching with sentence transformers
+- Hybrid matching (preference + semantic)
 - Internship application tracking
 - Saved internships functionality
 - Student and admin dashboards

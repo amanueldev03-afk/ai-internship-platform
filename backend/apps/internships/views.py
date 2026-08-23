@@ -1278,7 +1278,7 @@ class StudentRecommendationView(APIView):
                         item["score"]
                     ),
                     "score_breakdown": (
-                        item["scores"]
+                        item.get("score_breakdown", item.get("scores", {}))
                     ),
                     "explanation": (
                         item["explanation"]

@@ -4,6 +4,15 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication
+from .services.semantic_matching import (
+    build_student_text,
+    build_internship_text,
+    generate_embedding,
+    update_student_embedding,
+    update_internship_embedding,
+    calculate_stored_semantic_similarity,
+)
+from .services.hybrid_matching import calculate_hybrid_match
 
 User = get_user_model()
 
@@ -342,3 +351,200 @@ class InternshipAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
+
+
+class SemanticMatchingTest(TestCase):
+    """Test cases for semantic matching functionality"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            email='test@example.com',
+            username='testuser',
+            password='testpass123'
+        )
+        from apps.student_profiles.models import StudentProfile
+        self.profile = StudentProfile.objects.create(
+            user=self.user,
+            bio='Software engineering student',
+            country='USA',
+            city='New York'
+        )
+        self.skill = Skill.objects.create(name='Python')
+        self.profile.skills.add(self.skill)
+        
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api'
+        )
+        self.internship = Internship.objects.create(
+            title='Python Developer Intern',
+            organization_name='Tech Company',
+            description='Python development internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            status=Internship.STATUS_ACTIVE
+        )
+        self.internship.required_skills.add(self.skill)
+
+    def test_build_student_text(self):
+        """Test building student text for embedding"""
+        text = build_student_text(self.profile)
+        self.assertIn('Python', text)
+        self.assertIn('Software engineering student', text)
+        self.assertIn('USA', text)
+        self.assertIn('New York', text)
+
+    def test_build_internship_text(self):
+        """Test building internship text for embedding"""
+        text = build_internship_text(self.internship)
+        self.assertIn('Python Developer Intern', text)
+        self.assertIn('Python development internship', text)
+        self.assertIn('Python', text)
+
+    def test_generate_embedding(self):
+        """Test embedding generation"""
+        text = "Software engineering with Python and Django"
+        embedding = generate_embedding(text)
+        self.assertIsInstance(embedding, list)
+        self.assertEqual(len(embedding), 384)
+
+    def test_generate_empty_embedding(self):
+        """Test embedding generation with empty text"""
+        embedding = generate_embedding('')
+        self.assertEqual(embedding, [])
+
+    def test_update_student_embedding(self):
+        """Test updating student embedding"""
+        embedding = update_student_embedding(self.profile)
+        self.assertIsInstance(embedding, list)
+        self.assertEqual(len(embedding), 384)
+        self.profile.refresh_from_db()
+        self.assertEqual(len(self.profile.embedding), 384)
+
+    def test_update_internship_embedding(self):
+        """Test updating internship embedding"""
+        embedding = update_internship_embedding(self.internship)
+        self.assertIsInstance(embedding, list)
+        self.assertEqual(len(embedding), 384)
+        self.internship.refresh_from_db()
+        self.assertEqual(len(self.internship.embedding), 384)
+
+    def test_calculate_stored_semantic_similarity(self):
+        """Test semantic similarity calculation with stored embeddings"""
+        update_student_embedding(self.profile)
+        update_internship_embedding(self.internship)
+        
+        similarity = calculate_stored_semantic_similarity(
+            self.profile,
+            self.internship
+        )
+        self.assertIsInstance(similarity, float)
+        self.assertGreaterEqual(similarity, 0.0)
+        self.assertLessEqual(similarity, 100.0)
+
+    def test_semantic_similarity_with_no_embeddings(self):
+        """Test semantic similarity when embeddings don't exist"""
+        # Clear any existing embeddings
+        self.profile.embedding = []
+        self.internship.embedding = []
+        self.profile.save()
+        self.internship.save()
+        
+        similarity = calculate_stored_semantic_similarity(
+            self.profile,
+            self.internship
+        )
+        # Should auto-generate embeddings and calculate similarity
+        self.assertIsInstance(similarity, float)
+        self.assertGreaterEqual(similarity, 0.0)
+
+
+class HybridMatchingTest(TestCase):
+    """Test cases for hybrid matching functionality"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            email='test@example.com',
+            username='testuser',
+            password='testpass123'
+        )
+        from apps.student_profiles.models import StudentProfile
+        self.profile = StudentProfile.objects.create(
+            user=self.user,
+            bio='Software engineering student',
+            preferred_locations=['Remote'],
+            compensation_preference='either',
+            work_type='either',
+            internship_type='any'
+        )
+        self.skill = Skill.objects.create(name='Python')
+        self.profile.skills.add(self.skill)
+        
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api'
+        )
+        self.internship = Internship.objects.create(
+            title='Python Developer Intern',
+            organization_name='Tech Company',
+            description='Python development internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            internship_type='remote',
+            work_type='full_time',
+            compensation_type='paid'
+        )
+        self.internship.required_skills.add(self.skill)
+
+    def test_calculate_hybrid_match(self):
+        """Test hybrid matching calculation"""
+        update_student_embedding(self.profile)
+        update_internship_embedding(self.internship)
+        
+        result = calculate_hybrid_match(self.profile, self.internship)
+        
+        self.assertIsInstance(result, dict)
+        self.assertIn('eligible', result)
+        self.assertIn('score', result)
+        self.assertIn('preference_score', result)
+        self.assertIn('semantic_score', result)
+        self.assertIn('score_breakdown', result)
+        self.assertIn('explanation', result)
+        self.assertTrue(result['eligible'])
+        self.assertGreaterEqual(result['score'], 0.0)
+        self.assertLessEqual(result['score'], 100.0)
+
+    def test_hybrid_match_without_embeddings(self):
+        """Test hybrid matching when embeddings don't exist"""
+        # Clear any existing embeddings
+        self.profile.embedding = []
+        self.internship.embedding = []
+        self.profile.save()
+        self.internship.save()
+        
+        result = calculate_hybrid_match(self.profile, self.internship)
+        
+        # Should auto-generate embeddings and calculate similarity
+        self.assertIsInstance(result, dict)
+        self.assertIn('score', result)
+        self.assertIn('preference_score', result)
+        self.assertIn('semantic_score', result)
+        self.assertGreaterEqual(result['semantic_score'], 0.0)
+
+    def test_hybrid_match_explanation(self):
+        """Test hybrid match explanation generation"""
+        update_student_embedding(self.profile)
+        update_internship_embedding(self.internship)
+        
+        result = calculate_hybrid_match(self.profile, self.internship)
+        explanation = result['explanation']
+        
+        self.assertIn('summary', explanation)
+        self.assertIn('matched_skills', explanation)
+        self.assertIn('missing_skills', explanation)
+        self.assertIn('preferences_matched', explanation)
+        self.assertIsInstance(explanation['matched_skills'], list)
+        self.assertIsInstance(explanation['missing_skills'], list)
