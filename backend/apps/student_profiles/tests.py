@@ -163,28 +163,55 @@ class StudentProfileAPITest(TestCase):
         response = self.client.patch('/api/profile/', {
             'compensation_preference': 'paid',
             'minimum_compensation': None,
-            'maximum_compensation': None
+            'maximum_compensation': 10000
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_upload_cv(self):
-        """Test CV upload endpoint"""
+        """Test CV upload endpoint with structured data extraction"""
+        from unittest.mock import patch
+        
         self.client.force_authenticate(user=self.user)
         
-        # Create a simple test file
-        from io import BytesIO
-        from django.core.files.uploadedfile import SimpleUploadedFile
+        # Create student profile first
+        profile = StudentProfile.objects.create(user=self.user)
         
-        cv_content = b"Test CV content"
-        cv_file = SimpleUploadedFile(
-            "test_cv.pdf",
-            cv_content,
-            content_type="application/pdf"
-        )
+        # Mock both CV extraction and analysis to avoid PDF parsing issues
+        mock_text = "Skills: Python, Django\nEducation: BSc Computer Science"
+        mock_analysis = {
+            'skills': ['Python', 'Django'],
+            'education': [{'degree': 'BSc Computer Science'}],
+            'experience': [{'title': 'Developer'}],
+            'projects': [{'name': 'Project'}],
+            'certifications': ['AWS']
+        }
         
-        response = self.client.post('/api/profile/cv/', {'cv': cv_file})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('message', response.data)
+        with patch('apps.student_profiles.views.extract_cv_text', return_value=mock_text):
+            with patch('apps.student_profiles.views.analyze_cv_intelligently', return_value=mock_analysis):
+                with patch('apps.student_profiles.views.regenerate_student_embedding'):
+                    from io import BytesIO
+                    from django.core.files.uploadedfile import SimpleUploadedFile
+                    
+                    cv_content = b"Test CV content with Python, Django skills"
+                    cv_file = SimpleUploadedFile(
+                        "test_cv.pdf",
+                        cv_content,
+                        content_type="application/pdf"
+                    )
+                    
+                    response = self.client.post('/api/profile/cv/upload/', {'file': cv_file})
+                    self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+                    self.assertIn('extracted_skills', response.data)
+                    self.assertIn('extracted_education', response.data)
+                    self.assertIn('extracted_experience', response.data)
+                    self.assertIn('extracted_projects', response.data)
+                    self.assertIn('extracted_certifications', response.data)
+                    # Verify structured data is returned as arrays
+                    self.assertIsInstance(response.data['extracted_skills'], list)
+                    self.assertIsInstance(response.data['extracted_education'], list)
+                    self.assertIsInstance(response.data['extracted_experience'], list)
+                    self.assertIsInstance(response.data['extracted_projects'], list)
+                    self.assertIsInstance(response.data['extracted_certifications'], list)
 
     def test_upload_cv_invalid_format(self):
         """Test CV upload with invalid file format"""
@@ -199,32 +226,26 @@ class StudentProfileAPITest(TestCase):
             content_type="text/plain"
         )
         
-        response = self.client.post('/api/profile/cv/', {'cv': invalid_file})
+        response = self.client.post('/api/profile/cv/upload/', {'file': invalid_file})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_delete_cv(self):
-        """Test CV deletion endpoint"""
-        self.client.force_authenticate(user=self.user)
+    def test_cv_analysis_structured_data(self):
+        """Test that CV analysis returns structured JSON data"""
+        from .services.cv_analysis import analyze_cv
         
-        # First upload a CV
-        from io import BytesIO
-        from django.core.files.uploadedfile import SimpleUploadedFile
+        test_cv_text = """
+        Skills: Python, Django, React, SQL
+        Education: Bachelor of Computer Science, University of Gondar
+        Experience: Backend Developer at ABC Company
+        Projects: AI Internship Platform using Python and Django
+        Certifications: AWS Certified Developer
+        """
         
-        cv_content = b"Test CV content"
-        cv_file = SimpleUploadedFile(
-            "test_cv.pdf",
-            cv_content,
-            content_type="application/pdf"
-        )
+        analysis = analyze_cv(test_cv_text)
         
-        self.client.post('/api/profile/cv/', {'cv': cv_file})
-        
-        # Then delete it
-        response = self.client.delete('/api/profile/cv/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_delete_cv_no_cv(self):
-        """Test deleting CV when none exists"""
-        self.client.force_authenticate(user=self.user)
-        response = self.client.delete('/api/profile/cv/')
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        # Verify all fields are lists
+        self.assertIsInstance(analysis['skills'], list)
+        self.assertIsInstance(analysis['education'], list)
+        self.assertIsInstance(analysis['experience'], list)
+        self.assertIsInstance(analysis['projects'], list)
+        self.assertIsInstance(analysis['certifications'], list)

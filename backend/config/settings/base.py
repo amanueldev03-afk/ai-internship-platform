@@ -1,6 +1,7 @@
 from pathlib import Path
 from decouple import Csv, config
 from datetime import timedelta
+import os
 
 # --------------------------------------------------
 # Paths
@@ -394,3 +395,8 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 SEMANTIC_MATCH_WEIGHT = 0.40
 
 PREFERENCE_MATCH_WEIGHT = 0.60
+
+ 
+OPENAI_API_KEY = os.getenv(
+    "OPENAI_API_KEY"
+)

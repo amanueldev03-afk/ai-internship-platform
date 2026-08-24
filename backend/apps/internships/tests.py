@@ -13,6 +13,13 @@ from .services.semantic_matching import (
     calculate_stored_semantic_similarity,
 )
 from .services.hybrid_matching import calculate_hybrid_match
+from .services.recommendation_engine_v2 import (
+    calculate_skill_score,
+    get_matched_skills,
+    calculate_location_score,
+    calculate_final_score,
+    build_explanation,
+)
 
 User = get_user_model()
 
@@ -446,8 +453,8 @@ class SemanticMatchingTest(TestCase):
     def test_semantic_similarity_with_no_embeddings(self):
         """Test semantic similarity when embeddings don't exist"""
         # Clear any existing embeddings
-        self.profile.embedding = []
-        self.internship.embedding = []
+        self.profile.embedding = None
+        self.internship.embedding = None
         self.profile.save()
         self.internship.save()
         
@@ -520,8 +527,8 @@ class HybridMatchingTest(TestCase):
     def test_hybrid_match_without_embeddings(self):
         """Test hybrid matching when embeddings don't exist"""
         # Clear any existing embeddings
-        self.profile.embedding = []
-        self.internship.embedding = []
+        self.profile.embedding = None
+        self.internship.embedding = None
         self.profile.save()
         self.internship.save()
         
@@ -548,3 +555,133 @@ class HybridMatchingTest(TestCase):
         self.assertIn('preferences_matched', explanation)
         self.assertIsInstance(explanation['matched_skills'], list)
         self.assertIsInstance(explanation['missing_skills'], list)
+
+
+class RecommendationEngineV2Test(TestCase):
+    """Test cases for Recommendation Engine V2"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.user = User.objects.create_user(
+            email='test@example.com',
+            username='testuser',
+            password='testpass123'
+        )
+        from apps.student_profiles.models import StudentProfile
+        self.profile = StudentProfile.objects.create(
+            user=self.user,
+            bio='Software engineering student',
+            country='USA',
+            city='New York'
+        )
+        self.skill = Skill.objects.create(name='Python')
+        self.profile.skills.add(self.skill)
+
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api'
+        )
+        self.internship = Internship.objects.create(
+            title='Python Developer Intern',
+            organization_name='Tech Company',
+            description='Python development internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            internship_type='remote',
+            work_type='full_time',
+            compensation_type='paid',
+            minimum_compensation=1000,
+            maximum_compensation=2000,
+            country='USA',
+            city='New York'
+        )
+        self.internship.required_skills.add(self.skill)
+
+    def test_calculate_skill_score(self):
+        """Test skill score calculation"""
+        student_skills = ['Python', 'Django', 'React']
+        internship_skills = ['Python', 'Django', 'JavaScript']
+        score = calculate_skill_score(student_skills, internship_skills)
+        self.assertEqual(score, 2/3)  # 2 matches out of 3
+
+    def test_get_matched_skills(self):
+        """Test matched skills extraction"""
+        student_skills = ['Python', 'Django', 'React']
+        internship_skills = ['python', 'DJANGO', 'JavaScript']
+        matched = get_matched_skills(student_skills, internship_skills)
+        self.assertIn('Python', matched)
+        self.assertIn('Django', matched)
+        self.assertEqual(len(matched), 2)
+
+    def test_calculate_location_score(self):
+        """Test location score calculation"""
+        score = calculate_location_score(self.internship, self.profile)
+        self.assertEqual(score, 1.0)  # Same city
+        
+        self.profile.city = 'Boston'
+        self.profile.save()
+        score = calculate_location_score(self.internship, self.profile)
+        self.assertEqual(score, 0.5)  # Same country, different city
+
+    def test_calculate_final_score(self):
+        """Test final weighted score calculation"""
+        semantic = 0.8
+        skill = 0.6
+        preference = 0.7
+        location = 0.5
+        salary = 0.9
+        
+        score = calculate_final_score(semantic, skill, preference, location, salary)
+        self.assertGreaterEqual(score, 0.0)
+        self.assertLessEqual(score, 100.0)
+
+    def test_build_explanation(self):
+        """Test explanation building"""
+        explanation = build_explanation(
+            semantic_score=0.85,
+            skill_score=0.75,
+            preference_score=0.80,
+            matched_skills=['Python', 'Django'],
+            internship=self.internship
+        )
+        self.assertIsInstance(explanation, list)
+        self.assertGreater(len(explanation), 0)
+
+    def test_student_recommendations_v2(self):
+        """Test student recommendations endpoint with v2 engine"""
+        from apps.student_profiles.models import StudentProfile
+        from apps.accounts.services import create_student_user
+        from rest_framework.test import APIClient
+        
+        # Create student with profile
+        student = create_student_user(
+            email='student2@example.com',
+            username='student2',
+            password='testpass123'
+        )
+        student.is_email_verified = True
+        student.save()
+        
+        profile = StudentProfile.objects.create(
+            user=student,
+            preferred_locations=['Remote'],
+            compensation_preference='either',
+            work_type='either',
+            internship_type='any'
+        )
+        profile.skills.add(self.skill)
+        
+        client = APIClient()
+        client.force_authenticate(user=student)
+        response = client.get('/api/internships/recommendations/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('results', response.data)
+        self.assertIsInstance(response.data['results'], list)
+        
+        # Check new v2 response format
+        if len(response.data['results']) > 0:
+            result = response.data['results'][0]
+            self.assertIn('match_score', result)
+            self.assertIn('explanation', result)
+            self.assertIsInstance(result['explanation'], list)

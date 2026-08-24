@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import StudentProfile
+from .models import (
+    StudentProfile,
+    StudentCV,
+)
+
+from apps.internships.services.embedding_service import (
+    regenerate_student_embedding,
+)
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):
@@ -11,6 +18,14 @@ class StudentProfileSerializer(serializers.ModelSerializer):
     user = serializers.PrimaryKeyRelatedField(
         read_only=True,
     )
+
+    def perform_create(self, serializer):
+
+        Profile = serializer.save()
+
+        regenerate_student_embedding(
+            Profile
+        )
 
     class Meta:
         model = StudentProfile
@@ -173,3 +188,35 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+
+
+class StudentCVSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = StudentCV
+
+        fields = (
+            "id",
+            "file",
+            "extracted_skills",
+            "extracted_education",
+            "extracted_experience",
+            "extracted_projects",
+            "extracted_certifications",
+            "uploaded_at",
+            "updated_at",
+        )
+
+        read_only_fields = (
+            "id",
+            "extracted_skills",
+            "extracted_education",
+            "extracted_experience",
+            "extracted_projects",
+            "extracted_certifications",
+            "uploaded_at",
+            "updated_at",
+        )

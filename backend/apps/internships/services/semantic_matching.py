@@ -136,12 +136,12 @@ def build_internship_text(internship):
 
     if getattr(
         internship,
-        "industry",
+        "category",
         None,
     ):
         parts.append(
-            "Industry: "
-            + internship.industry
+            "Category: "
+            + internship.category
         )
 
     if getattr(
@@ -156,22 +156,33 @@ def build_internship_text(internship):
 
     if getattr(
         internship,
-        "work_mode",
+        "work_type",
         None,
     ):
         parts.append(
-            "Work mode: "
-            + internship.work_mode
+            "Work type: "
+            + internship.work_type
         )
 
+    location_parts = []
     if getattr(
         internship,
-        "location",
+        "country",
         None,
     ):
+        location_parts.append(internship.country)
+    
+    if getattr(
+        internship,
+        "city",
+        None,
+    ):
+        location_parts.append(internship.city)
+    
+    if location_parts:
         parts.append(
             "Location: "
-            + internship.location
+            + ", ".join(location_parts)
         )
 
     return "\n".join(parts)
@@ -246,6 +257,13 @@ def update_student_embedding(
         student_profile
     )
 
+    if not validate_embedding(
+        embedding
+    ):
+        raise ValueError(
+            "Invalid student embedding."
+        )
+
     student_profile.embedding = embedding
 
     student_profile.save(
@@ -265,6 +283,13 @@ def update_internship_embedding(
     embedding = generate_internship_embedding(
         internship
     )
+
+    if not validate_embedding(
+        embedding
+    ):
+        raise ValueError(
+            "Invalid internship embedding."
+        )
 
     internship.embedding = embedding
 
@@ -331,4 +356,22 @@ def calculate_stored_semantic_similarity(
     return calculate_semantic_similarity(
         student_embedding,
         internship_embedding,
+    )
+
+
+EMBEDDING_DIMENSION = 384
+
+
+def validate_embedding(
+    embedding,
+):
+    """
+    Validate embedding dimensions.
+    """
+
+    if not embedding:
+        return False
+
+    return len(embedding) == (
+        EMBEDDING_DIMENSION
     )

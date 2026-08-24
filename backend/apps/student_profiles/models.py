@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from apps.internships.models import Skill
+from pgvector.django import VectorField
 
 
 class StudentProfile(models.Model):
@@ -48,10 +49,10 @@ class StudentProfile(models.Model):
     #  Embedding
     # ==========================================================
 
-    embedding = models.JSONField(
+    embedding = VectorField(
+        dimensions=384,
         null=True,
         blank=True,
-        editable=False,
     )
 
     # ==========================================================
@@ -289,3 +290,61 @@ class StudentProfile(models.Model):
         ordering = ["-created_at"]
         verbose_name = "Student Profile"
         verbose_name_plural = "Student Profiles"
+
+
+
+class StudentCV(models.Model):
+
+    student = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cv",
+    )
+
+    file = models.FileField(
+        upload_to="student_cvs/",
+    )
+
+    extracted_text = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    extracted_skills = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_education = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_experience = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_projects = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_certifications = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"CV - {self.student.email}"

@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
+from pgvector.django import VectorField
 
 
 class Skill(models.Model):
@@ -148,10 +149,10 @@ class Internship(models.Model):
     #   EMBEDDING
     # ==========================================================
 
-    embedding = models.JSONField(
+    embedding = VectorField(
+        dimensions=384,
         null=True,
         blank=True,
-        editable=False,
     )
 
     # ==========================================================

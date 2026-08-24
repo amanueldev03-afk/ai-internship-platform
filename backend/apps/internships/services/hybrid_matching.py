@@ -9,13 +9,60 @@ from .semantic_matching import (
 )
 
 
+def calculate_cv_match_score(
+    student_profile,
+    internship,
+):
+    """
+    Calculate CV-based matching score by comparing
+    CV-extracted skills with internship required skills.
+    """
+    
+    try:
+        from apps.student_profiles.models import StudentCV
+        cv = StudentCV.objects.filter(
+            student=student_profile.user
+        ).first()
+        
+        if not cv or not cv.extracted_skills:
+            return 0.0
+        
+        # Get internship required skills
+        required_skills = set(
+            skill.name.lower()
+            for skill in internship.required_skills.all()
+        )
+        
+        if not required_skills:
+            return 0.0
+        
+        # Get CV extracted skills (normalized to lowercase)
+        cv_skills = set(
+            skill.lower()
+            for skill in cv.extracted_skills
+        )
+        
+        # Calculate matching percentage
+        matched_skills = required_skills & cv_skills
+        
+        if not required_skills:
+            return 0.0
+        
+        match_score = (len(matched_skills) / len(required_skills)) * 100
+        
+        return round(match_score, 2)
+        
+    except Exception:
+        return 0.0
+
+
 def calculate_hybrid_match(
     student_profile,
     internship,
 ):
     """
     Combine rule-based preference matching
-    with AI semantic matching.
+    with AI semantic matching and CV analysis.
     """
 
     preference_result = (
@@ -42,21 +89,42 @@ def calculate_hybrid_match(
         )
     )
 
-    preference_weight = (
-        settings.PREFERENCE_MATCH_WEIGHT
+    cv_score = calculate_cv_match_score(
+        student_profile,
+        internship,
     )
 
-    semantic_weight = (
-        settings.SEMANTIC_MATCH_WEIGHT
+    # Get weights from settings or use defaults
+    preference_weight = getattr(
+        settings,
+        'PREFERENCE_MATCH_WEIGHT',
+        0.4
+    )
+
+    semantic_weight = getattr(
+        settings,
+        'SEMANTIC_MATCH_WEIGHT',
+        0.4
+    )
+
+    cv_weight = getattr(
+        settings,
+        'CV_MATCH_WEIGHT',
+        0.2
+    )
+
+    # Calculate weighted average
+    total_weight = (
+        preference_weight
+        + semantic_weight
+        + cv_weight
     )
 
     final_score = (
-        preference_score
-        * preference_weight
-        +
-        semantic_score
-        * semantic_weight
-    )
+        (preference_score * preference_weight)
+        + (semantic_score * semantic_weight)
+        + (cv_score * cv_weight)
+    ) / total_weight
 
     return {
         "eligible": True,
@@ -70,6 +138,10 @@ def calculate_hybrid_match(
         ),
         "semantic_score": round(
             semantic_score,
+            2,
+        ),
+        "cv_score": round(
+            cv_score,
             2,
         ),
         "score_breakdown": (

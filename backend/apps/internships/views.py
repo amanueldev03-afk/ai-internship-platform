@@ -14,9 +14,16 @@ from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-
+from apps.student_profiles.models import StudentCV
+from .services.recommendation_engine_v2 import (
+    generate_recommendations,
+)
+from apps.student_profiles.models import StudentProfile
 from .services.recommendations import (
     get_student_recommendations,
+)
+from .services.embedding_service import (
+    regenerate_internship_embedding,
 )
 
 from .models import (
@@ -231,8 +238,19 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
         description="Create a new internship. Admin only.",
         tags=["Admin Internships"],
     )
+
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
+
+    
+
+    def perform_create(self, serializer):
+
+        internship = serializer.save()
+
+        regenerate_internship_embedding(
+            internship
+        )
 
     filter_backends = [
         DjangoFilterBackend,
@@ -1196,7 +1214,41 @@ class StudentRecommendationView(APIView):
         IsAuthenticated,
     ]
 
-
+    @extend_schema(
+        responses={200: {
+            'type': 'object',
+            'properties': {
+                'count': {'type': 'integer'},
+                'next': {'type': 'string', 'nullable': True},
+                'previous': {'type': 'string', 'nullable': True},
+                'results': {
+                    'type': 'array',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'internship': {'type': 'object'},
+                            'match_score': {'type': 'number'},
+                            'explanation': {'type': 'array', 'items': {'type': 'string'}},
+                        }
+                    }
+                },
+                'cv_analysis': {
+                    'type': 'object',
+                    'properties': {
+                        'has_cv': {'type': 'boolean'},
+                        'extracted_skills': {'type': 'array', 'items': {'type': 'string'}},
+                        'extracted_education': {'type': 'array', 'items': {'type': 'object'}},
+                        'extracted_experience': {'type': 'array', 'items': {'type': 'object'}},
+                        'extracted_projects': {'type': 'array', 'items': {'type': 'object'}},
+                        'extracted_certifications': {'type': 'array', 'items': {'type': 'string'}},
+                        'uploaded_at': {'type': 'string', 'nullable': True},
+                        'message': {'type': 'string', 'nullable': True},
+                    }
+                }
+            }
+        }},
+        description="Get personalized internship recommendations based on skills, preferences, and semantic matching"
+    )
     def get(self, request):
 
         cache_key = (
@@ -1213,10 +1265,34 @@ class StudentRecommendationView(APIView):
         try:
             profile = request.user.student_profile
         except Exception:
-            from apps.student_profiles.models import StudentProfile
             profile, created = StudentProfile.objects.get_or_create(
                 user=request.user
             )
+
+        # Get CV analysis data
+        cv_data = {}
+        try:
+            cv = StudentCV.objects.filter(student=request.user).first()
+            if cv:
+                cv_data = {
+                    "has_cv": True,
+                    "extracted_skills": cv.extracted_skills or [],
+                    "extracted_education": cv.extracted_education or [],
+                    "extracted_experience": cv.extracted_experience or [],
+                    "extracted_projects": cv.extracted_projects or [],
+                    "extracted_certifications": cv.extracted_certifications or [],
+                    "uploaded_at": cv.uploaded_at.isoformat() if cv.uploaded_at else None,
+                }
+            else:
+                cv_data = {
+                    "has_cv": False,
+                    "message": "No CV uploaded"
+                }
+        except Exception:
+            cv_data = {
+                "has_cv": False,
+                "message": "CV data unavailable"
+            }
 
         internships = (
             Internship.objects
@@ -1237,8 +1313,8 @@ class StudentRecommendationView(APIView):
 
         else:
             recommendations = (
-                get_student_recommendations(
-                    profile,
+                generate_recommendations(
+                    request.user,
                     internships,
                 )
             )
@@ -1263,9 +1339,7 @@ class StudentRecommendationView(APIView):
 
         for item in page:
 
-            internship = item[
-                "internship"
-            ]
+            internship = item.internship
 
             results.append(
                 {
@@ -1274,18 +1348,15 @@ class StudentRecommendationView(APIView):
                             internship
                         ).data
                     ),
-                    "match_score": (
-                        item["score"]
-                    ),
-                    "score_breakdown": (
-                        item.get("score_breakdown", item.get("scores", {}))
-                    ),
-                    "explanation": (
-                        item["explanation"]
-                    ),
+                    "match_score": item.score,
+                    "explanation": item.explanation,
                 }
             )
 
-        return paginator.get_paginated_response(
-            results
-        )
+
+        response_data = paginator.get_paginated_response(results)
+        
+        # Add CV data to the response
+        response_data.data["cv_analysis"] = cv_data
+        
+        return response_data
