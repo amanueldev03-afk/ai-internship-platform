@@ -20,14 +20,17 @@ This platform consists of three main components:
 - **Student Profiles**: Comprehensive profile management with skills, education, and preferences
 - **Internship Management**: Full CRUD operations for internship listings
 - **Skill Matching**: AI-powered skill matching between students and internships
-- **Recommendation Engine**: Personalized internship recommendations based on student preferences
+- **Recommendation Engine V2**: Advanced recommendation system with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
 - **Semantic Matching**: Uses sentence transformers to match student profiles with internship descriptions using embeddings
 - **Hybrid Matching**: Combines preference-based matching with semantic similarity for more accurate recommendations
+- **CV Analysis**: Intelligent CV parsing with structured data extraction (education, experience, projects, certifications)
+- **AI-Powered CV Analysis**: OpenAI integration for enhanced CV data extraction with fallback to basic analysis
+- **Skill Normalization**: Automatic skill name standardization and alias resolution
 - **Application Tracking**: Track internship applications and their status
 - **Saved Internships**: Allow students to save interesting opportunities
 - **Admin Dashboard**: Dashboard for admins to manage internships and view statistics
 - **Student Dashboard**: Dashboard for students to view saved internships and applications
-- **CV Upload**: Upload and manage CV files
+- **CV Upload**: Upload and manage CV files with automatic text extraction
 - **API Documentation**: RESTful API with DRF Spectacular for OpenAPI documentation (Swagger/ReDoc)
 
 ## 🏗️ Project Structure
@@ -52,17 +55,24 @@ ai-internship-platform/
 │   │   │   ├── urls.py         # Internship URL routes
 │   │   │   ├── admin.py        # Admin configuration
 │   │   │   ├── services/       # Internship services
-│   │   │   │   ├── recommendations.py     # Recommendation logic
-│   │   │   │   ├── preference_matching.py   # Preference matching algorithm
-│   │   │   │   ├── semantic_matching.py     # Semantic matching with embeddings
-│   │   │   │   └── hybrid_matching.py       # Hybrid matching (preference + semantic)
+│   │   │   │   ├── recommendations.py        # Recommendation logic
+│   │   │   │   ├── preference_matching.py    # Preference matching algorithm
+│   │   │   │   ├── semantic_matching.py      # Semantic matching with embeddings
+│   │   │   │   ├── hybrid_matching.py        # Hybrid matching (preference + semantic)
+│   │   │   │   ├── recommendation_engine_v2.py # Advanced recommendation engine with weighted scoring
+│   │   │   │   └── embedding_service.py      # Embedding generation and management
 │   │   │   └── tests.py        # Internship tests
 │   │   └── student_profiles/  # Student profile management
-│   │       ├── models.py       # StudentProfile model
+│   │       ├── models.py       # StudentProfile, StudentCV models
 │   │       ├── views.py        # Profile API views
 │   │       ├── serializers.py  # Profile serializers
 │   │       ├── urls.py         # Profile URL routes
 │   │       ├── admin.py        # Admin configuration
+│   │       ├── services/       # Profile services
+│   │       │   ├── cv_analysis.py           # Basic CV text extraction and parsing
+│   │       │   ├── ai_cv_analysis.py        # AI-powered CV analysis with OpenAI
+│   │       │   ├── skill_normalization.py    # Skill name standardization
+│   │       │   └── cv_extraction.py         # PDF/DOCX text extraction
 │   │       └── tests.py        # Profile tests
 │   ├── config/                 # Django configuration
 │   │   ├── settings/
@@ -238,7 +248,7 @@ TIME_ZONE=UTC
 ### Student Profiles
 - `GET /api/profile/` - Get student profile (auto-created if not exists)
 - `PATCH /api/profile/` - Update student profile
-- `POST /api/profile/cv/` - Upload CV
+- `POST /api/profile/cv/upload/` - Upload CV with structured data extraction
 - `DELETE /api/profile/cv/` - Delete CV
 
 ### API Documentation
@@ -289,7 +299,8 @@ coverage report
 - Skills and interests
 - Internship preferences (type, location, compensation)
 - Career preferences (industries, roles)
-- CV upload
+- CV upload with structured data extraction
+- StudentCV model for CV file storage and extracted data (JSON fields for education, experience, projects, certifications)
 
 ## 🚀 Deployment
 
@@ -322,17 +333,21 @@ coverage report
 - API serializers and views
 - URL routing
 - Admin configuration
-- Comprehensive test coverage (65 tests passing)
+- Comprehensive test coverage (90+ tests passing)
 - Database migrations
 - PostgreSQL integration
 - Environment configuration
 - Recommendation engine with preference matching
 - Semantic matching with sentence transformers
 - Hybrid matching (preference + semantic)
+- Recommendation Engine V2 with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
+- CV analysis with structured data extraction
+- AI-powered CV analysis with OpenAI integration
+- Skill normalization and alias resolution
 - Internship application tracking
 - Saved internships functionality
 - Student and admin dashboards
-- CV upload functionality
+- CV upload with PDF/DOCX text extraction
 - API documentation (Swagger/ReDoc)
 
 ### � In Progress
@@ -377,7 +392,18 @@ For support and questions:
 
 ## 🔄 Version History
 
-### v0.2.0 (Current)
+### v0.3.0 (Current)
+- Recommendation Engine V2 with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
+- Advanced hard filters (work mode, paid requirement, internship type, salary range)
+- CV analysis with structured JSON data extraction
+- AI-powered CV analysis with OpenAI integration and fallback
+- Skill normalization with alias resolution
+- StudentCV model with JSONField for structured data storage
+- Enhanced recommendation API response with CV analysis data
+- Updated test coverage for new features (90+ tests)
+- Updated API documentation for new endpoints and response formats
+
+### v0.2.0
 - Enhanced authentication with JWT
 - Email verification system
 - Password reset functionality
