@@ -1,6 +1,6 @@
 # Virtual Environment
 backend/.venv/
-
+.venv
 # Python
 **/__pycache__/
 *.py[cod]

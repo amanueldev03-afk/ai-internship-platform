@@ -220,3 +220,57 @@ class StudentCVSerializer(
             "uploaded_at",
             "updated_at",
         )
+
+
+class AddStudentSkillsSerializer(serializers.Serializer):
+    """
+    Serializer for adding skills to a student profile by skill IDs.
+    """
+    skill_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        help_text="List of skill IDs to add to the profile"
+    )
+
+
+class StudentPreferencesSerializer(serializers.Serializer):
+    """
+    Serializer for updating student internship preferences.
+    """
+    work_mode = serializers.ChoiceField(
+        choices=["remote", "onsite", "hybrid", "any"],
+        required=False,
+        help_text="Preferred work mode (remote, onsite, hybrid, any)"
+    )
+    internship_type = serializers.ChoiceField(
+        choices=["full_time", "part_time", "either"],
+        required=False,
+        help_text="Preferred work commitment (full_time, part_time, either)"
+    )
+    paid_only = serializers.BooleanField(
+        required=False,
+        help_text="Filter paid internships only"
+    )
+    min_paid = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text="Minimum desired compensation"
+    )
+    max_paid = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        help_text="Maximum desired compensation"
+    )
+    preferred_countries = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        help_text="Preferred countries"
+    )
+    preferred_categories = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        required=False,
+        help_text="Preferred categories or industries"
+    )

@@ -17,6 +17,10 @@ SECRET_KEY = config("SECRET_KEY")
 
 DEBUG = config("DEBUG", default=False, cast=bool)
 
+# Skip database checks if database is unavailable (for development)
+if DEBUG:
+    SILENCED_SYSTEM_CHECKS = ['django.E027']  # Skip database connection check
+
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
     cast=Csv(),
@@ -109,6 +113,11 @@ TEMPLATES = [
     },
 ]
 
+# Performance optimizations for development
+if DEBUG:
+    # Disable debug toolbar if installed for better performance
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if 'debug_toolbar' not in app]
+
 # --------------------------------------------------
 # WSGI / ASGI
 # --------------------------------------------------
@@ -122,43 +131,29 @@ ASGI_APPLICATION = "config.asgi.application"
 # --------------------------------------------------
 
 import dj_database_url
-from urllib.parse import urlparse, parse_qs
 
-# Try to use DATABASE_URL first, fall back to individual variables
-database_url = config("DATABASE_URL", default=None)
+USE_SQLITE = False
 
-if database_url:
-    # Parse the database URL and remove pgbouncer parameter
-    parsed = urlparse(database_url)
-    query_dict = parse_qs(parsed.query)
-    
-    # Remove pgbouncer parameter if present
-    if 'pgbouncer' in query_dict:
-        del query_dict['pgbouncer']
-    
-    # Rebuild the query string
-    new_query = '&'.join(f"{k}={v[0]}" for k, v in query_dict.items())
-    
-    # Rebuild the URL without pgbouncer
-    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-    if new_query:
-        clean_url += f"?{new_query}"
-    
+if USE_SQLITE:
     DATABASES = {
-        "default": dj_database_url.parse(clean_url)
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
 else:
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": config("DB_NAME"),
-            "USER": config("DB_USER"),
-            "PASSWORD": config("DB_PASSWORD"),
-            "HOST": config("DB_HOST"),
-            "PORT": config("DB_PORT"),
-        }
+        "default": dj_database_url.parse(
+            config("DATABASE_URL"),
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
 
+    DATABASES["default"]["OPTIONS"] = {
+        "connect_timeout": 10,
+    }
+    
 # --------------------------------------------------
 # Password Validation
 # --------------------------------------------------
@@ -242,6 +237,8 @@ REST_FRAMEWORK = {
 
     "DEFAULT_PARSER_CLASSES": (
         "rest_framework.parsers.JSONParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.MultiPartParser",
     ),
 
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -267,6 +264,33 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api",
+    "TAGS": [
+        {
+            "name": "Authentication",
+            "description": "User registration, login, and authentication endpoints"
+        },
+        {
+            "name": "Student Profiles",
+            "description": "Student profile management and CV upload"
+        },
+        {
+            "name": "Internships",
+            "description": "Internship listing, search, and details"
+        },
+        {
+            "name": "Admin Internships",
+            "description": "Admin-only internship management endpoints"
+        },
+        {
+            "name": "Recommendations",
+            "description": "AI-powered internship recommendations"
+        },
+        {
+            "name": "Applications",
+            "description": "Internship application tracking"
+        }
+    ],
+    "ENUM_NAME_OVERRIDES": {},
 }
 
 # CORS settings
@@ -364,9 +388,12 @@ CELERY_BEAT_SCHEDULER = (
     "django_celery_beat.schedulers:DatabaseScheduler"
 )
 
+# Import Celery Beat schedule
+from config.celery_schedule import CELERY_BEAT_SCHEDULE
+
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/1"
 
 CELERY_ACCEPT_CONTENT = [
     "json",
@@ -379,6 +406,10 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 
 CELERY_ENABLE_UTC = True
+
+CELERY_TASK_TIME_LIMIT = 30 * 60
+
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 
 CACHES = {
     "default": {

@@ -1,12 +1,12 @@
 from rest_framework import (
     generics,
     status
-    )
+)
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import (
     AllowAny,
     IsAuthenticated
-    )
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -14,16 +14,15 @@ from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParamete
 from drf_spectacular.types import OpenApiTypes
 from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer
 from .serializers import ( 
-                      EmailVerificationSerializer,
-                      StudentRegistrationSerializer,
-                      LogoutSerializer,
-                      UserSerializer,
-                      ResendVerificationSerializer,
-                      ForgotPasswordSerializer,
-                      ResetPasswordSerializer,
-                      ChangePasswordSerializer
-                      )
- 
+    EmailVerificationSerializer,
+    StudentRegistrationSerializer,
+    LogoutSerializer,
+    UserSerializer,
+    ResendVerificationSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordSerializer,
+    ChangePasswordSerializer
+)
 
 
 class StudentRegistrationView(generics.CreateAPIView):
@@ -34,6 +33,38 @@ class StudentRegistrationView(generics.CreateAPIView):
     serializer_class = StudentRegistrationSerializer
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Student Registration",
+        description="Register a new student account with email verification requirement",
+        responses={
+            201: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'user': {
+                        'type': 'object',
+                        'properties': {
+                            'id': {'type': 'integer'},
+                            'email': {'type': 'string'},
+                            'username': {'type': 'string'},
+                        }
+                    }
+                }
+            }
+        },
+        examples=[
+            OpenApiExample(
+                "Student Registration",
+                value={
+                    "email": "student@example.com",
+                    "username": "student_username",
+                    "password": "SecurePassword123!",
+                    "password_confirm": "SecurePassword123!"
+                }
+            )
+        ]
+    )
     def create(self, request, *args, **kwargs):
 
         serializer = self.get_serializer(
@@ -61,8 +92,6 @@ class StudentRegistrationView(generics.CreateAPIView):
             },
             status=status.HTTP_201_CREATED,
         )
-    
-
 
 
 class LogoutView(GenericAPIView):
@@ -74,10 +103,21 @@ class LogoutView(GenericAPIView):
     serializer_class = LogoutSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="User Logout",
+        description="Logout by invalidating the JWT refresh token",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Logout",
-                value={"refresh": "string"},
+                value={"refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."},
             )
         ]
     )
@@ -98,6 +138,7 @@ class LogoutView(GenericAPIView):
             status=status.HTTP_200_OK,
         )
 
+
 class CurrentUserView(GenericAPIView):
     """
     Return the currently authenticated user.
@@ -106,12 +147,43 @@ class CurrentUserView(GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UserSerializer
 
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Get Current User",
+        description="Retrieve account details and role information of the currently authenticated user",
+        responses={200: UserSerializer}
+    )
     def get(self, request):
 
         serializer = self.get_serializer(request.user)
 
         return Response(serializer.data)
 
+
+@extend_schema(
+    tags=["Authentication"],
+    summary="Admin Login",
+    description="Authenticate an administrator using username and password to obtain JWT tokens",
+    request=AdminTokenObtainPairSerializer,
+    responses={
+        200: {
+            'type': 'object',
+            'properties': {
+                'access': {'type': 'string'},
+                'refresh': {'type': 'string'}
+            }
+        }
+    },
+    examples=[
+        OpenApiExample(
+            "Admin Login",
+            value={
+                "username": "admin_username",
+                "password": "admin_password"
+            }
+        )
+    ]
+)
 class AdminLoginView(TokenObtainPairView):
     """
     Admin login endpoint using username/password.
@@ -119,6 +191,30 @@ class AdminLoginView(TokenObtainPairView):
     serializer_class = AdminTokenObtainPairSerializer
 
 
+@extend_schema(
+    tags=["Authentication"],
+    summary="Student Login",
+    description="Authenticate a student using email and password to obtain JWT tokens",
+    request=StudentTokenObtainPairSerializer,
+    responses={
+        200: {
+            'type': 'object',
+            'properties': {
+                'access': {'type': 'string'},
+                'refresh': {'type': 'string'}
+            }
+        }
+    },
+    examples=[
+        OpenApiExample(
+            "Student Login",
+            value={
+                "email": "student@example.com",
+                "password": "SecurePassword123!"
+            }
+        )
+    ]
+)
 class StudentLoginView(TokenObtainPairView):
     """
     Student login endpoint using email/password.
@@ -135,6 +231,17 @@ class EmailVerificationView(GenericAPIView):
     serializer_class = EmailVerificationSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="Verify Email",
+        description="Verify user email address using UID and verification token sent by email",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Email Verification",
@@ -161,6 +268,7 @@ class EmailVerificationView(GenericAPIView):
             status=status.HTTP_200_OK,
         )
 
+
 class ResendVerificationView(GenericAPIView):
     """
     Resend email verification link.
@@ -170,6 +278,17 @@ class ResendVerificationView(GenericAPIView):
     serializer_class = ResendVerificationSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="Resend Verification Email",
+        description="Resend account verification email to user",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Resend Verification",
@@ -209,6 +328,17 @@ class ForgotPasswordView(GenericAPIView):
     serializer_class = ForgotPasswordSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="Forgot Password",
+        description="Request a password reset link to be sent to specified email address",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Forgot Password",
@@ -249,6 +379,17 @@ class ResetPasswordView(GenericAPIView):
     serializer_class = ResetPasswordSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="Reset Password",
+        description="Reset user password using token received via email",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Reset Password",
@@ -290,6 +431,17 @@ class ChangePasswordView(GenericAPIView):
     serializer_class = ChangePasswordSerializer
 
     @extend_schema(
+        tags=["Authentication"],
+        summary="Change Password",
+        description="Change password for the currently logged in user",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Change Password",

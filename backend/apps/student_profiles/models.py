@@ -348,3 +348,106 @@ class StudentCV(models.Model):
 
     def __str__(self):
         return f"CV - {self.student.email}"
+
+
+
+
+class CV(models.Model):
+
+    STATUS_PENDING = "PENDING"
+    STATUS_PROCESSING = "PROCESSING"
+    STATUS_COMPLETED = "COMPLETED"
+    STATUS_FAILED = "FAILED"
+
+    STATUS_CHOICES = [
+        (
+            STATUS_PENDING,
+            "Pending",
+        ),
+        (
+            STATUS_PROCESSING,
+            "Processing",
+        ),
+        (
+            STATUS_COMPLETED,
+            "Completed",
+        ),
+        (
+            STATUS_FAILED,
+            "Failed",
+        ),
+    ]
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="cvs",
+        null=True,
+        blank=True,
+    )
+
+    file = models.FileField(
+        upload_to="student_cvs/",
+        null=True,
+        blank=True,
+    )
+
+    extracted_text = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    extracted_skills = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_education = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_experience = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_projects = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    extracted_certifications = models.JSONField(
+        default=list,
+        blank=True,
+    )
+
+    processing_status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    processing_error = models.TextField(
+        blank=True,
+        null=True,
+    )
+
+    processed_at = models.DateTimeField(
+        blank=True,
+        null=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"CV - {self.student.email}"

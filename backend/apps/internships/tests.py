@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication
+from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication, Recommendation
 from .services.semantic_matching import (
     build_student_text,
     build_internship_text,
@@ -74,7 +74,7 @@ class InternshipModelTest(TestCase):
         self.skill = Skill.objects.create(name='Python')
 
     def test_create_internship(self):
-        """Test creating a new internship"""
+        """Test creating a new internship with embedding status"""
         internship = Internship.objects.create(
             title='Software Engineer Intern',
             organization_name='Tech Company',
@@ -90,6 +90,7 @@ class InternshipModelTest(TestCase):
         internship.required_skills.add(self.skill)
         self.assertEqual(internship.title, 'Software Engineer Intern')
         self.assertEqual(internship.status, Internship.STATUS_DRAFT)
+        self.assertEqual(internship.embedding_status, Internship.EMBEDDING_STATUS_PENDING)
 
     def test_internship_str(self):
         """Test internship string representation"""
@@ -263,7 +264,8 @@ class InternshipAPITest(TestCase):
             application_url='https://example.com/apply',
             source=self.source,
             status=Internship.STATUS_ACTIVE,
-            is_verified=True
+            is_verified=True,
+            embedding_status=Internship.EMBEDDING_STATUS_COMPLETED
         )
         self.internship.required_skills.add(self.skill)
 
@@ -294,6 +296,19 @@ class InternshipAPITest(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_save_duplicate_internship(self):
+        """Test saving an internship twice returns 400 bad request"""
+        SavedInternship.objects.create(
+            student=self.user,
+            internship=self.internship
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/internships/saved/add/', {
+            'internship': self.internship.id
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('internship', response.data)
+
     def test_saved_internships_list(self):
         """Test listing saved internships"""
         SavedInternship.objects.create(
@@ -311,6 +326,19 @@ class InternshipAPITest(TestCase):
             'internship': self.internship.id
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_duplicate_application(self):
+        """Test applying to an internship twice returns 400 bad request"""
+        InternshipApplication.objects.create(
+            student=self.user,
+            internship=self.internship
+        )
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/internships/applications/add/', {
+            'internship': self.internship.id
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('internship', response.data)
 
     def test_applications_list(self):
         """Test listing applications"""
@@ -358,6 +386,41 @@ class InternshipAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
+
+    def test_admin_create_internship_with_embedding(self):
+        """Test admin creating internship queues embedding generation"""
+        from unittest.mock import patch
+        
+        self.client.force_authenticate(user=self.admin)
+        
+        # Mock the embedding task to avoid actual Celery execution
+        with patch('apps.internships.views.generate_internship_embedding_task.delay'):
+            response = self.client.post('/api/internships/admin/', {
+                'title': 'New Internship',
+                'organization_name': 'New Company',
+                'description': 'Test description',
+                'application_url': 'https://example.com/apply',
+                'source': self.source.id,
+                'external_id': 'admin_test_1',
+                'internship_type': 'remote',
+                'work_type': 'full_time',
+            }, format='json')
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertIn('embedding_status', response.data)
+
+    def test_admin_update_internship_with_embedding(self):
+        """Test admin updating internship queues embedding regeneration"""
+        from unittest.mock import patch
+        
+        self.client.force_authenticate(user=self.admin)
+        
+        # Mock the embedding task to avoid actual Celery execution
+        with patch('apps.internships.views.generate_internship_embedding_task.delay'):
+            response = self.client.patch(f'/api/internships/admin/{self.internship.id}/', {
+                'title': 'Updated Title'
+            }, format='json')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data['title'], 'Updated Title')
 
 
 class SemanticMatchingTest(TestCase):
@@ -685,3 +748,220 @@ class RecommendationEngineV2Test(TestCase):
             self.assertIn('match_score', result)
             self.assertIn('explanation', result)
             self.assertIsInstance(result['explanation'], list)
+
+
+class RecommendationModelTest(TestCase):
+    """Test cases for Recommendation model"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.student = User.objects.create_user(
+            email='student@example.com',
+            username='student',
+            password='testpass123',
+            role='student'
+        )
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api',
+            website_url='https://linkedin.com'
+        )
+        self.internship = Internship.objects.create(
+            title='Software Engineer Intern',
+            organization_name='Tech Company',
+            description='Software engineering internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            internship_type='remote',
+            work_type='full_time',
+            compensation_type='paid',
+            minimum_compensation=1000,
+            maximum_compensation=2000
+        )
+
+    def test_create_recommendation(self):
+        """Test creating a new recommendation"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50,
+            skill_score=75.0,
+            location_score=90.0,
+            interest_score=80.0
+        )
+        self.assertEqual(recommendation.student, self.student)
+        self.assertEqual(recommendation.internship, self.internship)
+        self.assertEqual(recommendation.overall_score, 85.50)
+        self.assertEqual(recommendation.status, Recommendation.STATUS_RECOMMENDED)
+
+    def test_recommendation_str(self):
+        """Test recommendation string representation"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        expected = f"{self.student.email} - {self.internship.title} - 85.50% - recommended"
+        self.assertEqual(str(recommendation), expected)
+
+    def test_mark_viewed(self):
+        """Test marking recommendation as viewed"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        recommendation.mark_viewed()
+        self.assertEqual(recommendation.status, Recommendation.STATUS_VIEWED)
+        self.assertIsNotNone(recommendation.viewed_at)
+
+    def test_mark_saved(self):
+        """Test marking recommendation as saved"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        recommendation.mark_saved()
+        self.assertEqual(recommendation.status, Recommendation.STATUS_SAVED)
+        self.assertIsNotNone(recommendation.saved_at)
+
+    def test_mark_applied(self):
+        """Test marking recommendation as applied"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        recommendation.mark_applied()
+        self.assertEqual(recommendation.status, Recommendation.STATUS_APPLIED)
+        self.assertIsNotNone(recommendation.applied_at)
+
+    def test_mark_ignored(self):
+        """Test marking recommendation as ignored"""
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        recommendation.mark_ignored()
+        self.assertEqual(recommendation.status, Recommendation.STATUS_IGNORED)
+        self.assertIsNotNone(recommendation.ignored_at)
+
+    def test_unique_constraint(self):
+        """Test unique constraint on student-internship pair"""
+        Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+        with self.assertRaises(Exception):  # IntegrityError
+            Recommendation.objects.create(
+                student=self.student,
+                internship=self.internship,
+                overall_score=90.00
+            )
+
+
+class RecommendationFeedbackAPITest(TestCase):
+    """Test cases for recommendation feedback API endpoints"""
+
+    def setUp(self):
+        """Set up test data"""
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email='student@example.com',
+            username='student',
+            password='testpass123',
+            role='student'
+        )
+        self.source = InternshipSource.objects.create(
+            name='LinkedIn',
+            source_type='api',
+            website_url='https://linkedin.com'
+        )
+        self.internship = Internship.objects.create(
+            title='Software Engineer Intern',
+            organization_name='Tech Company',
+            description='Software engineering internship',
+            application_url='https://example.com/apply',
+            source=self.source,
+            internship_type='remote',
+            work_type='full_time',
+            compensation_type='paid',
+            minimum_compensation=1000,
+            maximum_compensation=2000
+        )
+        self.recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85.50
+        )
+
+    def test_recommendation_history_list(self):
+        """Test listing recommendation history"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get('/api/internships/recommendations/history/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+
+    def test_recommendation_feedback_view(self):
+        """Test marking recommendation as viewed"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            {'action': 'view'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.recommendation.refresh_from_db()
+        self.assertEqual(self.recommendation.status, Recommendation.STATUS_VIEWED)
+
+    def test_recommendation_feedback_save(self):
+        """Test marking recommendation as saved"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            {'action': 'save'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.recommendation.refresh_from_db()
+        self.assertEqual(self.recommendation.status, Recommendation.STATUS_SAVED)
+
+    def test_recommendation_feedback_apply(self):
+        """Test marking recommendation as applied"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            {'action': 'apply'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.recommendation.refresh_from_db()
+        self.assertEqual(self.recommendation.status, Recommendation.STATUS_APPLIED)
+
+    def test_recommendation_feedback_ignore(self):
+        """Test marking recommendation as ignored"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            {'action': 'ignore'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.recommendation.refresh_from_db()
+        self.assertEqual(self.recommendation.status, Recommendation.STATUS_IGNORED)
+
+    def test_recommendation_feedback_not_found(self):
+        """Test feedback for non-existent recommendation"""
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            '/api/internships/recommendations/99999/feedback/',
+            {'action': 'view'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_recommendation_feedback_unauthorized(self):
+        """Test feedback without authentication"""
+        response = self.client.post(
+            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            {'action': 'view'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

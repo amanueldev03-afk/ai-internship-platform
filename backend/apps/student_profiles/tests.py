@@ -138,15 +138,20 @@ class StudentProfileAPITest(TestCase):
         self.assertIn('user', response.data)
 
     def test_update_profile(self):
-        """Test updating student profile"""
+        """Test updating student profile with background embedding regeneration"""
+        from unittest.mock import patch
+        
         self.client.force_authenticate(user=self.user)
-        response = self.client.patch('/api/profile/', {
-            'phone': '+1234567890',
-            'country': 'USA',
-            'education_level': 'bachelor'
-        }, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['phone'], '+1234567890')
+        
+        # Mock the embedding task to avoid actual Celery execution
+        with patch('apps.student_profiles.views.generate_student_embedding_task.delay'):
+            response = self.client.patch('/api/profile/', {
+                'phone': '+1234567890',
+                'country': 'USA',
+                'education_level': 'bachelor'
+            }, format='json')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data['phone'], '+1234567890')
 
     def test_update_profile_with_skills(self):
         """Test updating profile with skills"""
@@ -168,50 +173,34 @@ class StudentProfileAPITest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_upload_cv(self):
-        """Test CV upload endpoint with structured data extraction"""
+        """Test CV upload endpoint with background processing"""
         from unittest.mock import patch
+        from .models import CV
         
         self.client.force_authenticate(user=self.user)
         
-        # Create student profile first
-        profile = StudentProfile.objects.create(user=self.user)
+        from io import BytesIO
+        from django.core.files.uploadedfile import SimpleUploadedFile
         
-        # Mock both CV extraction and analysis to avoid PDF parsing issues
-        mock_text = "Skills: Python, Django\nEducation: BSc Computer Science"
-        mock_analysis = {
-            'skills': ['Python', 'Django'],
-            'education': [{'degree': 'BSc Computer Science'}],
-            'experience': [{'title': 'Developer'}],
-            'projects': [{'name': 'Project'}],
-            'certifications': ['AWS']
-        }
+        cv_content = b"Test CV content with Python, Django skills"
+        cv_file = SimpleUploadedFile(
+            "test_cv.pdf",
+            cv_content,
+            content_type="application/pdf"
+        )
         
-        with patch('apps.student_profiles.views.extract_cv_text', return_value=mock_text):
-            with patch('apps.student_profiles.views.analyze_cv_intelligently', return_value=mock_analysis):
-                with patch('apps.student_profiles.views.regenerate_student_embedding'):
-                    from io import BytesIO
-                    from django.core.files.uploadedfile import SimpleUploadedFile
-                    
-                    cv_content = b"Test CV content with Python, Django skills"
-                    cv_file = SimpleUploadedFile(
-                        "test_cv.pdf",
-                        cv_content,
-                        content_type="application/pdf"
-                    )
-                    
-                    response = self.client.post('/api/profile/cv/upload/', {'file': cv_file})
-                    self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
-                    self.assertIn('extracted_skills', response.data)
-                    self.assertIn('extracted_education', response.data)
-                    self.assertIn('extracted_experience', response.data)
-                    self.assertIn('extracted_projects', response.data)
-                    self.assertIn('extracted_certifications', response.data)
-                    # Verify structured data is returned as arrays
-                    self.assertIsInstance(response.data['extracted_skills'], list)
-                    self.assertIsInstance(response.data['extracted_education'], list)
-                    self.assertIsInstance(response.data['extracted_experience'], list)
-                    self.assertIsInstance(response.data['extracted_projects'], list)
-                    self.assertIsInstance(response.data['extracted_certifications'], list)
+        # Mock the task to avoid actual Celery execution in tests
+        with patch('apps.student_profiles.views.process_cv.delay'):
+            response = self.client.post('/api/profile/cv/upload/', {'file': cv_file})
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+            self.assertIn('cv_id', response.data)
+            self.assertIn('processing_status', response.data)
+            self.assertEqual(response.data['processing_status'], CV.STATUS_PENDING)
+            
+            # Verify CV was created
+            cv = CV.objects.get(id=response.data['cv_id'])
+            self.assertEqual(cv.student, self.user)
+            self.assertEqual(cv.processing_status, CV.STATUS_PENDING)
 
     def test_upload_cv_invalid_format(self):
         """Test CV upload with invalid file format"""
@@ -228,6 +217,31 @@ class StudentProfileAPITest(TestCase):
         
         response = self.client.post('/api/profile/cv/upload/', {'file': invalid_file})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cv_status_endpoint(self):
+        """Test CV status endpoint"""
+        from .models import CV
+        
+        self.client.force_authenticate(user=self.user)
+        
+        # Create a CV
+        cv = CV.objects.create(
+            student=self.user,
+            processing_status=CV.STATUS_PROCESSING,
+            processing_error=None
+        )
+        
+        response = self.client.get(f'/api/profile/cv/{cv.id}/status/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['cv_id'], cv.id)
+        self.assertEqual(response.data['processing_status'], CV.STATUS_PROCESSING)
+
+    def test_cv_status_not_found(self):
+        """Test CV status endpoint with non-existent CV"""
+        self.client.force_authenticate(user=self.user)
+        
+        response = self.client.get('/api/profile/cv/99999/status/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_cv_analysis_structured_data(self):
         """Test that CV analysis returns structured JSON data"""

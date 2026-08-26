@@ -22,7 +22,8 @@ from .views import (
     AdminSkillListCreateView,
     AdminSkillDetailView,
     StudentRecommendationView,
-
+    RecommendationHistoryListView,
+    RecommendationFeedbackView,
 )
 
 
@@ -151,5 +152,17 @@ urlpatterns = [
         "recommendations/",
         StudentRecommendationView.as_view(),
         name="student-recommendations",
+    ),
+
+    path(
+        "recommendations/history/",
+        RecommendationHistoryListView.as_view(),
+        name="recommendation-history",
+    ),
+
+    path(
+        "recommendations/<int:internship_id>/feedback/",
+        RecommendationFeedbackView.as_view(),
+        name="recommendation-feedback",
     ),
 ]

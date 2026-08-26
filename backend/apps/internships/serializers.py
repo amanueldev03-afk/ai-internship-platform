@@ -9,7 +9,7 @@ from .models import (
     SavedInternship,
     InternshipApplication,
     Skill,
-
+    Recommendation,
 )
 from .validators import validate_internship_is_available
 
@@ -49,6 +49,13 @@ class InternshipSerializer(serializers.ModelSerializer):
         source="source.name",
         read_only=True,
         help_text="Name of the internship source"
+    )
+
+    external_id = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="External identifier from source"
     )
 
     is_expired = serializers.SerializerMethodField(
@@ -106,6 +113,8 @@ class InternshipSerializer(serializers.ModelSerializer):
             "is_verified",
             "is_expired",
             "status",
+            "embedding_status",
+            "embedding_error",
 
             # Timestamps
             "created_at",
@@ -115,9 +124,20 @@ class InternshipSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "source_name",
+            "embedding_status",
+            "embedding_error",
             "created_at",
             "updated_at",
         ]
+
+        extra_kwargs = {
+            "external_id": {"required": False, "allow_blank": True},
+            "source_url": {"required": False, "allow_blank": True},
+            "category": {"required": False, "allow_blank": True},
+            "country": {"required": False, "allow_blank": True},
+            "city": {"required": False, "allow_blank": True},
+            "location_text": {"required": False, "allow_blank": True},
+        }
 
     def validate(self, attrs):
         """
@@ -217,6 +237,7 @@ class InternshipSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_expired(self, obj):
         """
         Return whether the internship deadline has passed.
@@ -439,6 +460,8 @@ class AdminInternshipSerializer(
             "verified_by",
             "verified_by_email",
             "rejection_reason",
+            "embedding_status",
+            "embedding_error",
             "created_at",
             "updated_at",
         ]
@@ -447,6 +470,8 @@ class AdminInternshipSerializer(
             "verified_at",
             "verified_by",
             "verified_by_email",
+            "embedding_status",
+            "embedding_error",
             "created_at",
             "updated_at",
         ]
@@ -592,3 +617,79 @@ class SkillSerializer(
             "created_at",
             "updated_at",
         ]
+
+
+class RecommendationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for recommendation history with score breakdown.
+    """
+
+    internship_title = serializers.CharField(
+        source="internship.title",
+        read_only=True,
+    )
+
+    organization_name = serializers.CharField(
+        source="internship.organization_name",
+        read_only=True,
+    )
+
+    student_email = serializers.EmailField(
+        source="student.email",
+        read_only=True,
+    )
+
+    class Meta:
+        model = Recommendation
+
+        fields = [
+            "id",
+            "student",
+            "student_email",
+            "internship",
+            "internship_title",
+            "organization_name",
+            "overall_score",
+            "skill_score",
+            "education_score",
+            "interest_score",
+            "experience_score",
+            "location_score",
+            "status",
+            "recommendation_date",
+            "viewed_at",
+            "saved_at",
+            "applied_at",
+            "ignored_at",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "student_email",
+            "internship_title",
+            "organization_name",
+            "recommendation_date",
+            "viewed_at",
+            "saved_at",
+            "applied_at",
+            "ignored_at",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class RecommendationFeedbackSerializer(serializers.Serializer):
+    """
+    Serializer for updating recommendation feedback status.
+    """
+
+    action = serializers.ChoiceField(
+        choices=[
+            "view",
+            "save",
+            "apply",
+            "ignore",
+        ]
+    )

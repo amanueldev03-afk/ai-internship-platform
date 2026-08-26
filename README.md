@@ -21,6 +21,8 @@ This platform consists of three main components:
 - **Internship Management**: Full CRUD operations for internship listings
 - **Skill Matching**: AI-powered skill matching between students and internships
 - **Recommendation Engine V2**: Advanced recommendation system with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
+- **Recommendation History**: Persistent storage of recommendation scores and feedback tracking
+- **Recommendation Feedback**: Track student behavior (viewed, saved, applied, ignored) for ML personalization
 - **Semantic Matching**: Uses sentence transformers to match student profiles with internship descriptions using embeddings
 - **Hybrid Matching**: Combines preference-based matching with semantic similarity for more accurate recommendations
 - **CV Analysis**: Intelligent CV parsing with structured data extraction (education, experience, projects, certifications)
@@ -31,6 +33,10 @@ This platform consists of three main components:
 - **Admin Dashboard**: Dashboard for admins to manage internships and view statistics
 - **Student Dashboard**: Dashboard for students to view saved internships and applications
 - **CV Upload**: Upload and manage CV files with automatic text extraction
+- **Background Processing**: Celery with Redis for asynchronous task processing
+- **CV Background Processing**: CV analysis runs in background with status tracking
+- **Embedding Generation**: Student and internship embeddings generated asynchronously
+- **Task Scheduling**: Celery Beat for scheduled tasks (internship expiration, bulk embedding generation)
 - **API Documentation**: RESTful API with DRF Spectacular for OpenAPI documentation (Swagger/ReDoc)
 
 ## 🏗️ Project Structure
@@ -109,7 +115,7 @@ ai-internship-platform/
 ### Prerequisites
 - Python 3.12+
 - PostgreSQL database
-- Redis (for Celery)
+- Redis (for Celery background tasks)
 
 ### Backend Setup
 
@@ -152,7 +158,22 @@ python manage.py migrate
 python manage.py createsuperuser
 ```
 
-8. **Run development server**
+8. **Start Redis server**
+```bash
+redis-server
+```
+
+9. **Start Celery worker** (in a separate terminal)
+```bash
+celery -A config worker --loglevel=info
+```
+
+10. **Start Celery Beat scheduler** (optional, for scheduled tasks)
+```bash
+celery -A config beat --loglevel=info
+```
+
+11. **Run development server**
 ```bash
 python manage.py runserver
 ```
@@ -244,11 +265,14 @@ TIME_ZONE=UTC
 - `GET /api/internships/applications/{id}/` - Get application details
 - `GET /api/internships/dashboard/` - Student dashboard
 - `GET /api/internships/recommendations/` - Get personalized recommendations
+- `GET /api/internships/recommendations/history/` - List recommendation history with scores
+- `POST /api/internships/recommendations/{internship_id}/feedback/` - Update recommendation feedback (view, save, apply, ignore)
 
 ### Student Profiles
 - `GET /api/profile/` - Get student profile (auto-created if not exists)
-- `PATCH /api/profile/` - Update student profile
-- `POST /api/profile/cv/upload/` - Upload CV with structured data extraction
+- `PATCH /api/profile/` - Update student profile (queues embedding regeneration)
+- `POST /api/profile/cv/upload/` - Upload CV with background processing
+- `GET /api/profile/cv/{cv_id}/status/` - Get CV processing status
 - `DELETE /api/profile/cv/` - Delete CV
 
 ### API Documentation
@@ -292,6 +316,7 @@ coverage report
 - **Internship**: Main internship listing with comprehensive details
 - **SavedInternship**: User-saved internships
 - **InternshipApplication**: Application tracking
+- **Recommendation**: Recommendation history with score breakdown and feedback tracking (viewed, saved, applied, ignored)
 
 ### Student Profile Model (student_profiles)
 - Personal information (phone, location, bio)
@@ -300,7 +325,9 @@ coverage report
 - Internship preferences (type, location, compensation)
 - Career preferences (industries, roles)
 - CV upload with structured data extraction
+- CV model with background processing status (PENDING, PROCESSING, COMPLETED, FAILED)
 - StudentCV model for CV file storage and extracted data (JSON fields for education, experience, projects, certifications)
+- Embedding vector field for semantic matching
 
 ## 🚀 Deployment
 
@@ -349,13 +376,17 @@ coverage report
 - Student and admin dashboards
 - CV upload with PDF/DOCX text extraction
 - API documentation (Swagger/ReDoc)
-
-### � In Progress
-- Frontend application
-- Celery background task integration
-- Real email service integration
+- **Celery background processing pipeline**
+- **Redis integration for task queue**
+- **CV background processing with status tracking**
+- **Asynchronous embedding generation for students and internships**
+- **Celery Beat for scheduled tasks**
+- **Task retry mechanisms with exponential backoff**
+- **Transaction-safe task queuing with on_commit()**
 
 ### 📋 Planned
+- Frontend application
+- Real email service integration
 - OAuth integration (Google)
 - Advanced filtering and search
 - Real-time notifications
@@ -363,7 +394,6 @@ coverage report
 - Caching optimization
 - Performance monitoring
 - Data seeding and sample data
-- Frontend development
 
 ## 🤝 Contributing
 
@@ -392,7 +422,20 @@ For support and questions:
 
 ## 🔄 Version History
 
-### v0.3.0 (Current)
+### v0.4.0 (Current)
+- **Celery background processing pipeline** with Redis integration
+- **Asynchronous CV processing** with status tracking (PENDING, PROCESSING, COMPLETED, FAILED)
+- **Background embedding generation** for student profiles and internships
+- **Celery Beat scheduler** for periodic tasks (internship expiration, bulk embedding generation)
+- **Task retry mechanisms** with exponential backoff
+- **Transaction-safe task queuing** using `transaction.on_commit()`
+- **CV status API endpoint** for monitoring processing progress
+- **Automatic embedding regeneration** on profile/internship updates
+- **Recommendation refresh task** architecture (ready for Step 42)
+- Updated test coverage to mock Celery tasks for unit testing
+- Updated README with Celery setup instructions
+
+### v0.3.0
 - Recommendation Engine V2 with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
 - Advanced hard filters (work mode, paid requirement, internship type, salary range)
 - CV analysis with structured JSON data extraction

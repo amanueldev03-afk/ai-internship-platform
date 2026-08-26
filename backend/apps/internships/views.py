@@ -1,6 +1,7 @@
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from rest_framework import generics, status
+from rest_framework import generics, status, serializers
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.generics import GenericAPIView
 from rest_framework.pagination import PageNumberPagination
@@ -22,9 +23,7 @@ from apps.student_profiles.models import StudentProfile
 from .services.recommendations import (
     get_student_recommendations,
 )
-from .services.embedding_service import (
-    regenerate_internship_embedding,
-)
+from .tasks import generate_internship_embedding_task
 
 from .models import (
     Internship,
@@ -33,7 +32,7 @@ from .models import (
     SavedInternship,
     InternshipApplication,
     Skill,
-
+    Recommendation,
 )
 from .serializers import (
     InternshipSerializer,
@@ -43,7 +42,8 @@ from .serializers import (
     InternshipApplicationSerializer,
     InternshipVerificationSerializer,
     SkillSerializer,
-
+    RecommendationSerializer,
+    RecommendationFeedbackSerializer,
 )
 from .filters import InternshipFilter
 from .permissions import IsAdminRole
@@ -93,7 +93,7 @@ class InternshipListView(generics.ListAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
-        summary="List internships",
+        summary="List Active Internships",
         description="Retrieve a paginated list of active and verified internships with filtering, search, and ordering capabilities.",
         parameters=[
             OpenApiParameter(
@@ -117,7 +117,25 @@ class InternshipListView(generics.ListAPIView):
             OpenApiParameter(
                 name="ordering",
                 type=OpenApiTypes.STR,
-                description="Order by field (e.g., created_at, -created_at)",
+                description="Order by field (e.g., created_at, -created_at, minimum_compensation)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="category",
+                type=OpenApiTypes.STR,
+                description="Filter by internship category",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="country",
+                type=OpenApiTypes.STR,
+                description="Filter by country",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="internship_type",
+                type=OpenApiTypes.STR,
+                description="Filter by internship type (remote, onsite, hybrid)",
                 required=False,
             ),
         ],
@@ -188,9 +206,9 @@ class InternshipDetailView(generics.RetrieveAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
-        summary="Retrieve internship details",
-        description="Get detailed information about a specific active and verified internship by ID.",
         tags=["Internships"],
+        summary="Get Internship Details",
+        description="Get detailed information about a specific active and verified internship by ID.",
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
@@ -245,12 +263,18 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
     
 
     def perform_create(self, serializer):
-
         internship = serializer.save()
 
-        regenerate_internship_embedding(
-            internship
-        )
+        # Queue embedding generation after transaction commits
+        try:
+            transaction.on_commit(
+                lambda: generate_internship_embedding_task.delay(internship.id)
+            )
+        except Exception as e:
+            # Log error but don't fail the creation
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to queue embedding generation: {e}")
 
     filter_backends = [
         DjangoFilterBackend,
@@ -331,6 +355,21 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
     def delete(self, request, *args, **kwargs):
         return super().delete(request, *args, **kwargs)
 
+    def perform_update(self, serializer):
+        internship = serializer.save()
+
+        # Queue embedding regeneration after transaction commits
+        # This ensures embeddings stay in sync with internship data
+        try:
+            transaction.on_commit(
+                lambda: generate_internship_embedding_task.delay(internship.id)
+            )
+        except Exception as e:
+            # Log error but don't fail the update
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to queue internship embedding regeneration: {e}")
+
 
 
 class LatestInternshipListView(generics.ListAPIView):
@@ -344,9 +383,9 @@ class LatestInternshipListView(generics.ListAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
-        summary="Latest internships",
-        description="Retrieve the latest 20 active and verified internships ordered by posting date.",
         tags=["Internships"],
+        summary="Get Latest Internships",
+        description="Retrieve the latest 20 active and verified internships ordered by posting date.",
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
@@ -387,6 +426,24 @@ class AdminInternshipSourceListCreateView(
         IsAdminRole,
     ]
 
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Admin: List internship sources",
+        description="Retrieve a list of all internship collection sources. Admin only.",
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Admin: Create internship source",
+        description="Create a new internship collection source. Admin only.",
+        request=InternshipSourceSerializer,
+        responses={201: InternshipSourceSerializer},
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
 
 
 class AdminInternshipSourceDetailView(
@@ -404,6 +461,22 @@ class AdminInternshipSourceDetailView(
     permission_classes = [
         IsAdminRole,
     ]
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Get source details")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Update source", request=InternshipSourceSerializer, responses={200: InternshipSourceSerializer})
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Partial update source", request=InternshipSourceSerializer, responses={200: InternshipSourceSerializer})
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Delete source")
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
 
 
 class AdminCollectionLogListView(
@@ -428,6 +501,15 @@ class AdminCollectionLogListView(
         IsAdminRole,
     ]
 
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Admin: View collection logs",
+        description="Retrieve logs of internship collection runs. Admin only.",
+        responses={200: InternshipCollectionLogSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
 
 
 class AdminSourceCollectView(GenericAPIView):
@@ -435,12 +517,36 @@ class AdminSourceCollectView(GenericAPIView):
     Queue internship collection as a background task.
     """
 
+    serializer_class = None
+
     permission_classes = [
         IsAdminRole,
     ]
 
     @extend_schema(
-        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'task_id': {'type': 'string'}}}}
+        tags=["Admin Internships"],
+        summary="Trigger Internship Collection",
+        description="Trigger background internship collection task for a specific source by ID.",
+        request=None,
+        responses={
+            202: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'source': {'type': 'string'},
+                    'task_id': {'type': 'string'},
+                    'status': {'type': 'string'}
+                }
+            },
+            503: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'source': {'type': 'string'},
+                    'status': {'type': 'string'}
+                }
+            }
+        }
     )
     def post(self, request, pk):
 
@@ -470,9 +576,23 @@ class AdminSourceCollectView(GenericAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        task = collect_internships_from_source.delay(
-            source.id
-        )
+        try:
+            task = collect_internships_from_source.delay(
+                source.id
+            )
+        except Exception as e:
+            # Log error but don't fail the request
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to queue collection task: {e}")
+            return Response(
+                {
+                    "message": "Failed to start collection. Celery may not be available.",
+                    "source": source.name,
+                    "status": "failed",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(
             {
@@ -500,6 +620,17 @@ class StudentSaveInternshipView(
     permission_classes = [
         IsAuthenticated,
     ]
+
+    @extend_schema(
+        tags=["Internships"],
+        summary="Save Internship",
+        description="Save an internship to student profile for later viewing",
+        request=SavedInternshipSerializer,
+        responses={201: SavedInternshipSerializer},
+        examples=[OpenApiExample("Save Internship", value={"internship": 1})]
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
     def perform_create(self, serializer):
 
@@ -552,6 +683,15 @@ class StudentSavedInternshipListView(
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        tags=["Internships"],
+        summary="Get Saved Internships",
+        description="Retrieve list of internships saved by the authenticated student",
+        responses={200: SavedInternshipSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
 
         if self.request.user.role != "student":
@@ -581,6 +721,15 @@ class StudentUnsaveInternshipView(
     ]
 
     lookup_url_kwarg = "internship_id"
+
+    @extend_schema(
+        tags=["Internships"],
+        summary="Remove Saved Internship",
+        description="Remove a saved internship from the student profile",
+        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
+    )
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
 
     def get_queryset(self):
 
@@ -623,6 +772,17 @@ class StudentApplicationCreateView(
     permission_classes = [
         IsAuthenticated,
     ]
+
+    @extend_schema(
+        tags=["Applications"],
+        summary="Create Application",
+        description="Record that the student has applied for an internship",
+        request=InternshipApplicationSerializer,
+        responses={201: InternshipApplicationSerializer},
+        examples=[OpenApiExample("Create Application", value={"internship": 1, "notes": "Applied on company portal"})]
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
     def perform_create(self, serializer):
 
@@ -667,6 +827,15 @@ class StudentApplicationListView(
         IsAuthenticated,
     ]
 
+    @extend_schema(
+        tags=["Applications"],
+        summary="Get Applications",
+        description="Retrieve list of internship applications for the authenticated student",
+        responses={200: InternshipApplicationSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
 
         if self.request.user.role != "student":
@@ -698,6 +867,18 @@ class StudentApplicationDetailView(
         IsAuthenticated,
     ]
 
+    @extend_schema(tags=["Applications"], summary="Get Application Details")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(tags=["Applications"], summary="Update Application Status/Notes", request=InternshipApplicationSerializer, responses={200: InternshipApplicationSerializer})
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(tags=["Applications"], summary="Partial Update Application Status/Notes", request=InternshipApplicationSerializer, responses={200: InternshipApplicationSerializer})
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
     def get_queryset(self):
 
         if self.request.user.role != "student":
@@ -722,14 +903,28 @@ class AdminInternshipVerificationView(
     serializer_class = InternshipVerificationSerializer
 
     @extend_schema(
+        tags=["Admin Internships"],
+        summary="Verify or Reject Internship",
+        description="Verify or reject a pending internship posting. Admin only.",
+        request=InternshipVerificationSerializer,
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'internship_id': {'type': 'integer'},
+                    'status': {'type': 'string'}
+                }
+            }
+        },
         examples=[
             OpenApiExample(
                 "Verify Internship",
-                value={"status": "active"},
+                value={"action": "verify"},
             ),
             OpenApiExample(
                 "Reject Internship",
-                value={"status": "rejected", "rejection_reason": "Not suitable"},
+                value={"action": "reject", "rejection_reason": "Incomplete position description"},
             )
         ]
     )
@@ -768,6 +963,8 @@ class AdminInternshipVerificationView(
                 Internship.STATUS_ACTIVE
             )
 
+            internship.is_verified = True
+
             internship.verified_at = (
                 timezone.now()
             )
@@ -781,6 +978,7 @@ class AdminInternshipVerificationView(
             internship.save(
                 update_fields=[
                     "status",
+                    "is_verified",
                     "verified_at",
                     "verified_by",
                     "rejection_reason",
@@ -851,6 +1049,9 @@ class StudentDashboardView(GenericAPIView):
     ]
 
     @extend_schema(
+        tags=["Internships"],
+        summary="Get Student Dashboard",
+        description="Retrieve stats, recent applications, and saved internships for the authenticated student",
         responses={200: {
             'type': 'object',
             'properties': {
@@ -996,6 +1197,9 @@ class AdminDashboardView(GenericAPIView):
     ]
 
     @extend_schema(
+        tags=["Admin Internships"],
+        summary="Get Admin Dashboard",
+        description="Retrieve platform-wide statistics, recent internships, and collection logs for admin",
         responses={200: {
             'type': 'object',
             'properties': {
@@ -1188,6 +1392,24 @@ class AdminSkillListCreateView(
 
     queryset = Skill.objects.all()
 
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Admin: List all skills",
+        description="Retrieve a list of all skills defined in the system. Admin only."
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Admin: Create skill",
+        description="Create a new skill in the system. Admin only.",
+        request=SkillSerializer,
+        responses={201: SkillSerializer},
+        examples=[OpenApiExample("Create Skill", value={"name": "Python", "description": "Programming language", "is_active": True})]
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 
 class AdminSkillDetailView(
@@ -1205,7 +1427,21 @@ class AdminSkillDetailView(
 
     queryset = Skill.objects.all()
 
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Get skill details")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Update skill", request=SkillSerializer, responses={200: SkillSerializer})
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Partial update skill", request=SkillSerializer, responses={200: SkillSerializer})
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @extend_schema(tags=["Admin Internships"], summary="Admin: Delete skill")
+    def delete(self, request, *args, **kwargs):
+        return super().delete(request, *args, **kwargs)
 
 
 class StudentRecommendationView(APIView):
@@ -1215,6 +1451,9 @@ class StudentRecommendationView(APIView):
     ]
 
     @extend_schema(
+        tags=["Recommendations"],
+        summary="Get Personalized Recommendations",
+        description="Get personalized internship recommendations based on skills, preferences, and semantic matching",
         responses={200: {
             'type': 'object',
             'properties': {
@@ -1246,8 +1485,7 @@ class StudentRecommendationView(APIView):
                     }
                 }
             }
-        }},
-        description="Get personalized internship recommendations based on skills, preferences, and semantic matching"
+        }}
     )
     def get(self, request):
 
@@ -1319,9 +1557,19 @@ class StudentRecommendationView(APIView):
                 )
             )
 
+            # Convert RecommendationResult objects to dicts for caching
+            cacheable_recommendations = [
+                {
+                    'internship': item.internship,
+                    'score': item.score,
+                    'explanation': item.explanation,
+                }
+                for item in recommendations
+            ]
+
             cache.set(
                 cache_key,
-                recommendations,
+                cacheable_recommendations,
                 timeout=None,
             )
 
@@ -1339,7 +1587,15 @@ class StudentRecommendationView(APIView):
 
         for item in page:
 
-            internship = item.internship
+            # Handle both RecommendationResult objects and cached dicts
+            if isinstance(item, dict):
+                internship = item['internship']
+                score = item['score']
+                explanation = item['explanation']
+            else:
+                internship = item.internship
+                score = item.score
+                explanation = item.explanation
 
             results.append(
                 {
@@ -1348,15 +1604,98 @@ class StudentRecommendationView(APIView):
                             internship
                         ).data
                     ),
-                    "match_score": item.score,
-                    "explanation": item.explanation,
+                    "match_score": score,
+                    "explanation": explanation,
                 }
             )
 
 
         response_data = paginator.get_paginated_response(results)
-        
+
         # Add CV data to the response
         response_data.data["cv_analysis"] = cv_data
-        
+
         return response_data
+
+
+class RecommendationHistoryListView(generics.ListAPIView):
+    """
+    List recommendation history for the authenticated student.
+    """
+
+    serializer_class = RecommendationSerializer
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="List recommendation history",
+        description="Retrieve a paginated list of past recommendations with score breakdown and feedback status.",
+        tags=["Recommendations"],
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    def get_queryset(self):
+        if self.request.user.role != "student":
+            return Recommendation.objects.none()
+
+        return (
+            Recommendation.objects
+            .filter(student=self.request.user)
+            .select_related("internship")
+            .order_by("-recommendation_date")
+        )
+
+
+class RecommendationFeedbackView(GenericAPIView):
+    """
+    Update recommendation feedback status (view, save, apply, ignore).
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = RecommendationFeedbackSerializer
+
+    @extend_schema(
+        summary="Update recommendation feedback",
+        description="Mark a recommendation as viewed, saved, applied, or ignored. This tracks student behavior for future ML personalization.",
+        tags=["Recommendations"],
+    )
+    def post(self, request, internship_id):
+        if request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can provide recommendation feedback."
+            )
+
+        try:
+            recommendation = Recommendation.objects.get(
+                student=request.user,
+                internship_id=internship_id
+            )
+        except Recommendation.DoesNotExist:
+            return Response(
+                {
+                    "detail": "Recommendation not found for this internship."
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        action = serializer.validated_data["action"]
+
+        if action == "view":
+            recommendation.mark_viewed()
+        elif action == "save":
+            recommendation.mark_saved()
+        elif action == "apply":
+            recommendation.mark_applied()
+        elif action == "ignore":
+            recommendation.mark_ignored()
+
+        return Response(
+            {
+                "message": f"Recommendation marked as {action}.",
+                "status": recommendation.status,
+            },
+            status=status.HTTP_200_OK,
+        )

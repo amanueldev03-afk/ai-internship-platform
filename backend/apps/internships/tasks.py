@@ -1,8 +1,13 @@
+import logging
 from celery import shared_task
 from django.utils import timezone
 
 from .models import Internship, InternshipSource
 from .services.collector import collect_source
+from .services.embedding_service import regenerate_internship_embedding
+
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(
@@ -106,3 +111,138 @@ def expire_internships():
         "status": "success",
         "expired_count": expired_count,
     }
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+)
+def generate_internship_embedding_task(self, internship_id):
+    """
+    Generate embedding for an internship in the background.
+    This task is idempotent - it will update the embedding if it already exists.
+    """
+    logger.info(f"Starting internship embedding generation for internship ID: {internship_id}")
+    
+    try:
+        # 1. Load internship
+        internship = Internship.objects.get(id=internship_id)
+        logger.info(f"Internship found: {internship.id}")
+        
+        # 2. Update status to PROCESSING
+        internship.embedding_status = Internship.EMBEDDING_STATUS_PROCESSING
+        internship.embedding_error = None
+        internship.save(update_fields=["embedding_status", "embedding_error"])
+        logger.info(f"Internship embedding status updated to PROCESSING")
+        
+        # 3. Generate embedding (idempotent - updates if exists)
+        logger.info(f"Generating embedding")
+        embedding = regenerate_internship_embedding(internship)
+        logger.info(f"Embedding generated successfully")
+        
+        # 4. Update status to COMPLETED
+        internship.embedding_status = Internship.EMBEDDING_STATUS_COMPLETED
+        internship.save(update_fields=["embedding_status"])
+        logger.info(f"Internship embedding generation completed successfully for ID: {internship_id}")
+        
+        return {
+            "internship_id": internship.id,
+            "status": "completed",
+        }
+        
+    except Internship.DoesNotExist:
+        logger.error(f"Internship not found: {internship_id}")
+        raise
+    except Exception as exc:
+        logger.error(f"Internship embedding generation failed for internship {internship_id}: {str(exc)}", exc_info=True)
+        
+        # Update status to FAILED if max retries reached
+        if self.request.retries >= self.max_retries:
+            internship.embedding_status = Internship.EMBEDDING_STATUS_FAILED
+            internship.embedding_error = str(exc)
+            internship.save(update_fields=["embedding_status", "embedding_error"])
+            logger.error(f"Internship embedding marked as FAILED after {self.max_retries} retries")
+            raise
+        
+        # Retry with exponential backoff
+        logger.warning(f"Retrying internship embedding generation, attempt {self.request.retries + 1}/{self.max_retries}")
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+)
+def generate_missing_internship_embeddings(self):
+    """
+    Bulk task to generate embeddings for all internships that don't have one.
+    This is useful for migrating existing data after Celery implementation.
+    """
+    logger.info("Starting bulk internship embedding generation")
+    
+    try:
+        # Find all internships without embeddings
+        internships_without_embeddings = Internship.objects.filter(embedding__isnull=True)
+        count = internships_without_embeddings.count()
+        logger.info(f"Found {count} internships without embeddings")
+        
+        # Queue individual embedding tasks
+        for internship in internships_without_embeddings:
+            generate_internship_embedding_task.delay(internship.id)
+        
+        logger.info(f"Queued {count} internship embedding tasks")
+        return {
+            "status": "queued",
+            "count": count,
+        }
+        
+    except Exception as exc:
+        logger.error(f"Bulk internship embedding generation failed: {str(exc)}", exc_info=True)
+        raise
+
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+)
+def refresh_student_recommendations(self, user_id):
+    """
+    Refresh recommendations for a specific student in the background.
+    This task will be fully implemented in Step 42 when behavior tracking is added.
+    For now, it serves as a placeholder for the recommendation refresh architecture.
+    """
+    logger.info(f"Starting recommendation refresh for user ID: {user_id}")
+    
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        # Load user
+        user = User.objects.get(id=user_id)
+        logger.info(f"User found: {user.email}")
+        
+        # This will be expanded in Step 42 to:
+        # 1. Clear cached recommendations for this user
+        # 2. Generate fresh recommendations based on updated profile/embedding
+        # 3. Cache the new recommendations
+        
+        logger.info(f"Recommendation refresh completed for user {user_id}")
+        
+        return {
+            "user_id": user.id,
+            "status": "completed",
+            "message": "Recommendation refresh architecture ready for Step 42",
+        }
+        
+    except User.DoesNotExist:
+        logger.error(f"User not found: {user_id}")
+        raise
+    except Exception as exc:
+        logger.error(f"Recommendation refresh failed for user {user_id}: {str(exc)}", exc_info=True)
+        
+        if self.request.retries >= self.max_retries:
+            logger.error(f"Recommendation refresh failed after {self.max_retries} retries")
+            raise
+        
+        logger.warning(f"Retrying recommendation refresh, attempt {self.request.retries + 1}/{self.max_retries}")
+        raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))

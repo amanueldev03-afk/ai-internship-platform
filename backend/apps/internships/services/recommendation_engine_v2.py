@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from .semantic_matching import (
     calculate_semantic_similarity,
 )
+from apps.internships.models import Recommendation
 
 
 @dataclass
@@ -420,9 +421,57 @@ def build_explanation(
     return explanation
 
 
+def save_recommendation(
+    student,
+    internship,
+    overall_score,
+    skill_score,
+    location_score,
+    preference_score,
+):
+    """
+    Save recommendation to database with score breakdown.
+    Returns the created Recommendation instance.
+    """
+    try:
+        recommendation, created = Recommendation.objects.get_or_create(
+            student=student,
+            internship=internship,
+            defaults={
+                "overall_score": overall_score,
+                "skill_score": skill_score * 100 if skill_score else None,
+                "location_score": location_score * 100 if location_score else None,
+                "interest_score": preference_score * 100 if preference_score else None,
+            }
+        )
+
+        # If recommendation already exists, update the scores
+        if not created:
+            recommendation.overall_score = overall_score
+            recommendation.skill_score = skill_score * 100 if skill_score else None
+            recommendation.location_score = location_score * 100 if location_score else None
+            recommendation.interest_score = preference_score * 100 if preference_score else None
+            recommendation.save(update_fields=[
+                "overall_score",
+                "skill_score",
+                "location_score",
+                "interest_score",
+                "updated_at",
+            ])
+
+        return recommendation
+    except Exception as e:
+        # Log error but don't crash the recommendation generation
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to save recommendation: {e}")
+        return None
+
+
 def generate_recommendations(
     student,
     internships,
+    save_to_db=True,
 ):
     profile = (
         student.student_profile
@@ -542,6 +591,19 @@ def generate_recommendations(
                 internship,
             )
         )
+
+        # -----------------------------
+        # SAVE TO DATABASE
+        # -----------------------------
+        if save_to_db:
+            save_recommendation(
+                student=student,
+                internship=internship,
+                overall_score=final_score,
+                skill_score=skill_score,
+                location_score=location_score,
+                preference_score=preference_score,
+            )
 
         results.append(
             RecommendationResult(
