@@ -679,6 +679,9 @@ class RecommendationEngineV2Test(TestCase):
 
     def test_calculate_location_score(self):
         """Test location score calculation"""
+        self.internship.internship_type = 'onsite'
+        self.internship.save()
+
         score = calculate_location_score(self.internship, self.profile)
         self.assertEqual(score, 1.0)  # Same city
         
@@ -688,16 +691,29 @@ class RecommendationEngineV2Test(TestCase):
         self.assertEqual(score, 0.5)  # Same country, different city
 
     def test_calculate_final_score(self):
-        """Test final weighted score calculation"""
-        semantic = 0.8
-        skill = 0.6
-        preference = 0.7
-        location = 0.5
-        salary = 0.9
+        """Test final weighted score calculation: 40% Semantic, 25% Skill, 20% Preference, 10% Location, 5% Salary"""
+        semantic = 0.8  # 0.8 * 0.40 = 0.32
+        skill = 0.6     # 0.6 * 0.25 = 0.15
+        preference = 0.7 # 0.7 * 0.20 = 0.14
+        location = 0.5  # 0.5 * 0.10 = 0.05
+        salary = 0.9    # 0.9 * 0.05 = 0.045
         
         score = calculate_final_score(semantic, skill, preference, location, salary)
-        self.assertGreaterEqual(score, 0.0)
-        self.assertLessEqual(score, 100.0)
+        # Expected: (0.32 + 0.15 + 0.14 + 0.05 + 0.045) * 100 = 70.5
+        self.assertEqual(score, 70.5)
+
+    def test_build_student_text_with_cv(self):
+        """Test build_student_text incorporates student CV details"""
+        from apps.internships.services.semantic_matching import build_student_text
+        from apps.student_profiles.models import StudentCV
+        StudentCV.objects.create(
+            student=self.user,
+            extracted_text='Experienced Django developer with Python skills.',
+            extracted_skills=['Django', 'Python', 'REST']
+        )
+        text = build_student_text(self.profile)
+        self.assertIn('CV Text:', text)
+        self.assertIn('Django', text)
 
     def test_build_explanation(self):
         """Test explanation building"""
@@ -712,7 +728,7 @@ class RecommendationEngineV2Test(TestCase):
         self.assertGreater(len(explanation), 0)
 
     def test_student_recommendations_v2(self):
-        """Test student recommendations endpoint with v2 engine"""
+        """Test student recommendations endpoint with v2 engine and score breakdown"""
         from apps.student_profiles.models import StudentProfile
         from apps.accounts.services import create_student_user
         from rest_framework.test import APIClient
@@ -742,11 +758,17 @@ class RecommendationEngineV2Test(TestCase):
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
         
-        # Check new v2 response format
+        # Check new v2 response format with score breakdown
         if len(response.data['results']) > 0:
             result = response.data['results'][0]
             self.assertIn('match_score', result)
+            self.assertIn('score_breakdown', result)
             self.assertIn('explanation', result)
+            self.assertIn('semantic_score', result['score_breakdown'])
+            self.assertIn('skill_score', result['score_breakdown'])
+            self.assertIn('preference_score', result['score_breakdown'])
+            self.assertIn('location_score', result['score_breakdown'])
+            self.assertIn('salary_score', result['score_breakdown'])
             self.assertIsInstance(result['explanation'], list)
 
 

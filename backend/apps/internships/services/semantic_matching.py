@@ -36,7 +36,7 @@ def generate_embedding(text):
 
 def build_student_text(student_profile):
     """
-    Build semantic text for a student.
+    Build semantic text for a student including profile details and CV text.
     """
 
     parts = []
@@ -68,6 +68,36 @@ def build_student_text(student_profile):
 
     if getattr(
         student_profile,
+        "field_of_study",
+        None,
+    ):
+        parts.append(
+            "Field of Study: "
+            + student_profile.field_of_study
+        )
+
+    if getattr(
+        student_profile,
+        "education_level",
+        None,
+    ):
+        parts.append(
+            "Education: "
+            + student_profile.education_level
+        )
+
+    if getattr(
+        student_profile,
+        "experience",
+        None,
+    ):
+        parts.append(
+            "Experience: "
+            + student_profile.experience
+        )
+
+    if getattr(
+        student_profile,
         "country",
         None,
     ):
@@ -85,6 +115,28 @@ def build_student_text(student_profile):
             "City: "
             + student_profile.city
         )
+
+    # Check for student CV content
+    user = getattr(student_profile, "user", None)
+    if user:
+        try:
+            from apps.student_profiles.models import StudentCV
+            cv = StudentCV.objects.filter(student=user).first()
+            if cv:
+                if cv.extracted_text:
+                    parts.append("CV Text: " + cv.extracted_text[:1000])
+                if cv.extracted_skills and isinstance(cv.extracted_skills, list):
+                    parts.append("CV Skills: " + ", ".join(cv.extracted_skills))
+                if cv.extracted_experience and isinstance(cv.extracted_experience, list):
+                    exp_items = [str(e) for e in cv.extracted_experience if e]
+                    if exp_items:
+                        parts.append("CV Experience: " + "; ".join(exp_items))
+                if cv.extracted_education and isinstance(cv.extracted_education, list):
+                    edu_items = [str(e) for e in cv.extracted_education if e]
+                    if edu_items:
+                        parts.append("CV Education: " + "; ".join(edu_items))
+        except Exception:
+            pass
 
     return "\n".join(parts)
 

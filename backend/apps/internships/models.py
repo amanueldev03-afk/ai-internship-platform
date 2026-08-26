@@ -705,12 +705,44 @@ class Recommendation(models.Model):
         help_text="Final weighted score (0-100)",
     )
 
+    semantic_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Semantic embedding score (0-100)",
+    )
+
     skill_score = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         null=True,
         blank=True,
         help_text="Skill matching score (0-100)",
+    )
+
+    preference_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Preference match score (0-100)",
+    )
+
+    location_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Location match score (0-100)",
+    )
+
+    salary_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Salary match score (0-100)",
     )
 
     education_score = models.DecimalField(
@@ -735,14 +767,6 @@ class Recommendation(models.Model):
         null=True,
         blank=True,
         help_text="Experience relevance score (0-100)",
-    )
-
-    location_score = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        help_text="Location match score (0-100)",
     )
 
     # ==========================================================

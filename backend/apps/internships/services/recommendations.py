@@ -1,62 +1,33 @@
-from .preference_matching import (
-    calculate_preference_match,
-)
-
-from .hybrid_matching import (
-    calculate_hybrid_match,
-)
+from .recommendation_engine_v2 import generate_recommendations
 
 
 def get_student_recommendations(
     student_profile,
     internships,
+    save_to_db=False,
 ):
     """
-    Generate hybrid recommendations.
+    Generate hybrid student recommendations using recommendation_engine_v2.
     """
+    student = getattr(student_profile, "user", None)
+    if not student:
+        return []
+
+    rec_results = generate_recommendations(
+        student=student,
+        internships=internships,
+        save_to_db=save_to_db,
+    )
 
     recommendations = []
-
-    for internship in internships:
-
-        result = calculate_hybrid_match(
-            student_profile,
-            internship,
-        )
-
-        if not result["eligible"]:
-            continue
-
+    for res in rec_results:
         recommendations.append(
             {
-                "internship": internship,
-                "score": result["score"],
-                "preference_score": (
-                    result[
-                        "preference_score"
-                    ]
-                ),
-                "semantic_score": (
-                    result[
-                        "semantic_score"
-                    ]
-                ),
-                "score_breakdown": (
-                    result[
-                        "score_breakdown"
-                    ]
-                ),
-                "explanation": (
-                    result[
-                        "explanation"
-                    ]
-                ),
+                "internship": res.internship,
+                "score": res.score,
+                "score_breakdown": res.score_breakdown,
+                "explanation": res.explanation,
             }
         )
-
-    recommendations.sort(
-        key=lambda item: item["score"],
-        reverse=True,
-    )
 
     return recommendations

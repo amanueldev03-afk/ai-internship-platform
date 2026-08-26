@@ -1453,7 +1453,14 @@ class StudentRecommendationView(APIView):
     @extend_schema(
         tags=["Recommendations"],
         summary="Get Personalized Recommendations",
-        description="Get personalized internship recommendations based on skills, preferences, and semantic matching",
+        description=(
+            "Get personalized internship recommendations based on a 5-component weighted scoring system:\n"
+            "- **Semantic Score (40%)**: CV/profile text similarity to internship description using vector embeddings\n"
+            "- **Skill Score (25%)**: Match between student skills (profile + CV) and required internship skills\n"
+            "- **Preference Score (20%)**: Match with student's work mode, location, and salary preferences\n"
+            "- **Location Score (10%)**: Geographic match (country/city, remote compatibility)\n"
+            "- **Salary Score (5%)**: Salary range alignment"
+        ),
         responses={200: {
             'type': 'object',
             'properties': {
@@ -1467,6 +1474,16 @@ class StudentRecommendationView(APIView):
                         'properties': {
                             'internship': {'type': 'object'},
                             'match_score': {'type': 'number'},
+                            'score_breakdown': {
+                                'type': 'object',
+                                'properties': {
+                                    'semantic_score': {'type': 'number', 'description': '40% weight'},
+                                    'skill_score': {'type': 'number', 'description': '25% weight'},
+                                    'preference_score': {'type': 'number', 'description': '20% weight'},
+                                    'location_score': {'type': 'number', 'description': '10% weight'},
+                                    'salary_score': {'type': 'number', 'description': '5% weight'},
+                                }
+                            },
                             'explanation': {'type': 'array', 'items': {'type': 'string'}},
                         }
                     }
@@ -1563,6 +1580,7 @@ class StudentRecommendationView(APIView):
                     'internship': item.internship,
                     'score': item.score,
                     'explanation': item.explanation,
+                    'score_breakdown': getattr(item, 'score_breakdown', {}),
                 }
                 for item in recommendations
             ]
@@ -1592,10 +1610,12 @@ class StudentRecommendationView(APIView):
                 internship = item['internship']
                 score = item['score']
                 explanation = item['explanation']
+                score_breakdown = item.get('score_breakdown', {})
             else:
                 internship = item.internship
                 score = item.score
                 explanation = item.explanation
+                score_breakdown = getattr(item, 'score_breakdown', {})
 
             results.append(
                 {
@@ -1605,6 +1625,7 @@ class StudentRecommendationView(APIView):
                         ).data
                     ),
                     "match_score": score,
+                    "score_breakdown": score_breakdown,
                     "explanation": explanation,
                 }
             )
