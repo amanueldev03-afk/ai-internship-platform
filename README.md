@@ -1,473 +1,221 @@
-# AI Internship Recommendation Platform
+# AI Internship Platform
 
-An intelligent platform that uses AI to recommend internships to students based on their skills, preferences, and profile. Built with Django REST Framework and designed to help students find the perfect internship opportunities.
+An AI-powered platform that matches students with internships using semantic embeddings, skill matching, and weighted scoring. Students get ranked, explained recommendations based on their profile and CV.
 
-## 🚀 Project Overview
+---
 
-This platform consists of three main components:
-- **Backend**: Django REST Framework API with PostgreSQL database
-- **Frontend**: (To be implemented)
-- **AI Engine**: (To be implemented)
+## Phase 0 — Infrastructure Skeleton (Current)
 
-## 📋 Features
+Phase 0 is pure plumbing. No business logic yet. The goal: every developer can run the full stack locally with one command before any feature is built.
 
-### Backend Features
-- **User Authentication**: Custom user model with email-based authentication
-- **User Roles**: Student and Administrator roles
-- **JWT Authentication**: Token-based authentication with SimpleJWT
-- **Email Verification**: Email verification for new user registration
-- **Password Reset**: Forgot password and reset password functionality
-- **Student Profiles**: Comprehensive profile management with skills, education, and preferences
-- **Internship Management**: Full CRUD operations for internship listings
-- **Skill Matching**: AI-powered skill matching between students and internships
-- **Recommendation Engine V2**: Advanced recommendation system with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
-- **Recommendation History**: Persistent storage of recommendation scores and feedback tracking
-- **Recommendation Feedback**: Track student behavior (viewed, saved, applied, ignored) for ML personalization
-- **Semantic Matching**: Uses sentence transformers to match student profiles with internship descriptions using embeddings
-- **Hybrid Matching**: Combines preference-based matching with semantic similarity for more accurate recommendations
-- **CV Analysis**: Intelligent CV parsing with structured data extraction (education, experience, projects, certifications)
-- **AI-Powered CV Analysis**: OpenAI integration for enhanced CV data extraction with fallback to basic analysis
-- **Skill Normalization**: Automatic skill name standardization and alias resolution
-- **Application Tracking**: Track internship applications and their status
-- **Saved Internships**: Allow students to save interesting opportunities
-- **Admin Dashboard**: Dashboard for admins to manage internships and view statistics
-- **Student Dashboard**: Dashboard for students to view saved internships and applications
-- **CV Upload**: Upload and manage CV files with automatic text extraction
-- **Background Processing**: Celery with Redis for asynchronous task processing
-- **CV Background Processing**: CV analysis runs in background with status tracking
-- **Embedding Generation**: Student and internship embeddings generated asynchronously
-- **Task Scheduling**: Celery Beat for scheduled tasks (internship expiration, bulk embedding generation)
-- **API Documentation**: RESTful API with DRF Spectacular for OpenAPI documentation (Swagger/ReDoc)
+### What Phase 0 delivers
 
-## 🏗️ Project Structure
+- Django backend boots with all 10 apps registered
+- React frontend boots and talks to the backend (`GET /api/health/` returns `{"status": "OK"}`)
+- PostgreSQL (with pgvector) and Redis are containerised and ready
+- AI engine package imports cleanly with no errors
+- All three integration branches exist on GitHub (`backend-dev`, `frontend-dev`, `ai-dev`)
+
+---
+
+## Project Structure
 
 ```
 ai-internship-platform/
-├── backend/                    # Django REST Framework Backend
+├── backend/                        # Django REST Framework + AI engine
 │   ├── apps/
-│   │   ├── accounts/          # User authentication and management
-│   │   │   ├── models.py       # Custom User model with UserManager
-│   │   │   ├── views.py        # User API views (registration, login, logout, etc.)
-│   │   │   ├── serializers.py  # User serializers
-│   │   │   ├── urls.py         # User URL routes
-│   │   │   ├── admin.py        # Admin configuration
-│   │   │   ├── services.py     # User service functions (email, validation)
-│   │   │   ├── jwt.py          # Custom JWT serializers
-│   │   │   └── tests.py        # User tests
-│   │   ├── internships/       # Internship management
-│   │   │   ├── models.py       # Internship, Skill, Source models
-│   │   │   ├── views.py        # Internship API views
-│   │   │   ├── serializers.py  # Internship serializers
-│   │   │   ├── urls.py         # Internship URL routes
-│   │   │   ├── admin.py        # Admin configuration
-│   │   │   ├── services/       # Internship services
-│   │   │   │   ├── recommendations.py        # Recommendation logic
-│   │   │   │   ├── preference_matching.py    # Preference matching algorithm
-│   │   │   │   ├── semantic_matching.py      # Semantic matching with embeddings
-│   │   │   │   ├── hybrid_matching.py        # Hybrid matching (preference + semantic)
-│   │   │   │   ├── recommendation_engine_v2.py # Advanced recommendation engine with weighted scoring
-│   │   │   │   └── embedding_service.py      # Embedding generation and management
-│   │   │   └── tests.py        # Internship tests
-│   │   └── student_profiles/  # Student profile management
-│   │       ├── models.py       # StudentProfile, StudentCV models
-│   │       ├── views.py        # Profile API views
-│   │       ├── serializers.py  # Profile serializers
-│   │       ├── urls.py         # Profile URL routes
-│   │       ├── admin.py        # Admin configuration
-│   │       ├── services/       # Profile services
-│   │       │   ├── cv_analysis.py           # Basic CV text extraction and parsing
-│   │       │   ├── ai_cv_analysis.py        # AI-powered CV analysis with OpenAI
-│   │       │   ├── skill_normalization.py    # Skill name standardization
-│   │       │   └── cv_extraction.py         # PDF/DOCX text extraction
-│   │       └── tests.py        # Profile tests
-│   ├── config/                 # Django configuration
-│   │   ├── settings/
-│   │   │   ├── base.py         # Base settings
-│   │   │   ├── development.py  # Development settings
-│   │   │   └── production.py   # Production settings
-│   │   ├── urls.py             # Main URL configuration
-│   │   ├── wsgi.py             # WSGI configuration
-│   │   ├── asgi.py             # ASGI configuration
-│   │   └── celery.py          # Celery configuration
-│   ├── manage.py               # Django management script
-│   ├── requirements.txt        # Python dependencies
-│   ├── .env                    # Environment variables
-│   └── .env.example           # Environment variables template
-├── frontend/                   # Frontend application (To be implemented)
-├── ai_engine/                  # AI recommendation engine (To be implemented)
-├── .gitignore                  # Git ignore rules
-└── README.md                   # This file
+│   │   ├── accounts/               # User auth, JWT, email verification
+│   │   ├── student_profiles/       # Student profile, CV upload, embeddings
+│   │   ├── internships/            # Internship listings, skills, sources
+│   │   ├── recommendations/        # Recommendation scoring and history
+│   │   ├── applications/           # Application tracking (skeleton)
+│   │   ├── companies/              # Company profiles (skeleton)
+│   │   ├── notifications/          # Notifications (skeleton)
+│   │   ├── analytics/              # Analytics (skeleton)
+│   │   ├── data_sources/           # Internship collection pipeline (skeleton)
+│   │   └── common/                 # Shared utilities (skeleton)
+│   ├── ai_engine/                  # Standalone AI package (not a Django app)
+│   │   ├── models/                 # Dataclasses: StudentInput, InternshipInput, etc.
+│   │   ├── embeddings/             # Text → 384-dim vector (sentence-transformers)
+│   │   ├── resume_parser/          # CV extraction + spaCy NER + OpenAI parsing
+│   │   ├── skill_matching/         # Exact skill intersection scoring
+│   │   ├── semantic_matching/      # Cosine similarity over embeddings
+│   │   ├── ranking/                # Weighted score aggregation
+│   │   ├── recommendation.py       # Top-level orchestrator
+│   │   └── explanation.py          # Human-readable match explanation
+│   ├── config/                     # Django settings (base / development / production)
+│   ├── docker/postgres/init.sql    # pgvector extension setup for Docker
+│   ├── scripts/verify_ai_engine.py # Phase 0 AI verification script (15 checks)
+│   ├── Dockerfile                  # Django container
+│   ├── manage.py
+│   └── requirements/
+│       └── base.txt
+├── frontend/                       # Vite + React + TypeScript
+│   └── src/
+│       ├── components/             # Reusable UI components (skeleton)
+│       ├── pages/                  # Route-level pages
+│       │   └── HomePage.tsx        # Health check page (fetches /api/health/)
+│       ├── features/               # Redux slices per domain
+│       │   └── auth/authSlice.ts
+│       ├── services/api.ts         # Axios instance with JWT interceptors
+│       ├── store/                  # Redux store
+│       ├── routes/                 # React Router configuration
+│       ├── hooks/                  # Typed useAppDispatch / useAppSelector
+│       └── types/                  # TypeScript interfaces matching Django models
+├── docker-compose.yml              # postgres:15 + redis:7 + backend
+├── .gitignore
+└── README.md
 ```
 
-## 🛠️ Technology Stack
+---
 
-### Backend
-- **Framework**: Django 6.0.7
-- **API**: Django REST Framework 3.17.2
-- **Database**: PostgreSQL (via Supabase)
-- **Authentication**: Django REST Framework SimpleJWT
-- **API Documentation**: DRF Spectacular
-- **Task Queue**: Celery with Redis
-- **Testing**: Django Test Framework
-
-## 📦 Installation
+## Quick Start
 
 ### Prerequisites
+
 - Python 3.12+
-- PostgreSQL database
-- Redis (for Celery background tasks)
+- Node.js 20+
+- PostgreSQL (native install or Docker)
+- Redis (native install or Docker)
 
-### Backend Setup
+### 1. Backend
 
-1. **Clone the repository**
-```bash
-git clone <repository-url>
-cd ai-internship-platform
-```
-
-2. **Navigate to backend directory**
 ```bash
 cd backend
-```
 
-3. **Create virtual environment**
-```bash
+# Create and activate virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
+source .venv/bin/activate
 
-4. **Install dependencies**
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-5. **Configure environment variables**
-```bash
+# Download spaCy model (one-time)
+python -m spacy download en_core_web_sm
+
+# Configure environment
 cp .env.example .env
-# Edit .env with your configuration
-```
+# Edit .env — set DATABASE_URL and other values
 
-6. **Run migrations**
-```bash
-python manage.py makemigrations
+# Set up database (PostgreSQL must be running)
+sudo -u postgres psql -d ai_internship -c "CREATE EXTENSION IF NOT EXISTS vector;"
 python manage.py migrate
-```
 
-7. **Create superuser**
-```bash
-python manage.py createsuperuser
-```
-
-8. **Start Redis server**
-```bash
-redis-server
-```
-
-9. **Start Celery worker** (in a separate terminal)
-```bash
-celery -A config worker --loglevel=info
-```
-
-10. **Start Celery Beat scheduler** (optional, for scheduled tasks)
-```bash
-celery -A config beat --loglevel=info
-```
-
-11. **Run development server**
-```bash
+# Run backend
 python manage.py runserver
 ```
 
-The backend API will be available at `http://localhost:8000`
+Backend available at `http://localhost:8000`
 
-## 🔧 Configuration
+### 2. Frontend
 
-### Environment Variables
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-Create a `.env` file in the backend directory with the following variables:
+Frontend available at `http://localhost:5173`
+
+Open `http://localhost:5173` — the page shows **Backend /api/health/: OK** in green when the frontend and backend are connected.
+
+### 3. Infrastructure via Docker (alternative to native)
+
+```bash
+# Start PostgreSQL and Redis in Docker
+docker-compose up -d db redis
+
+# Then run backend natively as above
+cd backend && python manage.py runserver
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend framework | Django 6.0 + Django REST Framework |
+| Auth | JWT (SimpleJWT) + django-allauth (Google OAuth) |
+| Database | PostgreSQL 15 + pgvector (vector similarity search) |
+| Task queue | Celery + Redis |
+| AI / embeddings | sentence-transformers (all-MiniLM-L6-v2, 384-dim) |
+| CV parsing | spaCy (en_core_web_sm) + OpenAI GPT-4o-mini |
+| Frontend | Vite + React 18 + TypeScript |
+| State management | Redux Toolkit |
+| Styling | Tailwind CSS |
+| API docs | drf-spectacular (Swagger + ReDoc) |
+
+---
+
+## API Documentation
+
+With the backend running:
+
+- Swagger UI: `http://localhost:8000/api/docs/`
+- ReDoc: `http://localhost:8000/api/redoc/`
+- Health check: `http://localhost:8000/api/health/`
+
+---
+
+## Verify AI Engine
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_ai_engine.py
+```
+
+Expected: `All 15 checks passed.`
+
+---
+
+## Branch Strategy
+
+| Branch | Purpose |
+|---|---|
+| `main` | Stable, phase-complete snapshots |
+| `backend-dev` | Backend feature work |
+| `frontend-dev` | Frontend feature work |
+| `ai-dev` | AI engine work |
+
+Feature branches merge into their integration branch via PR. Integration branches merge into `main` at phase completion.
+
+---
+
+## Environment Variables
+
+Copy `backend/.env.example` to `backend/.env` and fill in:
 
 ```env
-# Django
 SECRET_KEY=your-secret-key
 DEBUG=True
 ALLOWED_HOSTS=127.0.0.1,localhost
 
-# PostgreSQL
-DB_NAME=your_database_name
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_HOST=localhost
-DB_PORT=5432
+# Local Docker Compose (default)
+DATABASE_URL=postgresql://ai_user:ai_password@localhost:5432/ai_internship
 
-# Email Configuration
+# Redis
+REDIS_URL=redis://localhost:6379/1
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/0
+
+# Email
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
-EMAIL_HOST_USER=your_email@gmail.com
-EMAIL_HOST_PASSWORD=your_app_password
-EMAIL_USE_TLS=True
-DEFAULT_FROM_EMAIL=your_email@gmail.com
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
 
-# Google OAuth (Optional)
-GOOGLE_CLIENT_ID=your_client_id
-GOOGLE_CLIENT_SECRET=your_client_secret
+# OpenAI (for CV analysis — optional at Phase 0)
+OPENAI_API_KEY=your-key
 
-# Time Zone
-TIME_ZONE=UTC
+# Google OAuth (optional)
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
 ```
-
-## 📚 API Endpoints
-
-### Authentication
-- `POST /api/accounts/register/` - Register new student
-- `POST /api/accounts/admin/login/` - Admin login (username/password)
-- `POST /api/accounts/student/login/` - Student login (email/password)
-- `POST /api/accounts/logout/` - Logout (blacklist refresh token)
-- `GET /api/accounts/me/` - Get current user profile
-- `POST /api/accounts/verify-email/` - Verify email address
-- `POST /api/accounts/resend-verification/` - Resend verification email
-- `POST /api/accounts/forgot-password/` - Request password reset
-- `POST /api/accounts/reset-password/` - Reset password with token
-- `POST /api/accounts/change-password/` - Change password (authenticated)
-- `POST /api/accounts/token/refresh/` - Refresh access token
-
-### Internships (Public)
-- `GET /api/internships/` - List all internships (with filtering)
-- `GET /api/internships/{id}/` - Get internship details
-- `GET /api/internships/latest/` - Get latest internships
-
-### Internships (Admin)
-- `POST /api/internships/admin/` - Create internship
-- `GET /api/internships/admin/` - List internships (admin view)
-- `GET /api/internships/admin/{id}/` - Get internship details (admin)
-- `PUT /api/internships/admin/{id}/` - Update internship
-- `DELETE /api/internships/admin/{id}/` - Delete internship
-- `POST /api/internships/admin/sources/` - Create internship source
-- `GET /api/internships/admin/sources/` - List internship sources
-- `GET /api/internships/admin/sources/{id}/` - Get source details
-- `PUT /api/internships/admin/sources/{id}/` - Update source
-- `DELETE /api/internships/admin/sources/{id}/` - Delete source
-- `POST /api/internships/admin/sources/{id}/collect/` - Collect internships from source
-- `GET /api/internships/admin/collection-logs/` - View collection logs
-- `POST /api/internships/admin/internships/{id}/verify/` - Verify internship
-- `GET /api/internships/admin/dashboard/` - Admin dashboard statistics
-- `POST /api/internships/admin/skills/` - Create skill
-- `GET /api/internships/admin/skills/` - List skills
-- `GET /api/internships/admin/skills/{id}/` - Get skill details
-- `PUT /api/internships/admin/skills/{id}/` - Update skill
-- `DELETE /api/internships/admin/skills/{id}/` - Delete skill
-
-### Internships (Student)
-- `POST /api/internships/saved/add/` - Save internship
-- `GET /api/internships/saved/` - List saved internships
-- `DELETE /api/internships/saved/{internship_id}/` - Unsave internship
-- `POST /api/internships/applications/add/` - Apply to internship
-- `GET /api/internships/applications/` - List applications
-- `GET /api/internships/applications/{id}/` - Get application details
-- `GET /api/internships/dashboard/` - Student dashboard
-- `GET /api/internships/recommendations/` - Get personalized recommendations
-- `GET /api/internships/recommendations/history/` - List recommendation history with scores
-- `POST /api/internships/recommendations/{internship_id}/feedback/` - Update recommendation feedback (view, save, apply, ignore)
-
-### Student Profiles
-- `GET /api/profile/` - Get student profile (auto-created if not exists)
-- `PATCH /api/profile/` - Update student profile (queues embedding regeneration)
-- `POST /api/profile/cv/upload/` - Upload CV with background processing
-- `GET /api/profile/cv/{cv_id}/status/` - Get CV processing status
-- `DELETE /api/profile/cv/` - Delete CV
-
-### API Documentation
-- `GET /api/docs/` - Swagger UI
-- `GET /api/redoc/` - ReDoc
-- `GET /api/schema/` - OpenAPI schema
-
-### Admin Panel
-- `GET /admin/` - Django admin panel
-
-## 🧪 Testing
-
-Run tests for all apps:
-```bash
-python manage.py test
-```
-
-Run tests for specific app:
-```bash
-python manage.py test apps.accounts
-python manage.py test apps.internships
-python manage.py test apps.student_profiles
-```
-
-Run tests with coverage:
-```bash
-coverage run --source='.' manage.py test
-coverage report
-```
-
-## 🗄️ Database Models
-
-### User Model (accounts)
-- Custom user model with email-based authentication
-- Fields: email, username, first_name, last_name, role, is_email_verified
-- Roles: Student, Admin
-
-### Internship Models (internships)
-- **Skill**: Reusable skill for matching
-- **InternshipSource**: Source of internship data
-- **Internship**: Main internship listing with comprehensive details
-- **SavedInternship**: User-saved internships
-- **InternshipApplication**: Application tracking
-- **Recommendation**: Recommendation history with score breakdown and feedback tracking (viewed, saved, applied, ignored)
-
-### Student Profile Model (student_profiles)
-- Personal information (phone, location, bio)
-- Education details (level, field, university)
-- Skills and interests
-- Internship preferences (type, location, compensation)
-- Career preferences (industries, roles)
-- CV upload with structured data extraction
-- CV model with background processing status (PENDING, PROCESSING, COMPLETED, FAILED)
-- StudentCV model for CV file storage and extracted data (JSON fields for education, experience, projects, certifications)
-- Embedding vector field for semantic matching
-
-## 🚀 Deployment
-
-### Production Setup
-
-1. **Set DEBUG=False** in production settings
-2. **Configure ALLOWED_HOSTS** with your domain
-3. **Use strong SECRET_KEY**
-4. **Configure production database**
-5. **Set up static files serving**
-6. **Configure Celery for background tasks**
-7. **Set up monitoring and logging**
-
-### Environment-Specific Settings
-
-- Development: `config.settings.development`
-- Production: `config.settings.production`
-
-## 📝 Development Progress
-
-### ✅ Completed
-- Backend project structure
-- Django apps configuration
-- User authentication system with JWT
-- Custom user model with UserManager
-- Email verification system
-- Password reset functionality
-- Internship management models
-- Student profile models
-- API serializers and views
-- URL routing
-- Admin configuration
-- Comprehensive test coverage (90+ tests passing)
-- Database migrations
-- PostgreSQL integration
-- Environment configuration
-- Recommendation engine with preference matching
-- Semantic matching with sentence transformers
-- Hybrid matching (preference + semantic)
-- Recommendation Engine V2 with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
-- CV analysis with structured data extraction
-- AI-powered CV analysis with OpenAI integration
-- Skill normalization and alias resolution
-- Internship application tracking
-- Saved internships functionality
-- Student and admin dashboards
-- CV upload with PDF/DOCX text extraction
-- API documentation (Swagger/ReDoc)
-- **Celery background processing pipeline**
-- **Redis integration for task queue**
-- **CV background processing with status tracking**
-- **Asynchronous embedding generation for students and internships**
-- **Celery Beat for scheduled tasks**
-- **Task retry mechanisms with exponential backoff**
-- **Transaction-safe task queuing with on_commit()**
-
-### 📋 Planned
-- Frontend application
-- Real email service integration
-- OAuth integration (Google)
-- Advanced filtering and search
-- Real-time notifications
-- API rate limiting
-- Caching optimization
-- Performance monitoring
-- Data seeding and sample data
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Write tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 👥 Team
-
-- **Backend Development**: Django REST Framework
-- **Frontend Development**: (To be assigned)
-- **AI/ML Engineering**: (To be assigned)
-
-## 📞 Support
-
-For support and questions:
-- Create an issue on GitHub
-- Contact: amanueldev03@gmail.com
-
-## 🔄 Version History
-
-### v0.4.0 (Current)
-- **Celery background processing pipeline** with Redis integration
-- **Asynchronous CV processing** with status tracking (PENDING, PROCESSING, COMPLETED, FAILED)
-- **Background embedding generation** for student profiles and internships
-- **Celery Beat scheduler** for periodic tasks (internship expiration, bulk embedding generation)
-- **Task retry mechanisms** with exponential backoff
-- **Transaction-safe task queuing** using `transaction.on_commit()`
-- **CV status API endpoint** for monitoring processing progress
-- **Automatic embedding regeneration** on profile/internship updates
-- **Recommendation refresh task** architecture (ready for Step 42)
-- Updated test coverage to mock Celery tasks for unit testing
-- Updated README with Celery setup instructions
-
-### v0.3.0
-- Recommendation Engine V2 with weighted scoring (semantic 40%, skills 25%, preferences 20%, location 10%, salary 5%)
-- Advanced hard filters (work mode, paid requirement, internship type, salary range)
-- CV analysis with structured JSON data extraction
-- AI-powered CV analysis with OpenAI integration and fallback
-- Skill normalization with alias resolution
-- StudentCV model with JSONField for structured data storage
-- Enhanced recommendation API response with CV analysis data
-- Updated test coverage for new features (90+ tests)
-- Updated API documentation for new endpoints and response formats
-
-### v0.2.0
-- Enhanced authentication with JWT
-- Email verification system
-- Password reset functionality
-- Recommendation engine with preference matching
-- Internship application tracking
-- Saved internships functionality
-- Student and admin dashboards
-- CV upload functionality
-- Comprehensive test coverage (56 tests)
-- Updated API documentation
-- Fixed field name mismatches in recommendation algorithm
-- All API endpoints properly documented with Swagger
-
-### v0.1.0
-- Initial backend implementation
-- User authentication system
-- Internship management
-- Student profiles
-- Basic API endpoints
-- Test coverage
 
 ---
 
-**Note**: This project is under active development. Features and API endpoints may change as the project evolves.
+## Contact
+
+amanueldev03@gmail.com
