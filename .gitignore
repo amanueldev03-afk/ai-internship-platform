@@ -32,7 +32,8 @@ backend/media/
 backend/staticfiles/
 
 # IDE
-.vscode/
+.vscode/*.log
+.vscode/extensions.json
 .idea/
 
 # OS
