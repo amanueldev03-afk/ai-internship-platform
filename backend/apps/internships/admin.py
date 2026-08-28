@@ -255,13 +255,13 @@ class InternshipApplicationAdmin(admin.ModelAdmin):
         "student",
         "internship",
         "status",
-        "applied_at",
+        "created_at",
         "updated_at",
     ]
 
     list_filter = [
         "status",
-        "applied_at",
+        "created_at",
         "updated_at",
     ]
 
@@ -274,12 +274,12 @@ class InternshipApplicationAdmin(admin.ModelAdmin):
     readonly_fields = [
         "student",
         "internship",
-        "applied_at",
+        "created_at",
         "updated_at",
     ]
 
     ordering = [
-        "-applied_at",
+        "-created_at",
     ]
 
 

@@ -840,7 +840,7 @@ class StudentApplicationListView(
                 student=self.request.user
             )
             .select_related("internship")
-            .order_by("-applied_at")
+            .order_by("-created_at")
         )
 
 

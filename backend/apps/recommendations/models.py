@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.db import models
+from apps.common.models import TimeStampedModel
 
 
-class Recommendation(models.Model):
+class Recommendation(TimeStampedModel):
     """
     Stores a personalized internship recommendation for a student,
     including the full score breakdown and behavioral feedback tracking.
@@ -150,13 +151,6 @@ class Recommendation(models.Model):
         blank=True,
         help_text="When the student ignored this recommendation",
     )
-
-    # --------------------------------------------------
-    # Timestamps
-    # --------------------------------------------------
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     # --------------------------------------------------
     # Feedback methods

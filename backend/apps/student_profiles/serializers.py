@@ -255,7 +255,7 @@ class StudentCVSerializer(serializers.ModelSerializer):
             "extracted_experience",
             "extracted_projects",
             "extracted_certifications",
-            "uploaded_at",
+            "created_at",
             "updated_at",
         )
         read_only_fields = (
@@ -265,7 +265,7 @@ class StudentCVSerializer(serializers.ModelSerializer):
             "extracted_experience",
             "extracted_projects",
             "extracted_certifications",
-            "uploaded_at",
+            "created_at",
             "updated_at",
         )
 

@@ -376,7 +376,7 @@ class InternshipApplicationSerializer(
             "organization_name",
             "application_url",
             "status",
-            "applied_at",
+            "created_at",
             "updated_at",
             "notes",
         ]
@@ -386,7 +386,7 @@ class InternshipApplicationSerializer(
             "internship_title",
             "organization_name",
             "application_url",
-            "applied_at",
+            "created_at",
             "updated_at",
         ]
 

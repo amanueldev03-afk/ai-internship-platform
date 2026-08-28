@@ -3,9 +3,10 @@ from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from pgvector.django import VectorField
+from apps.common.models import TimeStampedModel
 
 
-class Skill(models.Model):
+class Skill(TimeStampedModel):
     """
     Reusable skill used by students and internships.
     """
@@ -24,14 +25,6 @@ class Skill(models.Model):
         default=True,
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
     class Meta:
         ordering = ["name"]
 
@@ -39,7 +32,7 @@ class Skill(models.Model):
         return self.name
 
 
-class InternshipSource(models.Model):
+class InternshipSource(TimeStampedModel):
     """
     Represents the authorized source from which internships are collected.
     """
@@ -73,14 +66,6 @@ class InternshipSource(models.Model):
         default=True,
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
     def __str__(self):
         return self.name
 
@@ -88,7 +73,7 @@ class InternshipSource(models.Model):
         ordering = ["name"]
 
 
-class Internship(models.Model):
+class Internship(TimeStampedModel):
     """
     Represents a real internship opportunity.
     """
@@ -344,18 +329,6 @@ class Internship(models.Model):
     rejection_reason = models.TextField(
         blank=True,
     )
-    # ==========================================================
-    # TIMESTAMPS
-    # ==========================================================
-
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
 
     def is_expired(self):
         """
@@ -540,7 +513,7 @@ class InternshipCollectionLog(models.Model):
 
 
 
-class SavedInternship(models.Model):
+class SavedInternship(TimeStampedModel):
     """
     An internship saved by a student.
     """
@@ -555,10 +528,6 @@ class SavedInternship(models.Model):
         Internship,
         on_delete=models.CASCADE,
         related_name="saved_by_students",
-    )
-
-    created_at = models.DateTimeField(
-        auto_now_add=True,
     )
 
     class Meta:
@@ -582,12 +551,15 @@ class SavedInternship(models.Model):
 
 
 
-class InternshipApplication(models.Model):
+class InternshipApplication(TimeStampedModel):
     """
     Tracks a student's application to an internship.
 
     The actual application is submitted on the
     official organization's website.
+
+    Note: applied_at is kept as a domain-specific alias for created_at
+    so existing API consumers are not broken. Both fields are set on save.
     """
 
     STATUS_APPLIED = "applied"
@@ -622,20 +594,12 @@ class InternshipApplication(models.Model):
         default=STATUS_APPLIED,
     )
 
-    applied_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
     notes = models.TextField(
         blank=True,
     )
 
     class Meta:
-        ordering = ["-applied_at"]
+        ordering = ["-created_at"]
 
         constraints = [
             models.UniqueConstraint(

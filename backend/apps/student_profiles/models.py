@@ -2,10 +2,11 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from apps.internships.models import Skill
+from apps.common.models import TimeStampedModel
 from pgvector.django import VectorField
 
 
-class StudentProfile(models.Model):
+class StudentProfile(TimeStampedModel):
     """
     Stores academic, personal, professional, and internship
     preferences for a student.
@@ -224,18 +225,6 @@ class StudentProfile(models.Model):
     )
 
     # ==========================================================
-    # TIMESTAMPS
-    # ==========================================================
-
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
-    # ==========================================================
     # VALIDATION
     # ==========================================================
 
@@ -293,7 +282,7 @@ class StudentProfile(models.Model):
 
 
 
-class StudentCV(models.Model):
+class StudentCV(TimeStampedModel):
 
     student = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -335,14 +324,6 @@ class StudentCV(models.Model):
         blank=True,
     )
 
-    uploaded_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
-    )
-
     class Meta:
         ordering = ["-updated_at"]
 
@@ -352,7 +333,7 @@ class StudentCV(models.Model):
 
 
 
-class CV(models.Model):
+class CV(TimeStampedModel):
 
     STATUS_PENDING = "PENDING"
     STATUS_PROCESSING = "PROCESSING"
@@ -360,22 +341,10 @@ class CV(models.Model):
     STATUS_FAILED = "FAILED"
 
     STATUS_CHOICES = [
-        (
-            STATUS_PENDING,
-            "Pending",
-        ),
-        (
-            STATUS_PROCESSING,
-            "Processing",
-        ),
-        (
-            STATUS_COMPLETED,
-            "Completed",
-        ),
-        (
-            STATUS_FAILED,
-            "Failed",
-        ),
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
     ]
 
     student = models.ForeignKey(
@@ -436,14 +405,6 @@ class CV(models.Model):
     processed_at = models.DateTimeField(
         blank=True,
         null=True,
-    )
-
-    created_at = models.DateTimeField(
-        auto_now_add=True,
-    )
-
-    updated_at = models.DateTimeField(
-        auto_now=True,
     )
 
     class Meta:
