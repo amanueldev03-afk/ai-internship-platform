@@ -1,193 +1,224 @@
+import logging
+
 from django.db import transaction
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView
-from drf_spectacular.utils import extend_schema, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from drf_spectacular.utils import extend_schema
+
 from apps.internships.models import Skill
 from .models import StudentProfile, CV
 from .serializers import (
     StudentProfileSerializer,
     AddStudentSkillsSerializer,
-    StudentPreferencesSerializer,
 )
-from rest_framework.parsers import MultiPartParser, FormParser
 from .tasks import process_cv, generate_student_embedding_task
+from apps.recommendations.views import bust_recommendation_cache
+
+logger = logging.getLogger(__name__)
+
+
+def _get_or_create_profile(user):
+    """Return the student's profile, creating it if it doesn't exist."""
+    profile, _ = StudentProfile.objects.get_or_create(user=user)
+    return profile
+
+
+def _queue_embedding(profile):
+    """Queue embedding regeneration after the current transaction commits."""
+    try:
+        transaction.on_commit(
+            lambda: generate_student_embedding_task.delay(profile.id)
+        )
+    except Exception as exc:
+        logger.warning(f"Could not queue embedding regeneration for profile {profile.id}: {exc}")
+
+
+def _handle_cv_file(cv_file, user):
+    """
+    Replace the student's existing CV with `cv_file`, create a new CV record,
+    and queue background processing.
+    Returns a cv_info dict on success, raises ValueError on bad extension.
+    """
+    from .services.cv_extraction import validate_cv_extension
+    validate_cv_extension(cv_file.name)   # raises ValueError on bad extension
+
+    # Delete old CV records + their storage files
+    old_cvs = CV.objects.filter(student=user)
+    for old_cv in old_cvs:
+        try:
+            if old_cv.file:
+                old_cv.file.delete(save=False)
+        except Exception as del_err:
+            logger.warning(f"Could not delete old CV file: {del_err}")
+    old_cvs.delete()
+
+    # Create new CV record
+    cv = CV.objects.create(
+        student=user,
+        file=cv_file,
+        processing_status=CV.STATUS_PENDING,
+    )
+    logger.info(f"CV record created: id={cv.id} for user={user.id}")
+
+    cv_id = cv.id
+    try:
+        transaction.on_commit(lambda: process_cv.delay(cv_id))
+    except Exception as exc:
+        logger.warning(f"Could not queue CV processing: {exc}")
+
+    return {
+        "cv_id": cv.id,
+        "processing_status": cv.processing_status,
+        "message": "CV uploaded. Processing in background.",
+    }
 
 
 class StudentProfileView(GenericAPIView):
     """
-    Get or update the authenticated student's profile.
+    GET  /api/profile/   — return the student's full profile including cv_data.
+    PUT  /api/profile/   — update profile fields.  Optionally include a `cv`
+                           file (multipart/form-data) to replace the stored CV.
+    PATCH /api/profile/  — partial update (same behaviour as PUT).
+
+    All preference fields (internship_type, work_type, compensation_preference,
+    minimum_compensation, maximum_compensation, preferred_locations,
+    preferred_industries, preferred_roles, willing_to_relocate) are part of
+    the profile serializer — send them in the same request as any other field.
     """
 
     permission_classes = [IsAuthenticated]
-    serializer_class = StudentProfileSerializer
-
-    def get_profile(self, user):
-        profile, created = StudentProfile.objects.get_or_create(
-            user=user
-        )
-
-        return profile
+    serializer_class   = StudentProfileSerializer
+    # Accept JSON, form-data (for CV file upload), and multipart
+    parser_classes     = [MultiPartParser, FormParser, JSONParser]
 
     @extend_schema(
         tags=["Student Profiles"],
         summary="Get Student Profile",
-        description="Retrieve the authenticated student's profile information",
-        responses={200: StudentProfileSerializer}
+        description=(
+            "Retrieve the full student profile, including the computed `cv_data` "
+            "block that shows CV processing status and all extracted fields "
+            "(skills, education, experience, projects, certifications)."
+        ),
+        responses={200: StudentProfileSerializer},
     )
     def get(self, request):
-        """
-        Return the authenticated student's profile.
-        """
-
-        profile = self.get_profile(request.user)
-
-        serializer = self.get_serializer(profile)
-
+        profile = _get_or_create_profile(request.user)
         return Response(
-            serializer.data,
+            StudentProfileSerializer(profile).data,
             status=status.HTTP_200_OK,
         )
 
     @extend_schema(
         tags=["Student Profiles"],
-        summary="Create or Update Student Profile",
-        description="Create or update the authenticated student's profile information",
-        request=StudentProfileSerializer,
-        responses={200: StudentProfileSerializer},
-        examples=[
-            OpenApiExample(
-                "Create Profile",
-                value={
-                    "full_name": "John Doe",
-                    "country": "United States",
-                    "city": "New York",
-                    "phone": "+1234567890",
-                    "education_level": "bachelor",
-                    "field_of_study": "Computer Science",
-                    "graduation_year": 2025,
-                    "gpa": 3.5
-                }
-            )
-        ]
-    )
-    def post(self, request):
-        """
-        Create/update student profile (for API Execution Guide compatibility).
-        """
-        return self.patch(request)
-
-    @extend_schema(
-        tags=["Student Profiles"],
         summary="Update Student Profile",
-        description="Update the authenticated student's profile information",
+        description=(
+            "Update any combination of profile fields in a single request.\n\n"
+            "**Preference fields** (internship_type, work_type, compensation_preference, "
+            "minimum_compensation, maximum_compensation, preferred_locations, "
+            "preferred_industries, willing_to_relocate) are part of this serializer — "
+            "no separate preferences endpoint is needed.\n\n"
+            "**CV upload** — include a `cv` file field (PDF/DOCX, max 5 MB) using "
+            "`multipart/form-data` to replace the stored CV.  The response will contain "
+            "a `cv_upload` key with the new CV id and initial processing status.\n\n"
+            "A `PUT` and a `PATCH` behave identically — all fields are optional."
+        ),
         request=StudentProfileSerializer,
         responses={200: StudentProfileSerializer},
     )
     def put(self, request):
-        """
-        Full update student profile.
-        """
-        return self.patch(request)
+        return self._update(request)
 
     @extend_schema(
         tags=["Student Profiles"],
-        summary="Update Student Profile",
-        description="Update the authenticated student's profile information",
+        summary="Partial Update Student Profile",
+        description="Partial update — identical to PUT, all fields are optional.",
         request=StudentProfileSerializer,
         responses={200: StudentProfileSerializer},
-        examples=[
-            OpenApiExample(
-                "Update Profile",
-                value={
-                    "full_name": "John Doe",
-                    "country": "United States",
-                    "city": "New York",
-                    "phone": "+1234567890",
-                    "education_level": "bachelor",
-                    "field_of_study": "Computer Science",
-                    "graduation_year": 2025,
-                    "gpa": 3.5
-                }
-            )
-        ]
     )
     def patch(self, request):
-        """
-        Partially update the authenticated student's profile.
-        Queue embedding regeneration in background after commit.
-        """
+        return self._update(request)
 
-        profile = self.get_profile(request.user)
+    # ------------------------------------------------------------------
+    def _update(self, request):
+        profile = _get_or_create_profile(request.user)
 
-        serializer = self.get_serializer(
+        # --- Handle CV file if present -----------------------------------
+        cv_info = None
+        if request.FILES.get("cv"):
+            try:
+                cv_info = _handle_cv_file(request.FILES["cv"], request.user)
+                bust_recommendation_cache(request.user.id)
+            except ValueError as exc:
+                return Response({"cv": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # --- Update profile fields ----------------------------------------
+        # request.data may be a QueryDict (multipart) — copy to plain dict
+        data = request.data.dict() if hasattr(request.data, "dict") else dict(request.data)
+        # Remove the file key so the serializer doesn't try to validate it
+        data.pop("cv", None)
+
+        # Handle JSON-encoded list fields that arrive as strings in multipart
+        import json
+        list_fields = [
+            "interests", "preferred_locations",
+            "preferred_industries", "preferred_roles",
+        ]
+        for field in list_fields:
+            if field in data and isinstance(data[field], str):
+                try:
+                    data[field] = json.loads(data[field])
+                except (json.JSONDecodeError, TypeError):
+                    pass  # leave as-is; serializer validation will catch invalid types
+
+        serializer = StudentProfileSerializer(
             profile,
-            data=request.data,
+            data=data,
             partial=True,
         )
-
         serializer.is_valid(raise_exception=True)
-
         serializer.save()
 
-        # Queue embedding regeneration after transaction commits
-        try:
-            transaction.on_commit(
-                lambda: generate_student_embedding_task.delay(profile.id)
-            )
-        except Exception as e:
-            # Log error but don't fail the update
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to queue student embedding regeneration: {e}")
+        # --- Queue embedding regeneration --------------------------------
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK,
-        )
+        # --- Build response ----------------------------------------------
+        response_data = StudentProfileSerializer(profile).data
+        if cv_info:
+            response_data["cv_upload"] = cv_info
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class StudentSkillsAddView(GenericAPIView):
     """
-    Add skills to the authenticated student's profile.
+    POST /api/profile/skills/add/
+    Add skills to the student profile by skill IDs.
     """
     permission_classes = [IsAuthenticated]
-    serializer_class = AddStudentSkillsSerializer
+    serializer_class   = AddStudentSkillsSerializer
 
     @extend_schema(
         tags=["Student Profiles"],
         summary="Add Skills to Profile",
-        description="Add skills to the student profile by providing a list of skill IDs",
+        description="Add one or more skills to the student profile by providing a list of skill IDs.",
         request=AddStudentSkillsSerializer,
         responses={200: StudentProfileSerializer},
-        examples=[
-            OpenApiExample(
-                "Add Skills",
-                value={"skill_ids": [1, 2, 3]}
-            )
-        ]
     )
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         skill_ids = serializer.validated_data["skill_ids"]
-        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
-
-        skills = Skill.objects.filter(id__in=skill_ids)
+        profile   = _get_or_create_profile(request.user)
+        skills    = Skill.objects.filter(id__in=skill_ids)
         profile.skills.add(*skills)
 
-        try:
-            transaction.on_commit(
-                lambda: generate_student_embedding_task.delay(profile.id)
-            )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to queue student embedding regeneration: {e}")
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
 
         return Response(
             StudentProfileSerializer(profile).data,
@@ -195,167 +226,67 @@ class StudentSkillsAddView(GenericAPIView):
         )
 
 
-class StudentPreferencesView(GenericAPIView):
+class StudentCVUploadView(GenericAPIView):
     """
-    Set internship preferences for the authenticated student.
+    POST /api/profile/cv/upload/
+    Dedicated CV-only upload endpoint (no profile fields).
+    Useful when you only want to replace the CV without touching profile data.
     """
     permission_classes = [IsAuthenticated]
-    serializer_class = StudentPreferencesSerializer
+    serializer_class   = None
+    parser_classes     = [MultiPartParser]
 
     @extend_schema(
         tags=["Student Profiles"],
-        summary="Set Internship Preferences",
-        description="Set or update internship search and matching preferences for the student profile",
-        request=StudentPreferencesSerializer,
-        responses={200: StudentProfileSerializer},
-        examples=[
-            OpenApiExample(
-                "Set Preferences",
-                value={
-                    "work_mode": "remote",
-                    "internship_type": "full_time",
-                    "paid_only": True,
-                    "min_paid": 2000,
-                    "max_paid": 5000,
-                    "preferred_countries": ["United States"],
-                    "preferred_categories": ["Software Development"]
-                }
-            )
-        ]
-    )
-    def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
-
-        if "work_mode" in data:
-            profile.internship_type = data["work_mode"]
-        if "internship_type" in data:
-            profile.work_type = data["internship_type"]
-        if "paid_only" in data:
-            if data["paid_only"]:
-                profile.compensation_preference = "paid"
-        if "min_paid" in data:
-            profile.minimum_compensation = data["min_paid"]
-        if "max_paid" in data:
-            profile.maximum_compensation = data["max_paid"]
-        if "preferred_countries" in data:
-            profile.preferred_locations = data["preferred_countries"]
-        if "preferred_categories" in data:
-            profile.preferred_industries = data["preferred_categories"]
-
-        profile.save()
-
-        try:
-            transaction.on_commit(
-                lambda: generate_student_embedding_task.delay(profile.id)
-            )
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to queue student embedding regeneration: {e}")
-
-        return Response(
-            StudentProfileSerializer(profile).data,
-            status=status.HTTP_200_OK,
-        )
-
-
-class StudentCVUploadView(
-    APIView
-):
-    """
-    Upload and process student's CV in the background.
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
-
-    parser_classes = [
-        MultiPartParser
-    ]
-
-    @extend_schema(
-        tags=["Student Profiles"],
-        summary="Upload CV",
-        description="Upload CV file (PDF/DOCX) with automatic background processing for skill extraction and semantic matching",
+        summary="Upload CV (dedicated endpoint)",
+        description=(
+            "Replace the student's CV without changing any other profile field.\n\n"
+            "For combined profile + CV upload, use `PUT /api/profile/` instead."
+        ),
         request={
-            'multipart/form-data': {
-                'type': 'object',
-                'properties': {
-                    'file': {
-                        'type': 'string',
-                        'format': 'binary',
-                        'description': 'CV file (PDF or DOCX, max 5MB)'
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "description": "PDF or DOCX file, max 5 MB",
                     }
                 },
-                'required': ['file']
+                "required": ["file"],
             }
         },
-        responses={201: {'type': 'object', 'properties': {'message': {'type': 'string'}, 'cv_id': {'type': 'integer'}, 'processing_status': {'type': 'string'}}}},
-        examples=[
-            OpenApiExample(
-                "CV Upload",
-                value={"file": "cv_document.pdf"},
-                media_type="multipart/form-data"
-            )
-        ]
-    )
-    def post(
-        self,
-        request,
-    ):
-        file = request.FILES.get(
-            "file"
-        )
-
-        if not file:
-            return Response(
-                {
-                    "detail": (
-                        "CV file is required."
-                    )
+        responses={
+            201: {
+                "type": "object",
+                "properties": {
+                    "message":           {"type": "string"},
+                    "cv_id":             {"type": "integer"},
+                    "processing_status": {"type": "string"},
                 },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Validate file extension
-        try:
-            from pathlib import Path
-            from .services.cv_extraction import validate_cv_extension
-            validate_cv_extension(file.name)
-        except ValueError as e:
+            }
+        },
+    )
+    def post(self, request):
+        cv_file = request.FILES.get("file")
+        if not cv_file:
             return Response(
-                {"detail": str(e)},
+                {"detail": "A CV file is required. Send it as form-data with key 'file'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Create CV record with PENDING status
-        cv = CV.objects.create(
-            student=request.user,
-            file=file,
-            processing_status=CV.STATUS_PENDING,
-        )
-
-        # Queue CV processing after transaction commits
         try:
-            transaction.on_commit(
-                lambda: process_cv.delay(cv.id)
-            )
-        except Exception as e:
-            # Log error but don't fail the upload
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to queue CV processing: {e}")
+            cv_info = _handle_cv_file(cv_file, request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        bust_recommendation_cache(request.user.id)
 
         return Response(
             {
-                "message": "CV uploaded successfully. Processing in background.",
-                "cv_id": cv.id,
-                "processing_status": cv.processing_status,
+                "message":           cv_info["message"],
+                "cv_id":             cv_info["cv_id"],
+                "processing_status": cv_info["processing_status"],
             },
             status=status.HTTP_201_CREATED,
         )
@@ -363,86 +294,113 @@ class StudentCVUploadView(
 
 class CVStatusView(GenericAPIView):
     """
-    Get the processing status of a CV by ID.
+    GET /api/profile/cv/<cv_id>/status/
+    Check processing status and extracted data for a specific CV by ID.
     """
-
     permission_classes = [IsAuthenticated]
-    serializer_class = None
+    serializer_class   = None
 
     @extend_schema(
         tags=["Student Profiles"],
-        summary="Check CV Processing Status by ID",
+        summary="CV Processing Status (by ID)",
         operation_id="cv_status_by_id",
-        description="Check the processing status of an uploaded CV by ID.",
+        description=(
+            "Returns the current processing status plus all extracted data once "
+            "the CV reaches COMPLETED status."
+        ),
         responses={
             200: {
-                'type': 'object',
-                'properties': {
-                    'cv_id': {'type': 'integer'},
-                    'processing_status': {'type': 'string'},
-                    'processing_error': {'type': 'string', 'nullable': True},
-                    'processed_at': {'type': 'string', 'format': 'date-time', 'nullable': True}
-                }
+                "type": "object",
+                "properties": {
+                    "cv_id":              {"type": "integer"},
+                    "processing_status":  {"type": "string",
+                                          "enum": ["PENDING","PROCESSING","COMPLETED","FAILED"]},
+                    "processing_error":   {"type": "string",  "nullable": True},
+                    "processed_at":       {"type": "string",  "format": "date-time", "nullable": True},
+                    "message":            {"type": "string"},
+                    "extracted_skills":        {"type": "array", "items": {"type": "string"}},
+                    "extracted_education":     {"type": "array", "items": {"type": "object"}},
+                    "extracted_experience":    {"type": "array", "items": {"type": "object"}},
+                    "extracted_projects":      {"type": "array", "items": {"type": "object"}},
+                    "extracted_certifications":{"type": "array", "items": {"type": "string"}},
+                },
             },
-            404: {
-                'type': 'object',
-                'properties': {'detail': {'type': 'string'}}
-            }
-        }
+            404: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        },
     )
     def get(self, request, cv_id=None):
-        """
-        Get CV processing status.
-        """
         try:
             if cv_id is not None:
                 cv = CV.objects.get(id=cv_id, student=request.user)
             else:
-                cv = CV.objects.filter(student=request.user).order_by("-created_at").first()
+                cv = (
+                    CV.objects
+                    .filter(student=request.user)
+                    .order_by("-created_at")
+                    .first()
+                )
                 if not cv:
                     raise CV.DoesNotExist()
         except CV.DoesNotExist:
-            return Response(
-                {"detail": "CV not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": "CV not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(
-            {
-                "cv_id": cv.id,
-                "processing_status": cv.processing_status,
-                "processing_error": cv.processing_error,
-                "processed_at": cv.processed_at,
-            },
-            status=status.HTTP_200_OK,
-        )
+        data = {
+            "cv_id":             cv.id,
+            "processing_status": cv.processing_status,
+            "processing_error":  cv.processing_error,
+            "processed_at":      cv.processed_at,
+            "extracted_skills":         cv.extracted_skills        or [],
+            "extracted_education":      cv.extracted_education     or [],
+            "extracted_experience":     cv.extracted_experience    or [],
+            "extracted_projects":       cv.extracted_projects      or [],
+            "extracted_certifications": cv.extracted_certifications or [],
+        }
+
+        if cv.processing_status == CV.STATUS_PENDING:
+            data["message"] = "CV is queued for processing. Check back in a few seconds."
+        elif cv.processing_status == CV.STATUS_PROCESSING:
+            data["message"] = "CV is currently being processed. Check back shortly."
+        elif cv.processing_status == CV.STATUS_COMPLETED:
+            data["message"] = (
+                f"CV processed successfully. "
+                f"{len(data['extracted_skills'])} skills extracted."
+            )
+        elif cv.processing_status == CV.STATUS_FAILED:
+            data["message"] = "CV processing failed. Please re-upload your CV."
+
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class CVStatusLatestView(CVStatusView):
     """
-    Get the processing status of the latest uploaded CV.
+    GET /api/profile/cv/status/
+    Check processing status of the most recently uploaded CV.
     """
 
     @extend_schema(
         tags=["Student Profiles"],
-        summary="Check Latest CV Processing Status",
+        summary="CV Processing Status (latest)",
         operation_id="cv_status_latest",
-        description="Check the background processing status of the latest uploaded CV.",
+        description="Same as the by-ID endpoint but always returns the most recent CV.",
         responses={
             200: {
-                'type': 'object',
-                'properties': {
-                    'cv_id': {'type': 'integer'},
-                    'processing_status': {'type': 'string'},
-                    'processing_error': {'type': 'string', 'nullable': True},
-                    'processed_at': {'type': 'string', 'format': 'date-time', 'nullable': True}
-                }
+                "type": "object",
+                "properties": {
+                    "cv_id":              {"type": "integer"},
+                    "processing_status":  {"type": "string",
+                                          "enum": ["PENDING","PROCESSING","COMPLETED","FAILED"]},
+                    "processing_error":   {"type": "string",  "nullable": True},
+                    "processed_at":       {"type": "string",  "format": "date-time", "nullable": True},
+                    "message":            {"type": "string"},
+                    "extracted_skills":        {"type": "array", "items": {"type": "string"}},
+                    "extracted_education":     {"type": "array", "items": {"type": "object"}},
+                    "extracted_experience":    {"type": "array", "items": {"type": "object"}},
+                    "extracted_projects":      {"type": "array", "items": {"type": "object"}},
+                    "extracted_certifications":{"type": "array", "items": {"type": "string"}},
+                },
             },
-            404: {
-                'type': 'object',
-                'properties': {'detail': {'type': 'string'}}
-            }
-        }
+            404: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        },
     )
     def get(self, request, cv_id=None):
         return super().get(request, cv_id=None)

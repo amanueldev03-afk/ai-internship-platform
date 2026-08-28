@@ -27,6 +27,10 @@ ALLOWED_HOSTS = config(
     default=["127.0.0.1", "localhost"],
 )
 
+# Allow Django test client host (used in automated checks)
+if DEBUG:
+    ALLOWED_HOSTS = list(ALLOWED_HOSTS) + ["testserver", "localhost", "127.0.0.1"]
+
 # --------------------------------------------------
 # Applications
 # --------------------------------------------------
@@ -60,6 +64,13 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.student_profiles",
     "apps.internships",
+    "apps.recommendations",
+    "apps.companies",
+    "apps.applications",
+    "apps.notifications",
+    "apps.analytics",
+    "apps.data_sources",
+    "apps.common",
 ]
 
 INSTALLED_APPS = (
@@ -134,6 +145,16 @@ import dj_database_url
 
 USE_SQLITE = False
 
+_DATABASE_URL = config("DATABASE_URL", default="")
+
+# ssl_require=True only for remote/cloud URLs (Neon, RDS, etc.)
+# Local Docker Compose URLs (localhost / 127.0.0.1) don't use SSL.
+_db_requires_ssl = (
+    "localhost" not in _DATABASE_URL
+    and "127.0.0.1" not in _DATABASE_URL
+    and "@db:" not in _DATABASE_URL  # docker-compose service name
+)
+
 if USE_SQLITE:
     DATABASES = {
         "default": {
@@ -144,9 +165,9 @@ if USE_SQLITE:
 else:
     DATABASES = {
         "default": dj_database_url.parse(
-            config("DATABASE_URL"),
+            _DATABASE_URL,
             conn_max_age=600,
-            ssl_require=True,
+            ssl_require=_db_requires_ssl,
         )
     }
 
@@ -428,6 +449,7 @@ SEMANTIC_MATCH_WEIGHT = 0.40
 PREFERENCE_MATCH_WEIGHT = 0.60
 
  
-OPENAI_API_KEY = os.getenv(
-    "OPENAI_API_KEY"
+OPENAI_API_KEY = config(
+    "OPENAI_API_KEY",
+    default=None,
 )

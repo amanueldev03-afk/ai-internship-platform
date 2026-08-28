@@ -1,9 +1,12 @@
 import json
+import logging
 
 from django.conf import settings
 from openai import OpenAI
 
 from .skill_normalization import normalize_skills
+
+logger = logging.getLogger(__name__)
 
 
 def get_openai_client():
@@ -175,19 +178,20 @@ CV:
 
 def analyze_cv_with_ai(cv_text):
     """
-    Analyze CV text using the configured AI model.
-
-    Returns None when AI analysis is unavailable.
+    Analyze CV text using OpenAI gpt-4o-mini.
+    Returns structured dict on success, None on any failure.
+    Logs all errors so failures are visible in Celery worker logs.
     """
-
     client = get_openai_client()
 
     if client is None:
+        logger.warning(
+            "OpenAI client not configured (OPENAI_API_KEY missing). "
+            "Falling back to deterministic CV parser."
+        )
         return None
 
-    prompt = build_cv_prompt(
-        cv_text
-    )
+    prompt = build_cv_prompt(cv_text)
 
     try:
         response = client.chat.completions.create(
@@ -195,25 +199,43 @@ def analyze_cv_with_ai(cv_text):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a CV analyzer. Extract structured data from CVs in JSON format."
+                    "content": (
+                        "You are a CV analyzer. "
+                        "Extract structured data from CVs in JSON format."
+                    ),
                 },
                 {
                     "role": "user",
-                    "content": prompt
-                }
+                    "content": prompt,
+                },
             ],
             response_format={"type": "json_object"},
             temperature=0.3,
+            timeout=30,
         )
 
         text = response.choices[0].message.content
 
         if not text:
+            logger.warning("OpenAI returned empty content for CV analysis.")
             return None
 
-        return json.loads(text)
+        result = json.loads(text)
+        logger.info(
+            f"OpenAI CV analysis succeeded — "
+            f"{len(result.get('skills', []))} skills, "
+            f"{len(result.get('experience', []))} experience items extracted."
+        )
+        return result
 
-    except Exception:
+    except json.JSONDecodeError as exc:
+        logger.error(f"OpenAI returned invalid JSON: {exc}")
+        return None
+    except Exception as exc:
+        logger.error(
+            f"OpenAI CV analysis failed: {type(exc).__name__}: {exc}",
+            exc_info=True,
+        )
         return None
 
 
@@ -304,46 +326,38 @@ def merge_skills(
 
 
 
-def analyze_cv_intelligently(
-    cv_text,
-    basic_analysis,
-):
+def analyze_cv_intelligently(cv_text, basic_analysis):
     """
-    Combine deterministic CV analysis
-    with AI analysis.
+    Merge deterministic CV analysis with AI analysis.
+    Always returns a valid dict — falls back to basic_analysis if AI fails.
     """
-
-    ai_result = analyze_cv_with_ai(
-        cv_text
-    )
+    ai_result = analyze_cv_with_ai(cv_text)
 
     if ai_result is None:
+        logger.info("Using deterministic CV analysis only (AI unavailable or failed).")
         return basic_analysis
 
-    ai_result = normalize_ai_result(
-        ai_result
-    )
+    ai_result = normalize_ai_result(ai_result)
 
     if ai_result is None:
+        logger.warning("AI result failed normalisation — falling back to deterministic.")
         return basic_analysis
+
+    merged_skills = normalize_skills(
+        merge_skills(basic_analysis.get("skills", []), ai_result["skills"])
+    )
+
+    logger.info(
+        f"AI + deterministic merge complete — "
+        f"{len(merged_skills)} total skills "
+        f"(AI: {len(ai_result['skills'])}, "
+        f"basic: {len(basic_analysis.get('skills', []))})."
+    )
 
     return {
-        "skills": normalize_skills(
-            merge_skills(
-                basic_analysis["skills"],
-                ai_result["skills"],
-            )
-        ),
-        "education": ai_result[
-            "education"
-        ],
-        "experience": ai_result[
-            "experience"
-        ],
-        "projects": ai_result[
-            "projects"
-        ],
-        "certifications": ai_result[
-            "certifications"
-        ],
+        "skills":         merged_skills,
+        "education":      ai_result["education"]      or basic_analysis.get("education",      []),
+        "experience":     ai_result["experience"]     or basic_analysis.get("experience",     []),
+        "projects":       ai_result["projects"]       or basic_analysis.get("projects",       []),
+        "certifications": ai_result["certifications"] or basic_analysis.get("certifications", []),
     }

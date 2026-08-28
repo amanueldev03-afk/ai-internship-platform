@@ -3,8 +3,9 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication, Recommendation
-from .services.semantic_matching import (
+from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication
+from apps.recommendations.models import Recommendation
+from apps.recommendations.services.semantic_matching import (
     build_student_text,
     build_internship_text,
     generate_embedding,
@@ -12,8 +13,8 @@ from .services.semantic_matching import (
     update_internship_embedding,
     calculate_stored_semantic_similarity,
 )
-from .services.hybrid_matching import calculate_hybrid_match
-from .services.recommendation_engine_v2 import (
+from apps.recommendations.services.hybrid_matching import calculate_hybrid_match
+from apps.recommendations.services.recommendation_engine_v2 import (
     calculate_skill_score,
     get_matched_skills,
     calculate_location_score,
@@ -382,7 +383,7 @@ class InternshipAPITest(TestCase):
         profile.skills.add(self.skill)
         
         self.client.force_authenticate(user=student)
-        response = self.client.get('/api/internships/recommendations/')
+        response = self.client.get('/api/recommendations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
@@ -704,7 +705,7 @@ class RecommendationEngineV2Test(TestCase):
 
     def test_build_student_text_with_cv(self):
         """Test build_student_text incorporates student CV details"""
-        from apps.internships.services.semantic_matching import build_student_text
+        from apps.recommendations.services.semantic_matching import build_student_text
         from apps.student_profiles.models import StudentCV
         StudentCV.objects.create(
             student=self.user,
@@ -923,7 +924,7 @@ class RecommendationFeedbackAPITest(TestCase):
     def test_recommendation_history_list(self):
         """Test listing recommendation history"""
         self.client.force_authenticate(user=self.student)
-        response = self.client.get('/api/internships/recommendations/history/')
+        response = self.client.get('/api/recommendations/history/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsInstance(response.data, list)
 
@@ -931,7 +932,7 @@ class RecommendationFeedbackAPITest(TestCase):
         """Test marking recommendation as viewed"""
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
-            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            f'/api/recommendations/{self.internship.id}/feedback/',
             {'action': 'view'}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -942,7 +943,7 @@ class RecommendationFeedbackAPITest(TestCase):
         """Test marking recommendation as saved"""
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
-            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            f'/api/recommendations/{self.internship.id}/feedback/',
             {'action': 'save'}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -953,7 +954,7 @@ class RecommendationFeedbackAPITest(TestCase):
         """Test marking recommendation as applied"""
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
-            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            f'/api/recommendations/{self.internship.id}/feedback/',
             {'action': 'apply'}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -964,7 +965,7 @@ class RecommendationFeedbackAPITest(TestCase):
         """Test marking recommendation as ignored"""
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
-            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            f'/api/recommendations/{self.internship.id}/feedback/',
             {'action': 'ignore'}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -975,7 +976,7 @@ class RecommendationFeedbackAPITest(TestCase):
         """Test feedback for non-existent recommendation"""
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
-            '/api/internships/recommendations/99999/feedback/',
+            '/api/recommendations/99999/feedback/',
             {'action': 'view'}
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
