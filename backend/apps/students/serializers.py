@@ -243,6 +243,56 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class StudentMeSerializer(serializers.ModelSerializer):
+    """
+    Phase 3 Task 3.1 — personal info + education for the authenticated
+    student (Sections 5.3.1–5.3.2), exposed at ``GET/PATCH /api/students/me/``.
+
+    ``education_level``, ``current_year`` and ``field_of_study`` are restricted
+    to fixed choice lists so the AI matching engine (Section 3.11.1) only ever
+    sees canonical values instead of free-text noise.
+    """
+
+    education_level = serializers.ChoiceField(
+        choices=StudentProfile.EDUCATION_LEVEL_CHOICES,
+        allow_blank=True,
+        required=False,
+        help_text="Level of education (fixed choice list).",
+    )
+    current_year = serializers.ChoiceField(
+        choices=StudentProfile.CURRENT_YEAR_CHOICES,
+        allow_blank=True,
+        required=False,
+        help_text="Current academic year or status (fixed choice list).",
+    )
+    field_of_study = serializers.ChoiceField(
+        choices=StudentProfile.FIELD_OF_STUDY_CHOICES,
+        allow_blank=True,
+        required=False,
+        help_text="Field of study (fixed choice list).",
+    )
+
+    class Meta:
+        model = StudentProfile
+        fields = [
+            "id",
+            # Personal info (Section 5.3.1)
+            "phone",
+            "country",
+            "city",
+            "date_of_birth",
+            "bio",
+            # Education (Section 5.3.2)
+            "education_level",
+            "current_year",
+            "field_of_study",
+            "university",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
 class StudentCVSerializer(serializers.ModelSerializer):
 
     class Meta:

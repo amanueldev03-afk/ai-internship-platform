@@ -9,9 +9,11 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_spectacular.utils import extend_schema
 
 from apps.internships.models import Skill
+from apps.internships.permissions import IsStudent
 from .models import StudentProfile, CV
 from .serializers import (
     StudentProfileSerializer,
+    StudentMeSerializer,
     AddStudentSkillsSerializer,
 )
 from .tasks import process_cv, generate_student_embedding_task
@@ -191,6 +193,87 @@ class StudentProfileView(GenericAPIView):
             response_data["cv_upload"] = cv_info
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class StudentMeView(GenericAPIView):
+    """
+    Phase 3 Task 3.1 — Student Profile Module (Section 5.3).
+
+    GET   /api/students/me/   — personal info + education (Sections 5.3.1–5.3.2).
+    PATCH /api/students/me/   — partial update of personal/education fields.
+
+    ``education_level``, ``current_year`` and ``field_of_study`` are validated
+    against fixed choice lists so the AI matching engine (Section 3.11.1) never
+    receives free-text noise it cannot match.
+    """
+
+    permission_classes = [IsStudent]
+    serializer_class = StudentMeSerializer
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def _get_profile(self, request):
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Get My Profile (personal info + education)",
+        description=(
+            "Return the authenticated student's personal information and "
+            "education (Sections 5.3.1-5.3.2)."
+        ),
+        responses={200: StudentMeSerializer},
+    )
+    def get(self, request):
+        profile = self._get_profile(request)
+        return Response(
+            StudentMeSerializer(profile).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Update My Profile (personal info + education)",
+        description=(
+            "Partially update the authenticated student's personal information "
+            "and education. `education_level`, `current_year` and "
+            "`field_of_study` must be values from their fixed choice lists; an "
+            "invalid value returns 400 so the AI engine only sees canonical data."
+        ),
+        request=StudentMeSerializer,
+        responses={200: StudentMeSerializer},
+    )
+    def patch(self, request):
+        return self._update(request)
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Update My Profile (full)",
+        description="Full update — behaves like PATCH (all fields optional).",
+        request=StudentMeSerializer,
+        responses={200: StudentMeSerializer},
+    )
+    def put(self, request):
+        return self._update(request)
+
+    def _update(self, request):
+        profile = self._get_profile(request)
+        serializer = StudentMeSerializer(
+            profile,
+            data=request.data if isinstance(request.data, dict) else dict(request.data),
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        # Keep the AI matching inputs (Section 3.11.1) in sync.
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(
+            StudentMeSerializer(profile).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class StudentSkillsAddView(GenericAPIView):

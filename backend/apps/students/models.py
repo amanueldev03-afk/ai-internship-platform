@@ -21,6 +21,48 @@ class StudentProfile(TimeStampedModel):
         ("other", "Other"),
     ]
 
+    # Fixed choice lists (Section 5.3 / 3.11.1): the AI matching engine
+    # (semantic_matching.build_student_text) consumes these fields directly,
+    # so we restrict them to canonical codes to avoid free-text noise.
+    FIELD_OF_STUDY_CHOICES = [
+        ("computer_science", "Computer Science"),
+        ("software_engineering", "Software Engineering"),
+        ("data_science", "Data Science"),
+        ("artificial_intelligence", "Artificial Intelligence"),
+        ("information_technology", "Information Technology"),
+        ("information_systems", "Information Systems"),
+        ("computer_engineering", "Computer Engineering"),
+        ("electrical_engineering", "Electrical Engineering"),
+        ("mechanical_engineering", "Mechanical Engineering"),
+        ("civil_engineering", "Civil Engineering"),
+        ("mathematics", "Mathematics"),
+        ("statistics", "Statistics"),
+        ("physics", "Physics"),
+        ("business_administration", "Business Administration"),
+        ("economics", "Economics"),
+        ("finance", "Finance"),
+        ("accounting", "Accounting"),
+        ("marketing", "Marketing"),
+        ("management", "Management"),
+        ("health_sciences", "Health Sciences"),
+        ("biology", "Biology"),
+        ("chemistry", "Chemistry"),
+        ("law", "Law"),
+        ("design", "Design"),
+        ("communications", "Communications"),
+        ("other", "Other"),
+    ]
+
+    CURRENT_YEAR_CHOICES = [
+        ("first_year", "First Year"),
+        ("second_year", "Second Year"),
+        ("third_year", "Third Year"),
+        ("fourth_year", "Fourth Year"),
+        ("final_year", "Final Year"),
+        ("graduate", "Graduate"),
+        ("other", "Other"),
+    ]
+
     INTERNSHIP_TYPE_CHOICES = [
         ("remote", "Remote"),
         ("onsite", "On-site"),
@@ -94,9 +136,20 @@ class StudentProfile(TimeStampedModel):
         blank=True,
     )
 
+    current_year = models.CharField(
+        max_length=20,
+        choices=CURRENT_YEAR_CHOICES,
+        blank=True,
+        help_text="Current academic year or status (fixed choice list).",
+    )
+
     field_of_study = models.CharField(
         max_length=150,
         blank=True,
+        help_text=(
+            "Field of study code. The API validates against "
+            "FIELD_OF_STUDY_CHOICES so the AI engine only sees canonical values."
+        ),
     )
 
     university = models.CharField(

@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     StudentProfileView,
+    StudentMeView,
     StudentSkillsAddView,
     StudentCVUploadView,
     CVStatusView,
@@ -9,6 +10,16 @@ from .views import (
 )
 
 urlpatterns = [
+    # ----------------------------------------------------------------
+    # Phase 3 Task 3.1 — /api/students/me/
+    # personal info + education (Sections 5.3.1-5.3.2)
+    # ----------------------------------------------------------------
+    path(
+        "me/",
+        StudentMeView.as_view(),
+        name="student-me",
+    ),
+
     # ----------------------------------------------------------------
     # Profile — GET (retrieve) / PUT / PATCH (update + optional CV)
     # POST is intentionally removed: always update, never create separately.

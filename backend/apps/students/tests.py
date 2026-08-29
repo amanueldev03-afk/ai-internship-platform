@@ -466,3 +466,108 @@ class SkillsAndInterestsModelTest(TestCase):
         self.assertTrue(CareerInterest.objects.filter(id=interest_id).exists())
 
 
+class Phase3StudentMeAPITest(TestCase):
+    """
+    Phase 3 Task 3.1 — `GET/PATCH /api/students/me/`.
+    Personal info + education (Sections 5.3.1-5.3.2) with education fields
+    validated against fixed choice lists (Section 3.11.1).
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='phase3_student@example.com',
+            username='phase3student',
+            password='testpass123',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+
+    def test_get_me_returns_personal_info_and_education(self):
+        self.profile.phone = '+251911223344'
+        self.profile.country = 'Ethiopia'
+        self.profile.city = 'Addis Ababa'
+        self.profile.education_level = 'bachelor'
+        self.profile.current_year = 'third_year'
+        self.profile.field_of_study = 'computer_science'
+        self.profile.university = 'Addis Ababa University'
+        self.profile.save()
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/students/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['phone'], '+251911223344')
+        self.assertEqual(response.data['country'], 'Ethiopia')
+        self.assertEqual(response.data['city'], 'Addis Ababa')
+        self.assertEqual(response.data['education_level'], 'bachelor')
+        self.assertEqual(response.data['current_year'], 'third_year')
+        self.assertEqual(response.data['field_of_study'], 'computer_science')
+        self.assertEqual(response.data['university'], 'Addis Ababa University')
+
+    def test_patch_valid_persists_and_get_reflects_immediately(self):
+        self.client.force_authenticate(user=self.user)
+        patch_response = self.client.patch('/api/students/me/', {
+            'bio': 'Backend developer interested in AI research.',
+            'education_level': 'master',
+            'current_year': 'first_year',
+            'field_of_study': 'artificial_intelligence',
+            'university': 'MIT',
+        }, format='json')
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+
+        get_response = self.client.get('/api/students/me/')
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_response.data['education_level'], 'master')
+        self.assertEqual(get_response.data['current_year'], 'first_year')
+        self.assertEqual(get_response.data['field_of_study'], 'artificial_intelligence')
+        self.assertEqual(get_response.data['university'], 'MIT')
+
+        # Persisted at the model level too
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.education_level, 'master')
+        self.assertEqual(self.profile.current_year, 'first_year')
+        self.assertEqual(self.profile.field_of_study, 'artificial_intelligence')
+
+    def test_patch_invalid_education_level_returns_400(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch('/api/students/me/', {
+            'education_level': 'some_fake_level',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('education_level', response.data)
+
+    def test_patch_invalid_current_year_returns_400(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch('/api/students/me/', {
+            'current_year': 'sophomore-extra',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('current_year', response.data)
+
+    def test_patch_invalid_field_of_study_returns_400(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch('/api/students/me/', {
+            'field_of_study': 'Quantum Basket Weaving',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('field_of_study', response.data)
+
+    def test_me_endpoint_requires_student_role(self):
+        """
+        RBAC (Task 2.6): an admin JWT must NOT access the student `me` endpoint.
+        """
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        admin = User.objects.create_user(
+            email='phase3_admin@example.com',
+            username='phase3admin',
+            password='testpass123',
+            role=User.Role.ADMIN,
+            is_staff=True,
+        )
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.get('/api/students/me/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+

@@ -56,6 +56,39 @@ Phase 2 delivers the complete student authentication lifecycle — registration,
 
 ---
 
+## Phase 3 — Student Profile Module (Section 5.3)
+
+### Task 3.1 — Profile CRUD endpoints (`/api/students/me/`)
+
+`GET` / `PATCH` `/api/students/me/` returns and updates the authenticated
+student's **personal info** (Section 5.3.1) and **education** (Section 5.3.2),
+backed by `StudentProfile` (the canonical profile consumed by the AI matching
+engine in Section 3.11.1 / `semantic_matching.build_student_text`).
+
+| Method | Action |
+|--------|--------|
+| `GET` | Return my personal info + education. |
+| `PATCH`/`PUT` | Partially update my personal info + education. |
+
+**Business logic — fixed choice lists (Section 3.11.1).** The profile fields
+feed directly into the AI matching inputs, so `education_level`, `current_year`
+and `field_of_study` are validated against fixed choice lists (`EDUCATION_LEVEL_CHOICES`,
+`CURRENT_YEAR_CHOICES`, `FIELD_OF_STUDY_CHOICES` on `StudentProfile`). This
+guarantees the AI engine never sees free-text noise it cannot match.
+
+**Check:** PATCH with an invalid `education_level` choice → `400`; a valid PATCH
+persists and a subsequent `GET` reflects it immediately.
+
+Access is restricted to `IsStudent` (RBAC from Task 2.6): an admin JWT receives
+`403`.
+
+> Note: a `current_year` field (fixed canonical codes) was added to
+> `StudentProfile` (migration `0015`) to support Section 5.3.2. The legacy
+> catch-all `PUT /api/profile/` serializer remains permissive; the fixed
+> choice validation is enforced at the `me/` endpoint boundary.
+
+---
+
 ## Entity Relationship Diagram (Figure 3.1)
 
 ```mermaid
