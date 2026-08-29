@@ -34,6 +34,13 @@ if DEBUG:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + \
         ["testserver", "localhost", "127.0.0.1"]
 
+# Base URL of the backend used to build absolute verification/reset links
+# (e.g. http://localhost:8000 in local dev). Override in deployment.
+SITE_BASE_URL = config(
+    "SITE_BASE_URL",
+    default="http://localhost:8000",
+).rstrip("/")
+
 # --------------------------------------------------
 # Applications
 # --------------------------------------------------
@@ -253,7 +260,9 @@ REST_FRAMEWORK = {
     ),
 
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",
+        # Authenticated by default (Task 2.4); public endpoints opt out with
+        # an explicit AllowAny override (e.g. auth / verification / schema).
+        "rest_framework.permissions.IsAuthenticated",
     ),
 
     "DEFAULT_RENDERER_CLASSES": (

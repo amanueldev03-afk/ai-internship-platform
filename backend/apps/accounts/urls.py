@@ -10,6 +10,7 @@ from .views import (
     LogoutView,
     CurrentUserView,
     EmailVerificationView,
+    EmailVerificationLinkView,
     ResendVerificationView,
     ForgotPasswordView,
     ResetPasswordView,
@@ -52,6 +53,11 @@ urlpatterns = [
         "verify-email/",
         EmailVerificationView.as_view(),
         name="verify-email",
+    ),
+    path(
+        "verify-email/<str:uid>/<str:token>/",
+        EmailVerificationLinkView.as_view(),
+        name="verify-email-link",
     ),
     path(
         "resend-verification/",

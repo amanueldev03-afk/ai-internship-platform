@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer
+from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer, LoginSerializer
 from .serializers import ( 
     EmailVerificationSerializer,
     StudentRegistrationSerializer,
@@ -57,8 +57,9 @@ class StudentRegistrationView(generics.CreateAPIView):
             OpenApiExample(
                 "Student Registration",
                 value={
+                    "full_name": "Student Name",
                     "email": "student@example.com",
-                    "username": "student_username",
+                    "phone": "+1234567890",
                     "password": "SecurePassword123!",
                     "password_confirm": "SecurePassword123!"
                 }
@@ -77,6 +78,10 @@ class StudentRegistrationView(generics.CreateAPIView):
 
         user = serializer.save()
 
+        full_name = " ".join(
+            filter(None, [user.first_name, user.last_name])
+        )
+
         return Response(
             {
                 "message": (
@@ -88,6 +93,7 @@ class StudentRegistrationView(generics.CreateAPIView):
                     "id": user.id,
                     "email": user.email,
                     "username": user.username,
+                    "full_name": full_name,
                 },
             },
             status=status.HTTP_201_CREATED,
@@ -222,6 +228,109 @@ class StudentLoginView(TokenObtainPairView):
     serializer_class = StudentTokenObtainPairSerializer
 
 
+class LoginView(APIView):
+    """
+    Unified login (Task 2.3 / Figure 5.1).
+
+    ``POST /api/auth/login/``
+
+    Verifies credentials and account state, then issues access + refresh
+    tokens with the user's ``role`` embedded in the claims.
+
+    Returns:
+      * ``200`` with tokens on success
+      * ``401`` on invalid email/password
+      * ``403`` when the account is inactive / email not verified
+    """
+
+    permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Unified Login",
+        description=(
+            "Authenticate with email and password. Returns JWT access/refresh "
+            "tokens with the user's role embedded in the claims for routing."
+        ),
+        request=LoginSerializer,
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'access': {'type': 'string'},
+                    'refresh': {'type': 'string'},
+                    'user': {
+                        'type': 'object',
+                        'properties': {
+                            'id': {'type': 'integer'},
+                            'email': {'type': 'string'},
+                            'role': {'type': 'string'},
+                        }
+                    }
+                }
+            },
+            401: {
+                'type': 'object',
+                'properties': {
+                    'detail': {'type': 'string'}
+                }
+            },
+            403: {
+                'type': 'object',
+                'properties': {
+                    'detail': {'type': 'string'}
+                }
+            },
+        },
+        examples=[
+            OpenApiExample(
+                "Login",
+                value={
+                    "email": "student@example.com",
+                    "password": "SecurePassword123!",
+                },
+            )
+        ]
+    )
+    def post(self, request):
+
+        serializer = self.serializer_class(data=request.data)
+
+        if not serializer.is_valid():
+            # Map the serializer outcome to the correct status code.
+            if getattr(serializer, "outcome", "invalid") == "inactive":
+                return Response(
+                    {
+                        "detail": (
+                            "Please verify your email "
+                            "before logging in."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            return Response(
+                serializer.errors,
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        user = serializer.validated_data["user"]
+
+        return Response(
+            {
+                "access": serializer.validated_data["access"],
+                "refresh": serializer.validated_data["refresh"],
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "username": user.username,
+                    "role": user.role,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class EmailVerificationView(GenericAPIView):
     """
     Verify a student's email address.
@@ -264,6 +373,66 @@ class EmailVerificationView(GenericAPIView):
         return Response(
             {
                 "message": "Email verified successfully."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class EmailVerificationLinkView(GenericAPIView):
+    """
+    Verify a student's email address via a GET link (Task 2.2).
+
+    Endpoint: ``GET /api/auth/verify-email/<uid>/<token>/``
+
+    Decodes the signed token, checks expiry, and flips the account to
+    ``is_active=True``. A token may only be used once — reusing it fails
+    with 400.
+    """
+
+    permission_classes = [AllowAny]
+    serializer_class = EmailVerificationSerializer
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Verify Email via Link",
+        description=(
+            "Verify user email and activate the account using the UID and "
+            "verification token embedded in the emailed link. Single-use."
+        ),
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            },
+            400: {
+                'type': 'object',
+                'properties': {
+                    'detail': {'type': 'string'}
+                }
+            },
+        },
+    )
+    def get(self, request, uid, token):
+
+        serializer = self.get_serializer(
+            data={
+                "uid": uid,
+                "token": token,
+            }
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Email verified successfully. "
+                           "Your account is now active."
             },
             status=status.HTTP_200_OK,
         )
@@ -417,6 +586,116 @@ class ResetPasswordView(GenericAPIView):
             {
                 "message":
                 "Password reset successfully."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetView(GenericAPIView):
+    """
+    Request a password reset email (Task 2.5).
+
+    ``POST /api/auth/password-reset/`` with ``{"email": ...}``.
+    """
+
+    permission_classes = [AllowAny]
+    serializer_class = ForgotPasswordSerializer
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Request Password Reset",
+        description="Request a password reset email (Task 2.5)",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
+        examples=[
+            OpenApiExample(
+                "Request Password Reset",
+                value={"email": "user@example.com"},
+            )
+        ]
+    )
+    def post(self, request):
+
+        serializer = self.get_serializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save()
+
+        return Response(
+            {
+                "message": (
+                    "If an account exists with this "
+                    "email, a password reset link "
+                    "has been sent."
+                )
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PasswordResetConfirmView(GenericAPIView):
+    """
+    Confirm a password reset (Task 2.5).
+
+    ``POST /api/auth/password-reset-confirm/<uid>/<token>/`` with
+    ``{"password": ..., "password_confirm": ...}`` in the body.
+    """
+
+    permission_classes = [AllowAny]
+    serializer_class = ResetPasswordSerializer
+
+    @extend_schema(
+        tags=["Authentication"],
+        summary="Confirm Password Reset",
+        description="Set a new password using the reset token (Task 2.5)",
+        responses={
+            200: {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'}
+                }
+            }
+        },
+        examples=[
+            OpenApiExample(
+                "Confirm Password Reset",
+                value={
+                    "password": "newSecurePassword123",
+                    "password_confirm": "newSecurePassword123",
+                },
+            )
+        ]
+    )
+    def post(self, request, uid, token):
+
+        data = request.data.copy()
+        data["uid"] = uid
+        data["token"] = token
+
+        serializer = self.get_serializer(
+            data=data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Password reset successfully."
             },
             status=status.HTTP_200_OK,
         )

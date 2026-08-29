@@ -25,16 +25,24 @@ def validate_email_address(email):
         return False
 
 
-def create_student_user(*, email, username, password):
+def create_student_user(*, email, password, username=None,
+                        first_name="", last_name=""):
     """
-    Create a new student account.
+    Create a new student account (Task 2.1).
+
+    The user starts INACTIVE (``is_active=False``) and unverified until they
+    confirm their email address. The empty ``StudentProfile`` shell is created
+    by the registration flow (see ``StudentRegistrationSerializer``).
     """
 
     user = User.objects.create(
         email=email,
         username=username,
+        first_name=first_name,
+        last_name=last_name,
         role=User.Role.STUDENT,
-        is_active=True,
+        # Account is dormant until the email is verified.
+        is_active=False,
         is_email_verified=False,
     )
 
@@ -57,8 +65,8 @@ def send_verification_email(user):
     )
 
     verification_url = (
-        f"http://localhost:3000/verify-email/"
-        f"{uid}/{token}/"
+        f"{settings.SITE_BASE_URL}"
+        f"/api/auth/verify-email/{uid}/{token}/"
     )
 
     try:
@@ -101,8 +109,8 @@ def send_password_reset_email(user):
     )
 
     reset_url = (
-        f"http://localhost:3000/reset-password/"
-        f"{uid}/{token}/"
+        f"{settings.SITE_BASE_URL}"
+        f"/api/auth/password-reset-confirm/{uid}/{token}/"
     )
 
     send_mail(

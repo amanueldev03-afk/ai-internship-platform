@@ -30,6 +30,32 @@ Phase 1 establishes the relational domain model for the entire AI Internship Pla
 
 ---
 
+## Phase 2 — Authentication Module (Complete)
+
+Phase 2 delivers the complete student authentication lifecycle — registration, email verification, login with JWT, token refresh, password reset — plus role-based access control (RBAC) so students and admins are kept strictly separated.
+
+### Task coverage
+
+| Task | Endpoint(s) | Behavior |
+|------|-------------|----------|
+| 2.1 Registration | `POST /api/auth/register/` | `full_name`, `email`, `password`, optional `phone`. Creates an **inactive** user + empty `StudentProfile` shell and emails a verification link. Duplicate email → `400`. |
+| 2.2 Email verification | `GET /api/auth/verify-email/<uid>/<token>/` | Decodes the token, checks expiry, flips `is_email_verified=True` **and** `is_active=True`. Single-use (a redeemed token → `400`). |
+| 2.3 Login & JWT | `POST /api/auth/login/` | Valid creds → `200` with access + refresh tokens, **`role` embedded in the JWT claims** for front-end routing. Wrong password → `401`; unverified/inactive account → `403` "verify your email". |
+| 2.4 Refresh & protected routes | `POST /api/auth/refresh/` | Issues new access (+ rotated refresh) token. Global `IsAuthenticated` default; public endpoints opt out with `AllowAny`. No token → `401`. |
+| 2.5 Password reset | `POST /api/auth/password-reset/` → `POST /api/auth/password-reset-confirm/<uid>/<token>/` | Full round trip via emailed link; new password set, old password invalidated. |
+| 2.6 RBAC | `apps.internships.permissions.IsStudent` / `IsAdminRole` | Custom permissions checking `request.user.role`. Student JWT → admin endpoint → `403` (Section 6.7.2). |
+
+> Note: the split endpoints (`/api/accounts/student/login/`, `/api/accounts/admin/login/`, `/api/accounts/forgot-password/`, `/api/accounts/reset-password/`, `/api/accounts/verify-email/`, `/api/accounts/token/refresh/`) remain available for backward compatibility.
+
+### Global security defaults
+
+- `DEFAULT_PERMISSION_CLASSES = IsAuthenticated` (all views locked by default; public auth/verification/docs views declared `AllowAny`).
+- `DEFAULT_AUTHENTICATION_CLASSES = JWTAuthentication`.
+- API docs (`/api/schema/`, `/api/docs/`, `/api/redoc/`) kept public.
+- Tests run against `config.settings.test` (throttling disabled, in-memory email outbox).
+
+---
+
 ## Entity Relationship Diagram (Figure 3.1)
 
 ```mermaid
@@ -208,7 +234,24 @@ With the backend running:
 
 ## Testing and Verification
 
-### 1. Phase 1 Definition of Done Master Validator
+### 1. Phase 2 Definition of Done Master Validator
+
+Runs Table 6.1's **TC001–TC003** as automated API round-trips covering registration, email verification, login, token refresh, password reset, and RBAC cross-role blocking:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_phase2_definition_of_done.py
+```
+
+Expected: `PHASE 2 DEFINITION OF DONE: ALL 3 CHECKS PASSED!`
+
+> Tests run against `config.settings.test` (throttling disabled, in-memory email outbox) so they do not touch a live database or send real emails:
+> ```bash
+> python manage.py test apps.accounts --settings=config.settings.test
+> ```
+
+### 2. Phase 1 Definition of Done Master Validator
 
 Runs full automated verification of all 13 entities, cascade deletion behaviors, unique constraints, `graph_models` output, and a clean database migration from scratch:
 
@@ -218,7 +261,7 @@ source .venv/bin/activate
 python scripts/verify_phase1_definition_of_done.py
 ```
 
-### 2. Django Unit Tests
+### 3. Django Unit Tests
 
 Run unit tests across all applications:
 
@@ -228,7 +271,7 @@ source .venv/bin/activate
 python manage.py test --noinput apps.accounts apps.companies apps.data_sources apps.applications apps.recommendations apps.students apps.internships apps.common
 ```
 
-### 3. Individual Phase 1 Verification Scripts
+### 4. Individual Phase 1 Verification Scripts
 
 ```bash
 python scripts/verify_user_student.py               # Task 1.2

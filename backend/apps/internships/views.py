@@ -38,7 +38,7 @@ from .serializers import (
     AdminCollectionLogSerializer,
 )
 from .filters import InternshipFilter
-from .permissions import IsAdminRole
+from .permissions import IsAdminRole, IsStudent
 from .services.collector import collect_source
 from .tasks import collect_internships_from_source
 from .pagination import (
@@ -1036,8 +1036,10 @@ class StudentDashboardView(GenericAPIView):
     activity for the authenticated student.
     """
 
+    # Role-based access control (Task 2.6): only students may view the
+    # student dashboard; an admin JWT receives 403.
     permission_classes = [
-        IsAuthenticated,
+        IsStudent,
     ]
 
     @extend_schema(

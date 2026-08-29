@@ -20,35 +20,70 @@ User = get_user_model()
 
 class StudentRegistrationSerializer(serializers.ModelSerializer):
     """
-    Serializer for student registration.
+    Serializer for student registration (Task 2.1).
+
+    Accepts ``full_name``, ``email``, ``password`` and optionally ``phone``.
+    The account is created INACTIVE and only activated once the email is
+    verified.
     """
 
+    full_name = serializers.CharField(
+        write_only=True,
+        required=False,
+    )
+
     password = serializers.CharField(
-    write_only=True,
-)
+        write_only=True,
+    )
 
     password_confirm = serializers.CharField(
         write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+
+    phone = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+
+    username = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
     )
 
     class Meta:
         model = User
 
         fields = (
+            "full_name",
             "email",
             "username",
+            "phone",
             "password",
             "password_confirm",
         )
 
     def validate(self, attrs):
 
-        if attrs["password"] != attrs["password_confirm"]:
+        # Full name is required per Task 2.1 (`full_name`).
+        full_name = attrs.get("full_name", "").strip()
+        if not full_name:
             raise serializers.ValidationError(
                 {
-                    "password_confirm": "Passwords do not match."
+                    "full_name": "Full name is required."
                 }
             )
+
+        if attrs.get("password_confirm"):
+            if attrs["password"] != attrs["password_confirm"]:
+                raise serializers.ValidationError(
+                    {
+                        "password_confirm": "Passwords do not match."
+                    }
+                )
 
         validate_password(
             attrs["password"],
@@ -70,13 +105,32 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
 
-        validated_data.pop("password_confirm")
+        from django.db import transaction
+        from apps.students.models import StudentProfile
 
-        user = create_student_user(
-            email=validated_data["email"],
-            username=validated_data["username"],
-            password=validated_data["password"],
-        )
+        validated_data.pop("password_confirm", None)
+
+        full_name = validated_data.pop("full_name", "").strip()
+        parts = full_name.split(maxsplit=1)
+        first_name = parts[0] if parts else ""
+        last_name = parts[1] if len(parts) > 1 else ""
+
+        phone = validated_data.pop("phone", "")
+
+        with transaction.atomic():
+            user = create_student_user(
+                email=validated_data["email"],
+                username=validated_data.get("username") or None,
+                password=validated_data["password"],
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            # Empty StudentProfile shell (Task 2.1 — completes during onboarding).
+            StudentProfile.objects.create(
+                user=user,
+                phone=phone,
+            )
 
         email_sent = send_verification_email(user)
         
@@ -169,6 +223,15 @@ class EmailVerificationSerializer(serializers.Serializer):
                 }
             )
 
+        # Single-use enforcement (Task 2.2): a token that has already been
+        # redeemed must not succeed again.
+        if user.is_email_verified:
+            raise serializers.ValidationError(
+                {
+                    "detail": "Email has already been verified."
+                }
+            )
+
         if not email_verification_token.check_token(
             user,
             attrs["token"],
@@ -189,8 +252,11 @@ class EmailVerificationSerializer(serializers.Serializer):
 
         user.is_email_verified = True
 
+        # Activate the account now that the email is confirmed (Task 2.1).
+        user.is_active = True
+
         user.save(
-            update_fields=["is_email_verified"]
+            update_fields=["is_email_verified", "is_active"]
         )
 
         return user
@@ -230,13 +296,6 @@ class ResendVerificationSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {
                     "email": "This email is already verified."
-                }
-            )
-
-        if not user.is_active:
-            raise serializers.ValidationError(
-                {
-                    "email": "This account is inactive."
                 }
             )
 
