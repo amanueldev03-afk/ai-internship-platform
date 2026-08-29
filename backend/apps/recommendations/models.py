@@ -212,7 +212,7 @@ class Recommendation(TimeStampedModel):
     def __str__(self):
         return (
             f"{self.student} → {self.internship} "
-            f"(score: {self.overall_score})"
+            f"(score: {float(self.overall_score):.2f})"
         )
 
     class Meta:
