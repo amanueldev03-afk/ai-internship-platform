@@ -12,6 +12,7 @@ def health_check(request):
 
 
 urlpatterns = [
+    path("admin/", admin.site.urls),
     # Health check — used by frontend to verify backend connectivity
     path("api/health/", health_check, name="health-check"),
     # API Documentation
@@ -40,7 +41,11 @@ urlpatterns = [
          ),
     path(
         "api/profile/",
-        include("apps.student_profiles.urls"),
+        include("apps.students.urls"),
+    ),
+    path(
+        "api/students/",
+        include("apps.students.urls"),
     ),
     path(
         "api/internships/",

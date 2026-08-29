@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Internship,
+    InternshipSkill,
     InternshipSource,
     InternshipCollectionLog,
     SavedInternship,
@@ -287,20 +288,43 @@ class InternshipApplicationAdmin(admin.ModelAdmin):
 class SkillAdmin(admin.ModelAdmin):
     list_display = [
         "name",
+        "category",
         "is_active",
         "created_at",
         "updated_at",
     ]
 
     list_filter = [
+        "category",
         "is_active",
     ]
 
     search_fields = [
         "name",
+        "category",
         "description",
     ]
 
     ordering = [
         "name",
+    ]
+
+
+@admin.register(InternshipSkill)
+class InternshipSkillAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "internship",
+        "skill",
+        "created_at",
+    ]
+
+    search_fields = [
+        "internship__title",
+        "skill__name",
+    ]
+
+    readonly_fields = [
+        "created_at",
+        "updated_at",
     ]

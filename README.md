@@ -4,17 +4,54 @@ An AI-powered platform that matches students with internships using semantic emb
 
 ---
 
-## Phase 0 — Infrastructure Skeleton (Current)
+## Phase 1 — Domain Models & Data Architecture (Complete)
 
-Phase 0 is pure plumbing. No business logic yet. The goal: every developer can run the full stack locally with one command before any feature is built.
+Phase 1 establishes the relational domain model for the entire AI Internship Platform, implementing all 13 core entities, cascade delete behaviors, uniqueness constraints, and the AI matching score breakdown.
 
-### What Phase 0 delivers
+### What Phase 1 delivers
 
-- Django backend boots with all 10 apps registered
-- React frontend boots and talks to the backend (`GET /api/health/` returns `{"status": "OK"}`)
-- PostgreSQL (with pgvector) and Redis are containerised and ready
-- AI engine package imports cleanly with no errors
-- All three integration branches exist on GitHub (`backend-dev`, `frontend-dev`, `ai-dev`)
+- **All 13 Section 3.6 Domain Entities** fully implemented and registered in Django ORM:
+  1. `User` (`accounts`): Custom user with `AbstractBaseUser` + `PermissionsMixin` and email authentication.
+  2. `Student` (`students`): Profile model composed with `User` (`OneToOneField`, cascade on user delete).
+  3. `Skill` (`internships`): Shared skill catalogue with categorization.
+  4. `StudentSkill` (`students`): Student-to-Skill M2M with proficiency ratings and duplicate prevention constraints.
+  5. `CareerInterest` (`students`): Career interest catalogue.
+  6. `StudentInterest` (`students`): Student-to-Interest M2M with duplicate prevention constraints.
+  7. `Company` (`companies`): Organization entity with industry and website metadata.
+  8. `DataSource` (`data_sources`): Ingestion origin entity (`api`, `rss`, `career_site`) with JSON configs.
+  9. `Internship` (`internships`): Internship opportunities with company/data_source links, work mode, salary, and SHA-256 deduplication hashes.
+  10. `InternshipSkill` (`internships`): Internship-to-Skill requirement links with unique constraints.
+  11. `Recommendation` (`recommendations`): Score breakdown (`overall_score`, `skill_score`, `education_score`, `interest_score`, `experience_score`, `location_score`, `work_mode_score`), JSON explanations, and "latest wins" upsert pattern.
+  12. `SavedInternship` (`internships`): Student-to-Internship bookmarks.
+  13. `ApplicationHistory` (`applications`): External application click tracking with timestamps.
+- **Unified `apps.students` architecture**: Consolidates all student profile, CV analysis, skills, and interest logic under `backend/apps/students/`.
+- **Entity Relationship Model (Figure 3.1)** validated via `django-extensions` `graph_models`.
+- **Clean Migration History**: Full migration sequence runs cleanly from scratch (`0001` to latest) on an empty PostgreSQL database with pgvector.
+
+---
+
+## Entity Relationship Diagram (Figure 3.1)
+
+```mermaid
+erDiagram
+    Student }|..|{ User : "user"
+    StudentSkill }|..|{ Student : "student"
+    StudentSkill }|..|{ Skill : "skill"
+    StudentInterest }|..|{ Student : "student"
+    StudentInterest }|..|{ CareerInterest : "interest"
+    Internship }|..|{ Company : "company"
+    Internship }|..|{ DataSource : "data_source"
+    Internship }|..|{ InternshipSource : "source"
+    Internship }|..|{ User : "verified_by"
+    InternshipSkill }|..|{ Internship : "internship"
+    InternshipSkill }|..|{ Skill : "skill"
+    Recommendation }|..|{ User : "student"
+    Recommendation }|..|{ Internship : "internship"
+    SavedInternship }|..|{ User : "student"
+    SavedInternship }|..|{ Internship : "internship"
+    ApplicationHistory }|..|{ User : "student"
+    ApplicationHistory }|..|{ Internship : "internship"
+```
 
 ---
 
@@ -25,15 +62,15 @@ ai-internship-platform/
 ├── backend/                        # Django REST Framework + AI engine
 │   ├── apps/
 │   │   ├── accounts/               # User auth, JWT, email verification
-│   │   ├── student_profiles/       # Student profile, CV upload, embeddings
+│   │   ├── students/               # Student profile, CV upload, skills, interests, embeddings
 │   │   ├── internships/            # Internship listings, skills, sources
 │   │   ├── recommendations/        # Recommendation scoring and history
-│   │   ├── applications/           # Application tracking (skeleton)
-│   │   ├── companies/              # Company profiles (skeleton)
-│   │   ├── notifications/          # Notifications (skeleton)
-│   │   ├── analytics/              # Analytics (skeleton)
-│   │   ├── data_sources/           # Internship collection pipeline (skeleton)
-│   │   └── common/                 # Shared utilities (skeleton)
+│   │   ├── applications/           # Application tracking & click history
+│   │   ├── companies/              # Company entities & admin management
+│   │   ├── data_sources/           # Ingestion sources & configs
+│   │   ├── notifications/          # Notifications
+│   │   ├── analytics/              # Analytics
+│   │   └── common/                 # Shared TimeStampedModel & utilities
 │   ├── ai_engine/                  # Standalone AI package (not a Django app)
 │   │   ├── models/                 # Dataclasses: StudentInput, InternshipInput, etc.
 │   │   ├── embeddings/             # Text → 384-dim vector (sentence-transformers)
@@ -45,16 +82,25 @@ ai-internship-platform/
 │   │   └── explanation.py          # Human-readable match explanation
 │   ├── config/                     # Django settings (base / development / production)
 │   ├── docker/postgres/init.sql    # pgvector extension setup for Docker
-│   ├── scripts/verify_ai_engine.py # Phase 0 AI verification script (15 checks)
+│   ├── scripts/                    # Phase verification test scripts
+│   │   ├── verify_phase1_definition_of_done.py  # Master Phase 1 DoD validator
+│   │   ├── verify_clean_db_migration.py         # Scratch DB migration validator
+│   │   ├── verify_task1_erd.py                  # ERD graph checker
+│   │   ├── verify_user_student.py               # Task 1.2 test suite
+│   │   ├── verify_skills_interests.py           # Task 1.3 test suite
+│   │   ├── verify_company_datasource.py         # Task 1.4 test suite
+│   │   ├── verify_internship_skills.py          # Task 1.5 test suite
+│   │   ├── verify_recommendations_applications.py # Task 1.6 test suite
+│   │   └── verify_ai_engine.py                  # AI engine validator
 │   ├── Dockerfile                  # Django container
 │   ├── manage.py
 │   └── requirements/
 │       └── base.txt
 ├── frontend/                       # Vite + React + TypeScript
 │   └── src/
-│       ├── components/             # Reusable UI components (skeleton)
+│       ├── components/             # Reusable UI components
 │       ├── pages/                  # Route-level pages
-│       │   └── HomePage.tsx        # Health check page (fetches /api/health/)
+│       │   └── HomePage.tsx        # Health check page
 │       ├── features/               # Redux slices per domain
 │       │   └── auth/authSlice.ts
 │       ├── services/api.ts         # Axios instance with JWT interceptors
@@ -133,18 +179,18 @@ cd backend && python manage.py runserver
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Backend framework | Django 6.0 + Django REST Framework |
-| Auth | JWT (SimpleJWT) + django-allauth (Google OAuth) |
-| Database | PostgreSQL 15 + pgvector (vector similarity search) |
-| Task queue | Celery + Redis |
-| AI / embeddings | sentence-transformers (all-MiniLM-L6-v2, 384-dim) |
-| CV parsing | spaCy (en_core_web_sm) + OpenAI GPT-4o-mini |
-| Frontend | Vite + React 18 + TypeScript |
-| State management | Redux Toolkit |
-| Styling | Tailwind CSS |
-| API docs | drf-spectacular (Swagger + ReDoc) |
+| Layer             | Technology                                          |
+| ----------------- | --------------------------------------------------- |
+| Backend framework | Django 6.0 + Django REST Framework                  |
+| Auth              | JWT (SimpleJWT) + django-allauth (Google OAuth)     |
+| Database          | PostgreSQL 15 + pgvector (vector similarity search) |
+| Task queue        | Celery + Redis                                      |
+| AI / embeddings   | sentence-transformers (all-MiniLM-L6-v2, 384-dim)   |
+| CV parsing        | spaCy (en_core_web_sm) + OpenAI GPT-4o-mini         |
+| Frontend          | Vite + React 18 + TypeScript                        |
+| State management  | Redux Toolkit                                       |
+| Styling           | Tailwind CSS                                        |
+| API docs          | drf-spectacular (Swagger + ReDoc)                   |
 
 ---
 
@@ -155,6 +201,44 @@ With the backend running:
 - Swagger UI: `http://localhost:8000/api/docs/`
 - ReDoc: `http://localhost:8000/api/redoc/`
 - Health check: `http://localhost:8000/api/health/`
+
+---
+
+---
+
+## Testing and Verification
+
+### 1. Phase 1 Definition of Done Master Validator
+
+Runs full automated verification of all 13 entities, cascade deletion behaviors, unique constraints, `graph_models` output, and a clean database migration from scratch:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_phase1_definition_of_done.py
+```
+
+### 2. Django Unit Tests
+
+Run unit tests across all applications:
+
+```bash
+cd backend
+source .venv/bin/activate
+python manage.py test --noinput apps.accounts apps.companies apps.data_sources apps.applications apps.recommendations apps.students apps.internships apps.common
+```
+
+### 3. Individual Phase 1 Verification Scripts
+
+```bash
+python scripts/verify_user_student.py               # Task 1.2
+python scripts/verify_skills_interests.py           # Task 1.3
+python scripts/verify_company_datasource.py         # Task 1.4
+python scripts/verify_internship_skills.py          # Task 1.5
+python scripts/verify_recommendations_applications.py # Task 1.6
+python scripts/verify_task1_erd.py                  # ERD graph check
+python scripts/verify_clean_db_migration.py         # Clean DB migration check
+```
 
 ---
 
@@ -172,12 +256,12 @@ Expected: `All 15 checks passed.`
 
 ## Branch Strategy
 
-| Branch | Purpose |
-|---|---|
-| `main` | Stable, phase-complete snapshots |
-| `backend-dev` | Backend feature work |
-| `frontend-dev` | Frontend feature work |
-| `ai-dev` | AI engine work |
+| Branch         | Purpose                          |
+| -------------- | -------------------------------- |
+| `main`         | Stable, phase-complete snapshots |
+| `backend-dev`  | Backend feature work             |
+| `frontend-dev` | Frontend feature work            |
+| `ai-dev`       | AI engine work                   |
 
 Feature branches merge into their integration branch via PR. Integration branches merge into `main` at phase completion.
 

@@ -21,11 +21,11 @@ class RecommendationResult:
 # --------------------------------------------------
 # Weights  (must sum to 1.0)
 # --------------------------------------------------
-SEMANTIC_WEIGHT   = 0.40
-SKILL_WEIGHT      = 0.25
+SEMANTIC_WEIGHT = 0.40
+SKILL_WEIGHT = 0.25
 PREFERENCE_WEIGHT = 0.20
-LOCATION_WEIGHT   = 0.10
-SALARY_WEIGHT     = 0.05
+LOCATION_WEIGHT = 0.10
+SALARY_WEIGHT = 0.05
 
 
 # --------------------------------------------------
@@ -37,7 +37,7 @@ def calculate_skill_score(student_skills, internship_skills):
     Name-based intersection.
     Returns 0.0–1.0.  If no required skills → neutral 0.5.
     """
-    student    = {s.lower().strip() for s in student_skills if s}
+    student = {s.lower().strip() for s in student_skills if s}
     internship = {s.lower().strip() for s in internship_skills if s}
 
     if not internship:
@@ -78,13 +78,16 @@ def calculate_semantic_score(profile, internship):
     40% weight.  Returns 0.0–1.0.
     Always reads the freshest stored embeddings.
     """
-    student_embedding    = _get_embedding(profile,    "embedding", update_student_embedding)
-    internship_embedding = _get_embedding(internship, "embedding", update_internship_embedding)
+    student_embedding = _get_embedding(
+        profile,    "embedding", update_student_embedding)
+    internship_embedding = _get_embedding(
+        internship, "embedding", update_internship_embedding)
 
     if not student_embedding or not internship_embedding:
         return 0.0
 
-    similarity = calculate_semantic_similarity(student_embedding, internship_embedding)
+    similarity = calculate_semantic_similarity(
+        student_embedding, internship_embedding)
     return max(0.0, min(1.0, similarity / 100.0))
 
 
@@ -105,9 +108,10 @@ def passes_hard_filters(internship, profile):
             return False
 
     # Compensation hard filter
-    comp_pref = getattr(profile, "compensation_preference", "either") or "either"
+    comp_pref = getattr(profile, "compensation_preference",
+                        "either") or "either"
     internship_comp = getattr(internship, "compensation_type", "unknown")
-    if comp_pref == "paid"   and internship_comp == "unpaid":
+    if comp_pref == "paid" and internship_comp == "unpaid":
         return False
     if comp_pref == "unpaid" and internship_comp == "paid":
         return False
@@ -140,11 +144,11 @@ def calculate_location_score(internship, profile):
     if not profile:
         return 0.5
 
-    s_country  = (getattr(profile,    "country",  "") or "").lower().strip()
-    s_city     = (getattr(profile,    "city",     "") or "").lower().strip()
-    i_country  = (getattr(internship, "country",  "") or "").lower().strip()
-    i_city     = (getattr(internship, "city",     "") or "").lower().strip()
-    i_type     = getattr(internship,  "internship_type", "") or ""
+    s_country = (getattr(profile,    "country",  "") or "").lower().strip()
+    s_city = (getattr(profile,    "city",     "") or "").lower().strip()
+    i_country = (getattr(internship, "country",  "") or "").lower().strip()
+    i_city = (getattr(internship, "city",     "") or "").lower().strip()
+    i_type = getattr(internship,  "internship_type", "") or ""
 
     pref_locs = [
         loc.lower().strip()
@@ -172,8 +176,10 @@ def calculate_salary_score(internship, profile):
     if not profile:
         return 0.5
 
-    comp_pref   = getattr(profile,    "compensation_preference", "either") or "either"
-    i_comp_type = getattr(internship, "compensation_type",       "unknown") or "unknown"
+    comp_pref = getattr(
+        profile,    "compensation_preference", "either") or "either"
+    i_comp_type = getattr(internship, "compensation_type",
+                          "unknown") or "unknown"
 
     if comp_pref == "either":
         return 1.0
@@ -207,8 +213,8 @@ def calculate_preference_score(internship, profile):
     Returns 0.0–1.0.
     """
     work_mode = calculate_work_mode_score(internship, profile)
-    location  = calculate_location_score(internship, profile)
-    salary    = calculate_salary_score(internship, profile)
+    location = calculate_location_score(internship, profile)
+    salary = calculate_salary_score(internship, profile)
     return round((work_mode + location + salary) / 3.0, 4)
 
 
@@ -218,11 +224,11 @@ def calculate_final_score(semantic, skill, preference, location, salary):
     Returns a single score in 0.0–100.0.
     """
     raw = (
-        semantic   * SEMANTIC_WEIGHT
-        + skill    * SKILL_WEIGHT
+        semantic * SEMANTIC_WEIGHT
+        + skill * SKILL_WEIGHT
         + preference * PREFERENCE_WEIGHT
         + location * LOCATION_WEIGHT
-        + salary   * SALARY_WEIGHT
+        + salary * SALARY_WEIGHT
     )
     return round(min(100.0, max(0.0, raw * 100)), 2)
 
@@ -235,9 +241,11 @@ def build_explanation(semantic, skill, preference, location, salary, matched_ski
 
     # Semantic
     if semantic >= 0.80:
-        lines.append("Your CV and profile content are highly similar to this internship.")
+        lines.append(
+            "Your CV and profile content are highly similar to this internship.")
     elif semantic >= 0.60:
-        lines.append("Your profile is semantically relevant to this internship description.")
+        lines.append(
+            "Your profile is semantically relevant to this internship description.")
     elif semantic > 0.0:
         lines.append("Partial semantic match with this internship.")
 
@@ -259,7 +267,8 @@ def build_explanation(semantic, skill, preference, location, salary, matched_ski
 
     # Location
     if location == 1.0:
-        lines.append("Location is a great match (remote or your city/country).")
+        lines.append(
+            "Location is a great match (remote or your city/country).")
     elif location == 0.75:
         lines.append("Location matches one of your preferred locations.")
     elif location == 0.5:
@@ -270,7 +279,8 @@ def build_explanation(semantic, skill, preference, location, salary, matched_ski
         lines.append("Compensation range matches your expectations.")
 
     if not lines:
-        lines.append("This internship was included based on your overall profile match.")
+        lines.append(
+            "This internship was included based on your overall profile match.")
 
     return lines
 
@@ -280,7 +290,8 @@ def build_explanation(semantic, skill, preference, location, salary, matched_ski
 # --------------------------------------------------
 
 def save_recommendation(student, internship, overall_score,
-                        semantic, skill, preference, location, salary):
+                        semantic, skill, preference, location, salary,
+                        profile=None):
     """
     Upsert a Recommendation row — update scores but preserve feedback status.
     All component scores stored as 0–100.
@@ -290,13 +301,16 @@ def save_recommendation(student, internship, overall_score,
     try:
         defaults = {
             "overall_score":    overall_score,
-            "semantic_score":   round(semantic   * 100, 2),
-            "skill_score":      round(skill      * 100, 2),
+            "semantic_score":   round(semantic * 100, 2),
+            "skill_score":      round(skill * 100, 2),
             "preference_score": round(preference * 100, 2),
-            "location_score":   round(location   * 100, 2),
-            "salary_score":     round(salary     * 100, 2),
-            "interest_score":   round(preference * 100, 2),  # alias
+            "location_score":   round(location * 100, 2),
+            "salary_score":     round(salary * 100, 2),
         }
+        if profile is not None:
+            defaults["work_mode_score"] = round(
+                calculate_work_mode_score(internship, profile) * 100, 2
+            )
 
         rec, created = Recommendation.objects.get_or_create(
             student=student,
@@ -312,7 +326,8 @@ def save_recommendation(student, internship, overall_score,
         return rec
 
     except Exception as e:
-        logger.error(f"Failed to save recommendation for internship {internship.id}: {e}")
+        logger.error(
+            f"Failed to save recommendation for internship {internship.id}: {e}")
         return None
 
 
@@ -330,7 +345,7 @@ def _get_student_skills(profile):
     user = getattr(profile, "user", None)
     if user:
         try:
-            from apps.student_profiles.models import CV as CVModel, StudentCV
+            from apps.students.models import CV as CVModel, StudentCV
 
             # Prefer newest completed CV
             completed_cv = (
@@ -375,7 +390,7 @@ def generate_recommendations(student, internships, save_to_db=True):
        5 % Salary    (compensation type + range overlap)
     """
     # Always reload the profile fresh so we never score against a stale ORM object
-    from apps.student_profiles.models import StudentProfile
+    from apps.students.models import StudentProfile
     try:
         profile = (
             StudentProfile.objects
@@ -400,8 +415,9 @@ def generate_recommendations(student, internships, save_to_db=True):
         semantic = calculate_semantic_score(profile, internship)
 
         # ---- 2. skills (25 %) ----
-        i_skills      = list(internship.required_skills.values_list("name", flat=True))
-        skill         = calculate_skill_score(student_skills, i_skills)
+        i_skills = list(
+            internship.required_skills.values_list("name", flat=True))
+        skill = calculate_skill_score(student_skills, i_skills)
         matched_skills = get_matched_skills(student_skills, i_skills)
 
         # ---- 3. preference (20 %) ----
@@ -414,7 +430,8 @@ def generate_recommendations(student, internships, save_to_db=True):
         salary = calculate_salary_score(internship, profile)
 
         # ---- final score ----
-        final_score = calculate_final_score(semantic, skill, preference, location, salary)
+        final_score = calculate_final_score(
+            semantic, skill, preference, location, salary)
 
         # ---- explanation ----
         explanation = build_explanation(
@@ -424,17 +441,17 @@ def generate_recommendations(student, internships, save_to_db=True):
 
         # ---- breakdown (0–100 per component, with weight label) ----
         score_breakdown = {
-            "semantic_score":   round(semantic   * 100, 2),
-            "skill_score":      round(skill      * 100, 2),
+            "semantic_score":   round(semantic * 100, 2),
+            "skill_score":      round(skill * 100, 2),
             "preference_score": round(preference * 100, 2),
-            "location_score":   round(location   * 100, 2),
-            "salary_score":     round(salary     * 100, 2),
+            "location_score":   round(location * 100, 2),
+            "salary_score":     round(salary * 100, 2),
             "weights": {
-                "semantic":   f"{int(SEMANTIC_WEIGHT   * 100)}%",
-                "skill":      f"{int(SKILL_WEIGHT      * 100)}%",
+                "semantic":   f"{int(SEMANTIC_WEIGHT * 100)}%",
+                "skill":      f"{int(SKILL_WEIGHT * 100)}%",
                 "preference": f"{int(PREFERENCE_WEIGHT * 100)}%",
-                "location":   f"{int(LOCATION_WEIGHT   * 100)}%",
-                "salary":     f"{int(SALARY_WEIGHT     * 100)}%",
+                "location":   f"{int(LOCATION_WEIGHT * 100)}%",
+                "salary":     f"{int(SALARY_WEIGHT * 100)}%",
             },
         }
 
@@ -442,6 +459,7 @@ def generate_recommendations(student, internships, save_to_db=True):
             save_recommendation(
                 student, internship, final_score,
                 semantic, skill, preference, location, salary,
+                profile=profile,
             )
 
         results.append(RecommendationResult(

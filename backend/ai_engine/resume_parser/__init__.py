@@ -8,7 +8,7 @@ Pipeline (mirrors business spec step 1):
   4. parse_cv_with_ai()   — OpenAI GPT-4o-mini structured extraction
   5. merge and normalize  — deduplicate skills, normalize aliases
 
-Delegates to apps.student_profiles.services.* for the heavy lifting.
+Delegates to apps.students.services.* for the heavy lifting.
 spaCy is used here for lightweight NER that runs without OpenAI.
 """
 
@@ -23,7 +23,7 @@ def extract_text(file_path: str) -> str:
     Returns empty string on failure.
     """
     try:
-        from apps.student_profiles.services.cv_extraction import extract_text_from_file
+        from apps.students.services.cv_extraction import extract_text_from_file
         return extract_text_from_file(file_path) or ""
     except ImportError:
         return _extract_text_fallback(file_path)
@@ -88,7 +88,7 @@ def parse_cv(text: str) -> ParsedCV:
         return ParsedCV(raw_text=text)
 
     try:
-        from apps.student_profiles.services.cv_analysis import analyze_cv
+        from apps.students.services.cv_analysis import analyze_cv
         result = analyze_cv(text)
     except ImportError:
         result = {}
@@ -112,10 +112,10 @@ def parse_cv_with_ai(text: str, fallback: Optional[ParsedCV] = None) -> ParsedCV
         return fallback or ParsedCV(raw_text=text)
 
     try:
-        from apps.student_profiles.services.ai_cv_analysis import (
+        from apps.students.services.ai_cv_analysis import (
             analyze_cv_intelligently,
         )
-        from apps.student_profiles.services.cv_analysis import analyze_cv
+        from apps.students.services.cv_analysis import analyze_cv
 
         basic = analyze_cv(text)
         result = analyze_cv_intelligently(text, basic)

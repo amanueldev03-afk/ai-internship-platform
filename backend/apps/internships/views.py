@@ -15,8 +15,7 @@ from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from apps.student_profiles.models import StudentCV
-from apps.student_profiles.models import StudentProfile
+from apps.students.models import StudentCV, StudentProfile
 from .tasks import generate_internship_embedding_task
 
 from .models import (

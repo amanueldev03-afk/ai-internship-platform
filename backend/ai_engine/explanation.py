@@ -34,7 +34,16 @@ def build_explanation(
             location=breakdown.location,
             salary=breakdown.salary,
             matched_skills=matched_skills,
-            internship=type("_", (), {"compensation_type": ""})(),
+            internship=type(
+                "_",
+                (),
+                {
+                    "compensation_type": (
+                        "paid" if breakdown.salary >= 0.5 else "unknown"
+                    ),
+                    "title": internship_title,
+                },
+            )(),
         )
     except ImportError:
         return _build_explanation_standalone(breakdown, matched_skills)
@@ -50,7 +59,8 @@ def _build_explanation_standalone(
     if breakdown.semantic >= 0.80:
         lines.append("Your profile is highly similar to this internship.")
     elif breakdown.semantic >= 0.60:
-        lines.append("Your profile is semantically relevant to this internship.")
+        lines.append(
+            "Your profile is semantically relevant to this internship.")
 
     if matched_skills:
         lines.append(f"Matching skills: {', '.join(matched_skills[:5])}.")

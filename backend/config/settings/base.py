@@ -1,3 +1,5 @@
+from config.celery_schedule import CELERY_BEAT_SCHEDULE
+import dj_database_url
 from pathlib import Path
 from decouple import Csv, config
 from datetime import timedelta
@@ -15,7 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
 
-DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = str(config("DEBUG", default="False")).lower() in ("true", "1", "yes", "t", "on", "debug")
 
 # Skip database checks if database is unavailable (for development)
 if DEBUG:
@@ -29,7 +31,8 @@ ALLOWED_HOSTS = config(
 
 # Allow Django test client host (used in automated checks)
 if DEBUG:
-    ALLOWED_HOSTS = list(ALLOWED_HOSTS) + ["testserver", "localhost", "127.0.0.1"]
+    ALLOWED_HOSTS = list(ALLOWED_HOSTS) + \
+        ["testserver", "localhost", "127.0.0.1"]
 
 # --------------------------------------------------
 # Applications
@@ -58,11 +61,12 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "django.contrib.sites",
+    "django_extensions",
 ]
 
 LOCAL_APPS = [
     "apps.accounts",
-    "apps.student_profiles",
+    "apps.students",
     "apps.internships",
     "apps.recommendations",
     "apps.companies",
@@ -127,7 +131,8 @@ TEMPLATES = [
 # Performance optimizations for development
 if DEBUG:
     # Disable debug toolbar if installed for better performance
-    INSTALLED_APPS = [app for app in INSTALLED_APPS if 'debug_toolbar' not in app]
+    INSTALLED_APPS = [
+        app for app in INSTALLED_APPS if 'debug_toolbar' not in app]
 
 # --------------------------------------------------
 # WSGI / ASGI
@@ -141,9 +146,8 @@ ASGI_APPLICATION = "config.asgi.application"
 # Database
 # --------------------------------------------------
 
-import dj_database_url
 
-USE_SQLITE = False
+USE_SQLITE = config("USE_SQLITE", default=False, cast=bool)
 
 _DATABASE_URL = config("DATABASE_URL", default="")
 
@@ -174,7 +178,7 @@ else:
     DATABASES["default"]["OPTIONS"] = {
         "connect_timeout": 10,
     }
-    
+
 # --------------------------------------------------
 # Password Validation
 # --------------------------------------------------
@@ -240,7 +244,7 @@ AUTH_USER_MODEL = "accounts.User"
 
 
 # --------------------------------------------------
-    # Global DRF Settings
+# Global DRF Settings
 # --------------------------------------------------
 
 REST_FRAMEWORK = {
@@ -362,7 +366,8 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
-EMAIL_BACKEND = config("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_BACKEND = config(
+    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 
 EMAIL_HOST = config("EMAIL_HOST")
 EMAIL_PORT = config("EMAIL_PORT", cast=int)
@@ -410,7 +415,6 @@ CELERY_BEAT_SCHEDULER = (
 )
 
 # Import Celery Beat schedule
-from config.celery_schedule import CELERY_BEAT_SCHEDULE
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 
@@ -448,7 +452,9 @@ SEMANTIC_MATCH_WEIGHT = 0.40
 
 PREFERENCE_MATCH_WEIGHT = 0.60
 
- 
+CV_MATCH_WEIGHT = 0.20
+
+
 OPENAI_API_KEY = config(
     "OPENAI_API_KEY",
     default=None,

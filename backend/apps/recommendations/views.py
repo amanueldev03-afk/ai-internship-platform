@@ -12,7 +12,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 
 from apps.internships.models import Internship
-from apps.student_profiles.models import StudentCV, StudentProfile, CV as CVModel
+from apps.students.models import StudentCV, StudentProfile, CV as CVModel
 
 from .models import Recommendation
 from .pagination import RecommendationPagination

@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import StudentProfile
+from .models import StudentProfile, Student, CareerInterest, StudentSkill, StudentInterest
 from apps.internships.models import Skill
 
 User = get_user_model()
@@ -144,7 +144,7 @@ class StudentProfileAPITest(TestCase):
         self.client.force_authenticate(user=self.user)
         
         # Mock the embedding task to avoid actual Celery execution
-        with patch('apps.student_profiles.views.generate_student_embedding_task.delay'):
+        with patch('apps.students.views.generate_student_embedding_task.delay'):
             response = self.client.patch('/api/profile/', {
                 'phone': '+1234567890',
                 'country': 'USA',
@@ -190,7 +190,7 @@ class StudentProfileAPITest(TestCase):
         )
         
         # Mock the task to avoid actual Celery execution in tests
-        with patch('apps.student_profiles.views.process_cv.delay'):
+        with patch('apps.students.views.process_cv.delay'):
             response = self.client.post('/api/profile/cv/upload/', {'file': cv_file})
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertIn('cv_id', response.data)
@@ -263,3 +263,206 @@ class StudentProfileAPITest(TestCase):
         self.assertIsInstance(analysis['experience'], list)
         self.assertIsInstance(analysis['projects'], list)
         self.assertIsInstance(analysis['certifications'], list)
+
+
+class StudentModelTest(TestCase):
+    """
+    Test cases for Student model (Table 3.3) and User<->Student composition (Section 3.8.4).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='student_test@example.com',
+            password='securepassword123',
+        )
+
+    def test_create_student_all_fields(self):
+        """Test creating Student with all Table 3.3 fields."""
+        from .models import Student
+        import datetime
+
+        student = Student.objects.create(
+            user=self.user,
+            education_level='bachelor',
+            field_of_study='Software Engineering',
+            university='Addis Ababa University',
+            current_year='4th Year',
+            experience_level='intermediate',
+            preferred_country='Ethiopia',
+            preferred_city='Addis Ababa',
+            work_mode='hybrid',
+            internship_type='full_time',
+            availability_start=datetime.date(2026, 9, 1),
+            availability_end=datetime.date(2027, 2, 28),
+        )
+
+        self.assertEqual(student.user, self.user)
+        self.assertEqual(self.user.student, student)
+        self.assertEqual(student.education_level, 'bachelor')
+        self.assertEqual(student.field_of_study, 'Software Engineering')
+        self.assertEqual(student.university, 'Addis Ababa University')
+        self.assertEqual(student.current_year, '4th Year')
+        self.assertEqual(student.experience_level, 'intermediate')
+        self.assertEqual(student.preferred_country, 'Ethiopia')
+        self.assertEqual(student.preferred_city, 'Addis Ababa')
+        self.assertEqual(student.work_mode, 'hybrid')
+        self.assertEqual(student.internship_type, 'full_time')
+        self.assertEqual(str(student.availability_start), '2026-09-01')
+        self.assertEqual(str(student.availability_end), '2027-02-28')
+        self.assertIsNotNone(student.created_at)
+        self.assertIsNotNone(student.updated_at)
+        self.assertEqual(str(student), 'student_test@example.com - Student')
+
+    def test_user_student_composition_cascade_delete(self):
+        """
+        User <-> Student is a composition (Section 3.8.4):
+        Deleting User must cascade-delete the Student record.
+        """
+        from .models import Student
+
+        student = Student.objects.create(
+            user=self.user,
+            university='MIT',
+            field_of_study='Computer Science',
+        )
+        student_id = student.id
+
+        # Delete User
+        self.user.delete()
+
+        # Student must be cascade deleted
+        self.assertFalse(Student.objects.filter(id=student_id).exists())
+
+    def test_delete_student_does_not_delete_user(self):
+        """
+        Deleting Student should NOT delete the User.
+        """
+        from .models import Student
+
+        student = Student.objects.create(
+            user=self.user,
+            university='Stanford',
+            field_of_study='AI',
+        )
+        student.delete()
+
+        # User must still exist
+        self.assertTrue(User.objects.filter(id=self.user.id).exists())
+
+    def test_user_student_one_to_one_uniqueness(self):
+        """
+        Each User can have only one Student record.
+        """
+        from .models import Student
+        from django.db import IntegrityError
+
+        Student.objects.create(
+            user=self.user,
+            university='MIT',
+        )
+        with self.assertRaises(IntegrityError):
+            Student.objects.create(
+                user=self.user,
+                university='Harvard',
+            )
+
+
+class SkillsAndInterestsModelTest(TestCase):
+    """
+    Test cases for Task 1.3: Skills & Interests (StudentSkill, CareerInterest, StudentInterest).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='skills_test@example.com',
+            password='securepassword123',
+        )
+        self.student = Student.objects.create(
+            user=self.user,
+            university='MIT',
+            field_of_study='Computer Science',
+        )
+        self.skill = Skill.objects.create(
+            name='Python',
+            category='Programming Languages',
+        )
+        self.interest = CareerInterest.objects.create(
+            name='AI & ML',
+            description='Artificial Intelligence and Machine Learning',
+        )
+
+    def test_student_skill_creation_and_proficiency(self):
+        """Test creating StudentSkill with proficiency."""
+        from .models import StudentSkill
+
+        student_skill = StudentSkill.objects.create(
+            student=self.student,
+            skill=self.skill,
+            proficiency=StudentSkill.Proficiency.ADVANCED,
+        )
+        self.assertEqual(student_skill.student, self.student)
+        self.assertEqual(student_skill.skill, self.skill)
+        self.assertEqual(student_skill.proficiency, 'advanced')
+        self.assertEqual(self.student.skills.count(), 1)
+        self.assertIn(self.skill, self.student.skills.all())
+
+    def test_duplicate_student_skill_raises_integrity_error(self):
+        """
+        Check: Attempting to add the same skill twice to one student raises IntegrityError.
+        Prevents inflating match scores.
+        """
+        from .models import StudentSkill
+        from django.db import IntegrityError
+
+        StudentSkill.objects.create(
+            student=self.student,
+            skill=self.skill,
+            proficiency=StudentSkill.Proficiency.BEGINNER,
+        )
+        with self.assertRaises(IntegrityError):
+            StudentSkill.objects.create(
+                student=self.student,
+                skill=self.skill,
+                proficiency=StudentSkill.Proficiency.ADVANCED,
+            )
+
+    def test_student_interest_creation_and_uniqueness(self):
+        """Test creating StudentInterest and verifying unique constraint."""
+        from .models import StudentInterest
+        from django.db import IntegrityError
+
+        student_interest = StudentInterest.objects.create(
+            student=self.student,
+            interest=self.interest,
+        )
+        self.assertEqual(self.student.interests.count(), 1)
+        self.assertIn(self.interest, self.student.interests.all())
+
+        with self.assertRaises(IntegrityError):
+            StudentInterest.objects.create(
+                student=self.student,
+                interest=self.interest,
+            )
+
+    def test_cascade_delete_student_deletes_skills_and_interests(self):
+        """
+        Deleting Student cascade-deletes StudentSkill and StudentInterest rows,
+        but preserves the catalogue Skill and CareerInterest rows.
+        """
+        from .models import StudentSkill, StudentInterest
+
+        ss = StudentSkill.objects.create(student=self.student, skill=self.skill)
+        si = StudentInterest.objects.create(student=self.student, interest=self.interest)
+        ss_id = ss.id
+        si_id = si.id
+        skill_id = self.skill.id
+        interest_id = self.interest.id
+
+        self.student.delete()
+
+        self.assertFalse(StudentSkill.objects.filter(id=ss_id).exists())
+        self.assertFalse(StudentInterest.objects.filter(id=si_id).exists())
+        self.assertTrue(Skill.objects.filter(id=skill_id).exists())
+        self.assertTrue(CareerInterest.objects.filter(id=interest_id).exists())
+
+

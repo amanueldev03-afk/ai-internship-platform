@@ -17,6 +17,13 @@ class Skill(TimeStampedModel):
         db_index=True,
     )
 
+    category = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        help_text="Skill category (e.g. Programming Languages, Frameworks, Cloud, Soft Skills).",
+    )
+
     description = models.TextField(
         blank=True,
     )
@@ -103,12 +110,14 @@ class Internship(TimeStampedModel):
     STATUS_ACTIVE = "active"
     STATUS_REJECTED = "rejected"
     STATUS_EXPIRED = "expired"
+    STATUS_REMOVED = "removed"
 
     STATUS_CHOICES = [
         (STATUS_DRAFT, "Draft"),
         (STATUS_ACTIVE, "Active"),
         (STATUS_REJECTED, "Rejected"),
         (STATUS_EXPIRED, "Expired"),
+        (STATUS_REMOVED, "Removed"),
     ]
 
     # ==========================================================
@@ -135,11 +144,80 @@ class Internship(TimeStampedModel):
         max_length=300,
     )
 
+    company = models.ForeignKey(
+        "companies.Company",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="internships",
+        help_text="Company publishing this internship (Section 3.6).",
+    )
+
+    data_source = models.ForeignKey(
+        "data_sources.DataSource",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="internships",
+        help_text="Origin data source, null for company-direct postings (Section 3.6).",
+    )
+
     organization_name = models.CharField(
         max_length=300,
     )
 
     description = models.TextField()
+
+    required_education = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Required education level (e.g. Bachelor, Master, PhD).",
+    )
+
+    required_experience = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Required experience level (e.g. Beginner, Intermediate, None).",
+    )
+
+    work_mode = models.CharField(
+        max_length=20,
+        choices=[
+            ("remote", "Remote"),
+            ("onsite", "On-site"),
+            ("hybrid", "Hybrid"),
+            ("any", "Any"),
+        ],
+        default="any",
+        blank=True,
+    )
+
+    salary = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Stipend / salary amount if specified.",
+    )
+
+    deadline = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Application closing deadline.",
+    )
+
+    posted_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Date when internship was posted by employer/source.",
+    )
+
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text="SHA-256 hash of title+company+description for duplicate detection (Task 5.x).",
+    )
 
     category = models.CharField(
         max_length=150,
@@ -272,7 +350,9 @@ class Internship(TimeStampedModel):
 
     source = models.ForeignKey(
         InternshipSource,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="internships",
     )
 
@@ -619,4 +699,33 @@ class InternshipApplication(TimeStampedModel):
         )
 
 
-# Recommendation model has been moved to apps.recommendations.models
+class InternshipSkill(TimeStampedModel):
+    """
+    Through table linking Internship and Skill (Task 1.5).
+    Enforces uniqueness on (internship, skill).
+    """
+
+    internship = models.ForeignKey(
+        Internship,
+        on_delete=models.CASCADE,
+    )
+
+    skill = models.ForeignKey(
+        Skill,
+        on_delete=models.CASCADE,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Internship Skill"
+        verbose_name_plural = "Internship Skills"
+        unique_together = [("internship", "skill")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["internship", "skill"],
+                name="unique_internship_skill",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.internship.title} - {self.skill.name}"

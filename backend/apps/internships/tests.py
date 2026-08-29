@@ -361,7 +361,7 @@ class InternshipAPITest(TestCase):
 
     def test_student_recommendations(self):
         """Test student recommendations endpoint"""
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         from apps.accounts.services import create_student_user
         
         # Create student with profile
@@ -434,7 +434,7 @@ class SemanticMatchingTest(TestCase):
             username='testuser',
             password='testpass123'
         )
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         self.profile = StudentProfile.objects.create(
             user=self.user,
             bio='Software engineering student',
@@ -541,7 +541,7 @@ class HybridMatchingTest(TestCase):
             username='testuser',
             password='testpass123'
         )
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         self.profile = StudentProfile.objects.create(
             user=self.user,
             bio='Software engineering student',
@@ -631,7 +631,7 @@ class RecommendationEngineV2Test(TestCase):
             username='testuser',
             password='testpass123'
         )
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         self.profile = StudentProfile.objects.create(
             user=self.user,
             bio='Software engineering student',
@@ -706,7 +706,7 @@ class RecommendationEngineV2Test(TestCase):
     def test_build_student_text_with_cv(self):
         """Test build_student_text incorporates student CV details"""
         from apps.recommendations.services.semantic_matching import build_student_text
-        from apps.student_profiles.models import StudentCV
+        from apps.students.models import StudentCV
         StudentCV.objects.create(
             student=self.user,
             extracted_text='Experienced Django developer with Python skills.',
@@ -719,9 +719,11 @@ class RecommendationEngineV2Test(TestCase):
     def test_build_explanation(self):
         """Test explanation building"""
         explanation = build_explanation(
-            semantic_score=0.85,
-            skill_score=0.75,
-            preference_score=0.80,
+            semantic=0.85,
+            skill=0.75,
+            preference=0.80,
+            location=0.70,
+            salary=0.60,
             matched_skills=['Python', 'Django'],
             internship=self.internship
         )
@@ -730,7 +732,7 @@ class RecommendationEngineV2Test(TestCase):
 
     def test_student_recommendations_v2(self):
         """Test student recommendations endpoint with v2 engine and score breakdown"""
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         from apps.accounts.services import create_student_user
         from rest_framework.test import APIClient
         
@@ -754,7 +756,7 @@ class RecommendationEngineV2Test(TestCase):
         
         client = APIClient()
         client.force_authenticate(user=student)
-        response = client.get('/api/internships/recommendations/')
+        response = client.get('/api/recommendations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
@@ -824,7 +826,7 @@ class RecommendationModelTest(TestCase):
             internship=self.internship,
             overall_score=85.50
         )
-        expected = f"{self.student.email} - {self.internship.title} - 85.50% - recommended"
+        expected = f"{self.student} → {self.internship} (score: 85.50)"
         self.assertEqual(str(recommendation), expected)
 
     def test_mark_viewed(self):
@@ -984,7 +986,67 @@ class RecommendationFeedbackAPITest(TestCase):
     def test_recommendation_feedback_unauthorized(self):
         """Test feedback without authentication"""
         response = self.client.post(
-            f'/api/internships/recommendations/{self.internship.id}/feedback/',
+            f'/api/recommendations/{self.internship.id}/feedback/',
             {'action': 'view'}
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class InternshipSkillModelTest(TestCase):
+    """Test cases for InternshipSkill model and Task 1.5 fields."""
+
+    def setUp(self):
+        from apps.companies.models import Company
+        from apps.data_sources.models import DataSource
+        self.company = Company.objects.create(
+            name="DeepMind Corp",
+            website="https://deepmind.google",
+            country="UK",
+            industry="AI",
+        )
+        self.data_source = DataSource.objects.create(
+            name="Tech Jobs API",
+            type="api",
+            base_url="https://api.techjobs.example.com",
+        )
+        self.skill1 = Skill.objects.create(name="PyTorch", category="ML")
+        self.skill2 = Skill.objects.create(name="JAX", category="ML")
+        self.internship = Internship.objects.create(
+            title="ML Research Intern",
+            company=self.company,
+            data_source=self.data_source,
+            organization_name="DeepMind Corp",
+            description="Deep RL research",
+            application_url="https://example.com/apply",
+            internship_type="remote",
+            work_mode="remote",
+            salary=7000.00,
+            content_hash="abc123hash",
+            status=Internship.STATUS_ACTIVE,
+        )
+
+    def test_internship_new_fields(self):
+        """Test company, data_source, work_mode, salary, content_hash fields."""
+        self.assertEqual(self.internship.company, self.company)
+        self.assertEqual(self.internship.data_source, self.data_source)
+        self.assertEqual(self.internship.work_mode, "remote")
+        self.assertEqual(float(self.internship.salary), 7000.00)
+        self.assertEqual(self.internship.content_hash, "abc123hash")
+
+    def test_internship_skills_and_reverse_relation(self):
+        """Test adding InternshipSkills and checking reverse relation count."""
+        from .models import InternshipSkill
+        is1 = InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
+        is2 = InternshipSkill.objects.create(internship=self.internship, skill=self.skill2)
+
+        self.assertEqual(self.internship.internshipskill_set.count(), 2)
+        self.assertIn("ML Research Intern - PyTorch", str(is1))
+
+    def test_duplicate_internship_skill_raises_error(self):
+        """Test unique constraint on (internship, skill)."""
+        from .models import InternshipSkill
+        from django.db import IntegrityError
+        InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
+        with self.assertRaises(IntegrityError):
+            InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
+

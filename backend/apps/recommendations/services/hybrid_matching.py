@@ -10,7 +10,7 @@ def calculate_cv_match_score(student_profile, internship):
     with internship required skills.
     """
     try:
-        from apps.student_profiles.models import StudentCV
+        from apps.students.models import StudentCV
         cv = StudentCV.objects.filter(student=student_profile.user).first()
 
         if not cv or not cv.extracted_skills:
@@ -44,7 +44,8 @@ def calculate_hybrid_match(student_profile, internship):
         return {"eligible": False, "score": 0.0}
 
     preference_score = preference_result["score"]
-    semantic_score = calculate_stored_semantic_similarity(student_profile, internship)
+    semantic_score = calculate_stored_semantic_similarity(
+        student_profile, internship)
     cv_score = calculate_cv_match_score(student_profile, internship)
 
     preference_weight = getattr(settings, "PREFERENCE_MATCH_WEIGHT", 0.4)

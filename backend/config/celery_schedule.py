@@ -34,7 +34,7 @@ CELERY_BEAT_SCHEDULE = {
     # Generate missing student embeddings
     # Runs daily at 3 AM UTC
     'generate-missing-student-embeddings': {
-        'task': 'apps.student_profiles.tasks.generate_missing_student_embeddings',
+        'task': 'apps.students.tasks.generate_missing_student_embeddings',
         'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM UTC
     },
     

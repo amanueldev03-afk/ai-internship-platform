@@ -412,3 +412,242 @@ class CV(TimeStampedModel):
 
     def __str__(self):
         return f"CV - {self.student.email}"
+
+
+class Student(TimeStampedModel):
+    """
+    Student profile entity (Table 3.3, Section 3.8.4).
+    Composition relationship with User (deleting User cascades to Student).
+    """
+
+    EDUCATION_LEVEL_CHOICES = [
+        ("high_school", "High School"),
+        ("diploma", "Diploma"),
+        ("bachelor", "Bachelor"),
+        ("master", "Master"),
+        ("phd", "PhD"),
+        ("other", "Other"),
+    ]
+
+    WORK_MODE_CHOICES = [
+        ("remote", "Remote"),
+        ("onsite", "On-site"),
+        ("hybrid", "Hybrid"),
+        ("any", "Any"),
+    ]
+
+    INTERNSHIP_TYPE_CHOICES = [
+        ("full_time", "Full-time"),
+        ("part_time", "Part-time"),
+        ("either", "Either"),
+    ]
+
+    EXPERIENCE_LEVEL_CHOICES = [
+        ("beginner", "Beginner"),
+        ("intermediate", "Intermediate"),
+        ("advanced", "Advanced"),
+    ]
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="student",
+        help_text="User account associated with this student profile (composition: deleting User deletes Student).",
+    )
+
+    education_level = models.CharField(
+        max_length=50,
+        choices=EDUCATION_LEVEL_CHOICES,
+        blank=True,
+    )
+
+    field_of_study = models.CharField(
+        max_length=150,
+        blank=True,
+    )
+
+    university = models.CharField(
+        max_length=200,
+        blank=True,
+    )
+
+    current_year = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Current academic year or status (e.g. 1st Year, 2nd Year, 3rd Year, Final Year).",
+    )
+
+    experience_level = models.CharField(
+        max_length=50,
+        choices=EXPERIENCE_LEVEL_CHOICES,
+        blank=True,
+    )
+
+    preferred_country = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    preferred_city = models.CharField(
+        max_length=100,
+        blank=True,
+    )
+
+    work_mode = models.CharField(
+        max_length=20,
+        choices=WORK_MODE_CHOICES,
+        default="any",
+        blank=True,
+    )
+
+    internship_type = models.CharField(
+        max_length=20,
+        choices=INTERNSHIP_TYPE_CHOICES,
+        default="either",
+        blank=True,
+    )
+
+    availability_start = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    availability_end = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    resume = models.FileField(
+        upload_to="student_resumes/",
+        null=True,
+        blank=True,
+    )
+
+    skills = models.ManyToManyField(
+        Skill,
+        through="StudentSkill",
+        related_name="students",
+        blank=True,
+    )
+
+    interests = models.ManyToManyField(
+        "CareerInterest",
+        through="StudentInterest",
+        related_name="students",
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Student"
+        verbose_name_plural = "Students"
+
+    def __str__(self):
+        return f"{self.user.email} - Student"
+
+
+class CareerInterest(TimeStampedModel):
+    """
+    Catalogue of career interests and domains (Task 1.3).
+    """
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+    )
+
+    description = models.TextField(
+        blank=True,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+    )
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Career Interest"
+        verbose_name_plural = "Career Interests"
+
+    def __str__(self):
+        return self.name
+
+
+class StudentSkill(TimeStampedModel):
+    """
+    Through table linking Student and Skill with proficiency level (Task 1.3).
+    Enforces uniqueness on (student, skill) to prevent duplicate score inflation.
+    """
+
+    class Proficiency(models.TextChoices):
+        BEGINNER = "beginner", "Beginner"
+        INTERMEDIATE = "intermediate", "Intermediate"
+        ADVANCED = "advanced", "Advanced"
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="student_skills",
+    )
+
+    skill = models.ForeignKey(
+        Skill,
+        on_delete=models.CASCADE,
+        related_name="student_skills",
+    )
+
+    proficiency = models.CharField(
+        max_length=20,
+        choices=Proficiency.choices,
+        default=Proficiency.BEGINNER,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Student Skill"
+        verbose_name_plural = "Student Skills"
+        unique_together = [("student", "skill")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "skill"],
+                name="unique_student_skill",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.student.user.email} - {self.skill.name} ({self.get_proficiency_display()})"
+
+
+class StudentInterest(TimeStampedModel):
+    """
+    Through table linking Student and CareerInterest (Task 1.3).
+    Enforces uniqueness on (student, interest).
+    """
+
+    student = models.ForeignKey(
+        Student,
+        on_delete=models.CASCADE,
+        related_name="student_interests",
+    )
+
+    interest = models.ForeignKey(
+        CareerInterest,
+        on_delete=models.CASCADE,
+        related_name="student_interests",
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Student Interest"
+        verbose_name_plural = "Student Interests"
+        unique_together = [("student", "interest")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "interest"],
+                name="unique_student_interest",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.student.user.email} - {self.interest.name}"

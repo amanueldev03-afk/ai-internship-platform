@@ -4,6 +4,8 @@ from django.conf import settings
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+EMBEDDING_DIMENSION = 384
+
 
 @lru_cache(maxsize=1)
 def get_embedding_model():
@@ -62,7 +64,7 @@ def build_student_text(student_profile):
     user = getattr(student_profile, "user", None)
     if user:
         try:
-            from apps.student_profiles.models import CV as CVModel, StudentCV
+            from apps.students.models import CV as CVModel, StudentCV
 
             # Prefer the newer async CV model (STATUS_COMPLETED only)
             cv_data = None
@@ -82,22 +84,28 @@ def build_student_text(student_profile):
 
             if cv_data:
                 extracted_text = getattr(cv_data, "extracted_text", "") or ""
-                extracted_skills = getattr(cv_data, "extracted_skills", []) or []
-                extracted_experience = getattr(cv_data, "extracted_experience", []) or []
-                extracted_education = getattr(cv_data, "extracted_education", []) or []
+                extracted_skills = getattr(
+                    cv_data, "extracted_skills", []) or []
+                extracted_experience = getattr(
+                    cv_data, "extracted_experience", []) or []
+                extracted_education = getattr(
+                    cv_data, "extracted_education", []) or []
 
                 if extracted_text:
                     parts.append("CV Text: " + extracted_text[:1000])
                 if extracted_skills and isinstance(extracted_skills, list):
-                    parts.append("CV Skills: " + ", ".join(str(s) for s in extracted_skills if s))
+                    parts.append("CV Skills: " + ", ".join(str(s)
+                                 for s in extracted_skills if s))
                 if extracted_experience and isinstance(extracted_experience, list):
                     exp_items = [str(e) for e in extracted_experience if e]
                     if exp_items:
-                        parts.append("CV Experience: " + "; ".join(exp_items[:5]))
+                        parts.append("CV Experience: " +
+                                     "; ".join(exp_items[:5]))
                 if extracted_education and isinstance(extracted_education, list):
                     edu_items = [str(e) for e in extracted_education if e]
                     if edu_items:
-                        parts.append("CV Education: " + "; ".join(edu_items[:3]))
+                        parts.append("CV Education: " +
+                                     "; ".join(edu_items[:3]))
         except Exception:
             pass
 
@@ -176,9 +184,6 @@ def validate_embedding(embedding):
     if not embedding:
         return False
     return len(embedding) == EMBEDDING_DIMENSION
-
-
-EMBEDDING_DIMENSION = 384
 
 
 def update_student_embedding(student_profile):

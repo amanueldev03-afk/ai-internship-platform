@@ -8,8 +8,9 @@ Tests verify:
 4. created_at does NOT change on subsequent saves.
 5. Both fields are timezone-aware datetimes.
 6. The abstract base is not itself creatable (no DB table).
-7. All 9 production models that inherit TimeStampedModel
-   have both fields available and auto-populated.
+7. All current production models that inherit TimeStampedModel have both
+   fields available and auto-populated, including the newer StudentProfile,
+   StudentCV, and CV additions.
 """
 
 import time
@@ -18,21 +19,7 @@ from django.utils import timezone
 from django.db import models
 
 from apps.common.models import TimeStampedModel
-
-
-# ---------------------------------------------------------------------------
-# Concrete test model — lives only in the test runner's DB, not production.
-# Django's test runner creates this table because it is discovered in the
-# test module. No migration needed.
-# ---------------------------------------------------------------------------
-
-class _SampleModel(TimeStampedModel):
-    """Minimal concrete subclass used purely for testing the base model."""
-    name = models.CharField(max_length=50, default="test")
-
-    class Meta:
-        # Use the common app label so Django can find it during tests.
-        app_label = "common"
+from apps.companies.models import Company
 
 
 class TimeStampedModelTest(TestCase):
@@ -43,16 +30,16 @@ class TimeStampedModelTest(TestCase):
     # ------------------------------------------------------------------
 
     def test_created_at_is_set_on_first_save(self):
-        obj = _SampleModel.objects.create(name="first")
+        obj = Company.objects.create(name="first_corp")
         self.assertIsNotNone(obj.created_at)
 
     def test_updated_at_is_set_on_first_save(self):
-        obj = _SampleModel.objects.create(name="first")
+        obj = Company.objects.create(name="first_corp_2")
         self.assertIsNotNone(obj.updated_at)
 
     def test_both_fields_populated_simultaneously_on_create(self):
         before = timezone.now()
-        obj = _SampleModel.objects.create(name="simultaneous")
+        obj = Company.objects.create(name="simultaneous_corp")
         after = timezone.now()
         self.assertGreaterEqual(obj.created_at, before)
         self.assertLessEqual(obj.created_at, after)
@@ -64,14 +51,12 @@ class TimeStampedModelTest(TestCase):
     # ------------------------------------------------------------------
 
     def test_created_at_does_not_change_on_update(self):
-        obj = _SampleModel.objects.create(name="immutable")
+        obj = Company.objects.create(name="immutable_corp")
         original_created = obj.created_at
 
-        # Small sleep ensures updated_at actually differs if the clock
-        # resolution is coarse (some CI environments).
         time.sleep(0.01)
 
-        obj.name = "changed"
+        obj.industry = "Fintech"
         obj.save()
         obj.refresh_from_db()
 
@@ -82,12 +67,12 @@ class TimeStampedModelTest(TestCase):
     # ------------------------------------------------------------------
 
     def test_updated_at_changes_on_subsequent_save(self):
-        obj = _SampleModel.objects.create(name="mutable")
+        obj = Company.objects.create(name="mutable_corp")
         first_updated = obj.updated_at
 
         time.sleep(0.01)
 
-        obj.name = "updated"
+        obj.industry = "Healthcare"
         obj.save()
         obj.refresh_from_db()
 
@@ -98,11 +83,11 @@ class TimeStampedModelTest(TestCase):
     # ------------------------------------------------------------------
 
     def test_created_at_is_timezone_aware(self):
-        obj = _SampleModel.objects.create(name="tz_aware")
+        obj = Company.objects.create(name="tz_aware_corp")
         self.assertIsNotNone(obj.created_at.tzinfo)
 
     def test_updated_at_is_timezone_aware(self):
-        obj = _SampleModel.objects.create(name="tz_aware")
+        obj = Company.objects.create(name="tz_aware_corp_2")
         self.assertIsNotNone(obj.updated_at.tzinfo)
 
     # ------------------------------------------------------------------
@@ -168,16 +153,48 @@ class TimeStampedModelTest(TestCase):
         from apps.recommendations.models import Recommendation
         self._assert_has_timestamped_fields(Recommendation)
 
+    def test_student_has_timestamp_fields(self):
+        from apps.students.models import Student
+        self._assert_has_timestamped_fields(Student)
+
+    def test_student_skill_has_timestamp_fields(self):
+        from apps.students.models import StudentSkill
+        self._assert_has_timestamped_fields(StudentSkill)
+
+    def test_career_interest_has_timestamp_fields(self):
+        from apps.students.models import CareerInterest
+        self._assert_has_timestamped_fields(CareerInterest)
+
+    def test_student_interest_has_timestamp_fields(self):
+        from apps.students.models import StudentInterest
+        self._assert_has_timestamped_fields(StudentInterest)
+
+    def test_company_has_timestamp_fields(self):
+        from apps.companies.models import Company
+        self._assert_has_timestamped_fields(Company)
+
+    def test_data_source_has_timestamp_fields(self):
+        from apps.data_sources.models import DataSource
+        self._assert_has_timestamped_fields(DataSource)
+
+    def test_application_history_has_timestamp_fields(self):
+        from apps.applications.models import ApplicationHistory
+        self._assert_has_timestamped_fields(ApplicationHistory)
+
+    def test_internship_skill_has_timestamp_fields(self):
+        from apps.internships.models import InternshipSkill
+        self._assert_has_timestamped_fields(InternshipSkill)
+
     def test_student_profile_has_timestamp_fields(self):
-        from apps.student_profiles.models import StudentProfile
+        from apps.students.models import StudentProfile
         self._assert_has_timestamped_fields(StudentProfile)
 
     def test_student_cv_has_timestamp_fields(self):
-        from apps.student_profiles.models import StudentCV
+        from apps.students.models import StudentCV
         self._assert_has_timestamped_fields(StudentCV)
 
     def test_cv_has_timestamp_fields(self):
-        from apps.student_profiles.models import CV
+        from apps.students.models import CV
         self._assert_has_timestamped_fields(CV)
 
     # ------------------------------------------------------------------
@@ -186,16 +203,24 @@ class TimeStampedModelTest(TestCase):
 
     def test_all_models_are_subclasses_of_timestamped_model(self):
         from apps.internships.models import (
-            Skill, InternshipSource, Internship,
+            Skill, InternshipSource, Internship, InternshipSkill,
             SavedInternship, InternshipApplication,
         )
         from apps.recommendations.models import Recommendation
-        from apps.student_profiles.models import StudentProfile, StudentCV, CV
+        from apps.students.models import (
+            Student, StudentSkill, CareerInterest, StudentInterest,
+            StudentProfile, StudentCV, CV,
+        )
+        from apps.companies.models import Company
+        from apps.data_sources.models import DataSource
+        from apps.applications.models import ApplicationHistory
 
         for model in (
-            Skill, InternshipSource, Internship,
+            Skill, InternshipSource, Internship, InternshipSkill,
             SavedInternship, InternshipApplication,
-            Recommendation, StudentProfile, StudentCV, CV,
+            Recommendation, Student, StudentSkill, CareerInterest, StudentInterest,
+            StudentProfile, StudentCV, CV,
+            Company, DataSource, ApplicationHistory,
         ):
             self.assertTrue(
                 issubclass(model, TimeStampedModel),

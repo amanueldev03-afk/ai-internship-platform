@@ -64,7 +64,7 @@ def get_matched_skills(
 def normalize_skill(skill: str) -> str:
     """Apply alias normalization to a single skill name."""
     try:
-        from apps.student_profiles.services.skill_normalization import (
+        from apps.students.services.skill_normalization import (
             normalize_skills,
         )
         result = normalize_skills([skill])

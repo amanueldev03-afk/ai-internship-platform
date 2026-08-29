@@ -113,6 +113,20 @@ class Recommendation(TimeStampedModel):
         help_text="Experience relevance score (0-100)",
     )
 
+    work_mode_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Work mode relevance score (0-100)",
+    )
+
+    explanation = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Match explanation dictionary or text (reasons, matched skills, highlights).",
+    )
+
     # --------------------------------------------------
     # Feedback tracking
     # --------------------------------------------------
@@ -180,6 +194,21 @@ class Recommendation(TimeStampedModel):
         self.ignored_at = timezone.now()
         self.save(update_fields=["status", "ignored_at", "updated_at"])
 
+    @classmethod
+    def upsert_recommendation(cls, student, internship, **scores_and_data):
+        """
+        Implements the 'latest wins' pattern: updates score breakdown,
+        explanation, and timestamps if a recommendation already exists for
+        (student, internship), or creates a new one.
+        """
+        defaults = {**scores_and_data}
+        obj, created = cls.objects.update_or_create(
+            student=student,
+            internship=internship,
+            defaults=defaults,
+        )
+        return obj, created
+
     def __str__(self):
         return (
             f"{self.student} → {self.internship} "
@@ -190,6 +219,7 @@ class Recommendation(TimeStampedModel):
         ordering = ["-recommendation_date"]
         verbose_name = "Recommendation"
         verbose_name_plural = "Recommendations"
+        unique_together = [("student", "internship")]
 
         constraints = [
             models.UniqueConstraint(
@@ -204,3 +234,8 @@ class Recommendation(TimeStampedModel):
             models.Index(fields=["overall_score"]),
             models.Index(fields=["recommendation_date"]),
         ]
+
+
+# Re-export SavedInternship for clean domain imports
+from apps.internships.models import SavedInternship  # noqa: E402
+
