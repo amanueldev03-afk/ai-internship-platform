@@ -95,17 +95,17 @@ class StudentProfileModelTest(TestCase):
         self.assertIn(self.skill, profile.skills.all())
 
     def test_json_fields(self):
-        """Test JSON field storage"""
+        """Test JSON field storage (excluding interests — now an M2M)."""
         profile = StudentProfile.objects.create(
             user=self.user,
-            interests=['AI', 'Machine Learning', 'Web Development'],
             preferred_locations=['New York', 'San Francisco', 'Remote'],
             preferred_industries=['Tech', 'Finance'],
             preferred_roles=['Software Engineer', 'Data Scientist']
         )
-        self.assertEqual(len(profile.interests), 3)
-        self.assertIn('AI', profile.interests)
         self.assertEqual(len(profile.preferred_locations), 3)
+        self.assertIn('New York', profile.preferred_locations)
+        self.assertEqual(len(profile.preferred_industries), 2)
+        self.assertEqual(len(profile.preferred_roles), 2)
 
     def test_willing_to_relocate(self):
         """Test willing to relocate field"""
@@ -154,11 +154,11 @@ class StudentProfileAPITest(TestCase):
             self.assertEqual(response.data['phone'], '+1234567890')
 
     def test_update_profile_with_skills(self):
-        """Test updating profile with skills"""
+        """Test updating profile (skills field is read-only via /api/profile/)."""
         self.client.force_authenticate(user=self.user)
         response = self.client.patch('/api/profile/', {
+            'phone': '+1234567890',
             'skills': [self.skill.id],
-            'interests': ['AI', 'Machine Learning']
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -182,7 +182,12 @@ class StudentProfileAPITest(TestCase):
         from io import BytesIO
         from django.core.files.uploadedfile import SimpleUploadedFile
         
-        cv_content = b"Test CV content with Python, Django skills"
+        cv_content = (
+            b"%PDF-1.4\n"
+            b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"trailer<</Root 1 0 R>>\n"
+            b"%%EOF\n"
+        )
         cv_file = SimpleUploadedFile(
             "test_cv.pdf",
             cv_content,
@@ -569,5 +574,887 @@ class Phase3StudentMeAPITest(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
         response = self.client.get('/api/students/me/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class Phase3StudentSkillsInterestsAPITest(TestCase):
+    """
+    Phase 3 Task 3.2 — `GET/POST/DELETE /api/students/me/skills/` and
+    `/interests/`. Skills and career interests are validated against the
+    Task 1.3 catalogue (Skill / CareerInterest) — no free-text input, so
+    Phase 6 matching never degrades to fuzzy string matching.
+
+    Decision: free-text is rejected with 400 (no "suggest new skill" queue).
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='phase3_skills@example.com',
+            username='phase3skills',
+            password='testpass123',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+        self.python = Skill.objects.create(name='Python', category='Programming Languages')
+        self.django = Skill.objects.create(name='Django', category='Frameworks')
+        self.ai_interest = CareerInterest.objects.create(name='AI & ML')
+        self.profile.interests.set([self.ai_interest])
+        self.client.force_authenticate(user=self.user)
+
+    # ----- Skills ----------------------------------------------------
+    def test_get_skills_empty_by_default(self):
+        response = self.client.get('/api/students/me/skills/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_post_skill_adds_to_profile(self):
+        response = self.client.post('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], 'Python')
+        self.assertEqual(set(self.profile.skills.values_list('name', flat=True)), {'Python'})
+
+    def test_post_skill_not_in_catalogue_returns_400(self):
+        """Free-text / non-catalogue skill must be rejected (400)."""
+        response = self.client.post('/api/students/me/skills/', {'skill_id': 999999}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('skill_id', response.data)
+
+    def test_post_free_text_skill_name_returns_400(self):
+        """Students must send a catalogue ID, not a skill name string."""
+        response = self.client.post('/api/students/me/skills/', {'skill_id': 'Cobol'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_skill_removes_from_profile(self):
+        self.profile.skills.add(self.python, self.django)
+        response = self.client.delete('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(set(self.profile.skills.values_list('name', flat=True)), {'Django'})
+
+    def test_delete_skill_not_in_profile_is_idempotent(self):
+        response = self.client.delete('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_get_skills_after_add(self):
+        self.profile.skills.add(self.python, self.django)
+        response = self.client.get('/api/students/me/skills/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {item['name'] for item in response.data}
+        self.assertEqual(names, {'Python', 'Django'})
+
+    # ----- Interests ----------------------------------------------------
+    def test_get_interests_returns_existing(self):
+        response = self.client.get('/api/students/me/interests/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {item['name'] for item in response.data}
+        self.assertEqual(names, {'AI & ML'})
+
+    def test_post_interest_adds_to_profile(self):
+        new_interest = CareerInterest.objects.create(name='Data Science')
+        response = self.client.post(
+            '/api/students/me/interests/', {'interest_id': new_interest.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            set(self.profile.interests.values_list('name', flat=True)),
+            {'AI & ML', 'Data Science'},
+        )
+
+    def test_post_interest_not_in_catalogue_returns_400(self):
+        response = self.client.post('/api/students/me/interests/', {'interest_id': 999999}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('interest_id', response.data)
+
+    def test_post_free_text_interest_returns_400(self):
+        response = self.client.post('/api/students/me/interests/', {'interest_id': 'Blockchain'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_interest_removes_from_profile(self):
+        response = self.client.delete(
+            '/api/students/me/interests/', {'interest_id': self.ai_interest.id}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self.profile.interests.count(), 0)
+
+    # ----- RBAC -------------------------------------------------------
+    def test_skills_endpoint_requires_student_role(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        admin = User.objects.create_user(
+            email='phase3_skills_admin@example.com',
+            username='phase3skillsadmin',
+            password='testpass123',
+            role=User.Role.ADMIN,
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=None)
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.get('/api/students/me/skills/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_interests_endpoint_requires_student_role(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        admin = User.objects.create_user(
+            email='phase3_interests_admin@example.com',
+            username='phase3interestsadmin',
+            password='testpass123',
+            role=User.Role.ADMIN,
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=None)
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.get('/api/students/me/interests/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class Phase3StudentPreferencesAPITest(TestCase):
+    """
+    Phase 3 Task 3.3 — `GET/PATCH /api/students/me/preferences/`.
+    Internship preferences: country, city, work_mode, internship_type,
+    availability_start/end.
+
+    Basic invariant: availability_end < availability_start → 400.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='phase3_prefs@example.com',
+            username='phase3prefs',
+            password='testpass123',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+        self.client.force_authenticate(user=self.user)
+
+    def test_get_preferences_returns_defaults(self):
+        response = self.client.get('/api/students/me/preferences/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['country'], '')
+        self.assertEqual(response.data['city'], '')
+        self.assertEqual(response.data['work_mode'], 'either')
+        self.assertEqual(response.data['internship_type'], 'any')
+        self.assertIsNone(response.data['availability_start'])
+        self.assertIsNone(response.data['availability_end'])
+
+    def test_patch_preferences_persists_and_get_reflects(self):
+        patch_response = self.client.patch('/api/students/me/preferences/', {
+            'country': 'Ethiopia',
+            'city': 'Addis Ababa',
+            'work_mode': 'full_time',
+            'internship_type': 'remote',
+            'availability_start': '2026-09-01',
+            'availability_end': '2026-12-31',
+        }, format='json')
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_response.data['country'], 'Ethiopia')
+        self.assertEqual(patch_response.data['city'], 'Addis Ababa')
+        self.assertEqual(patch_response.data['work_mode'], 'full_time')
+        self.assertEqual(patch_response.data['internship_type'], 'remote')
+        self.assertEqual(patch_response.data['availability_start'], '2026-09-01')
+        self.assertEqual(patch_response.data['availability_end'], '2026-12-31')
+
+        # Persisted at the model level (work_mode → StudentProfile.work_type)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.country, 'Ethiopia')
+        self.assertEqual(self.profile.city, 'Addis Ababa')
+        self.assertEqual(self.profile.work_type, 'full_time')
+        self.assertEqual(self.profile.internship_type, 'remote')
+        self.assertEqual(str(self.profile.availability_start), '2026-09-01')
+        self.assertEqual(str(self.profile.availability_end), '2026-12-31')
+
+        # GET reflects immediately
+        get_response = self.client.get('/api/students/me/preferences/')
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_response.data['work_mode'], 'full_time')
+        self.assertEqual(get_response.data['availability_end'], '2026-12-31')
+
+    def test_patch_availability_end_before_start_returns_400(self):
+        response = self.client.patch('/api/students/me/preferences/', {
+            'availability_start': '2026-12-31',
+            'availability_end': '2026-09-01',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('availability_end', response.data)
+
+    def test_patch_availability_equal_dates_is_valid(self):
+        response = self.client.patch('/api/students/me/preferences/', {
+            'availability_start': '2026-09-01',
+            'availability_end': '2026-09-01',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['availability_start'], '2026-09-01')
+        self.assertEqual(response.data['availability_end'], '2026-09-01')
+
+    def test_patch_invalid_work_mode_returns_400(self):
+        response = self.client.patch('/api/students/me/preferences/', {
+            'work_mode': 'gig',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('work_mode', response.data)
+
+    def test_patch_invalid_internship_type_returns_400(self):
+        response = self.client.patch('/api/students/me/preferences/', {
+            'internship_type': 'teleport',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('internship_type', response.data)
+
+    def test_preferences_endpoint_requires_student_role(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        admin = User.objects.create_user(
+            email='phase3_prefs_admin@example.com',
+            username='phase3prefsadmin',
+            password='testpass123',
+            role=User.Role.ADMIN,
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=None)
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self.client.patch('/api/students/me/preferences/', {
+            'city': 'Addis Ababa',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class Phase3ResumeUploadAPITest(TestCase):
+    """
+    Phase 3 Task 3.4 — `POST /api/students/me/resume/` (Section 5.3.6).
+
+    Accepts genuine PDF/DOCX only (≤ 5 MB). MIME type is validated by content
+    sniffing (Section 7.6.5): a .exe renamed to .pdf must be rejected.
+    On success the file is stored, `StudentProfile.resume` points to it, and
+    the resume-parsing Celery task (`process_cv`) is queued.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='phase3_resume@example.com',
+            username='phase3resume',
+            password='testpass123',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+        self.client.force_authenticate(user=self.user)
+
+    @staticmethod
+    def _pdf_bytes():
+        return (
+            b"%PDF-1.4\n"
+            b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"trailer<</Root 1 0 R>>\n"
+            b"%%EOF\n"
+        )
+
+    @staticmethod
+    def _docx_bytes():
+        from io import BytesIO
+        import zipfile
+
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(
+                "[Content_Types].xml",
+                b'<?xml version="1.0"?><Types xmlns="http://schemas'
+                b'.openxmlformats.org/package/2006/content-types"/>',
+            )
+            archive.writestr(
+                "word/document.xml",
+                b'<?xml version="1.0"?><w:document xmlns:w="http://schema'
+                b's.openxmlformats.org/wordprocessingml/2006/main"/>',
+            )
+        return buffer.getvalue()
+
+    def _upload(self, content, filename='resume.pdf'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        resume = SimpleUploadedFile(filename, content)
+        return self.client.post(
+            '/api/students/me/resume/', {'file': resume})
+
+    def test_upload_valid_pdf_stored_and_task_queued(self):
+        from unittest.mock import patch
+        from .models import CV
+
+        # The resume-parsing task and the embedding task are queued via
+        # ``transaction.on_commit`` (they must only fire once the upload's
+        # transaction commits), so we capture + execute the pending commit
+        # callbacks and assert the parsing task was dispatched.
+        with patch('apps.students.views.parse_resume.delay') as delay:
+            with patch('apps.students.tasks.generate_student_embedding_task.delay'):
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self._upload(self._pdf_bytes(), 'resume.pdf')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['processing_status'], CV.STATUS_PENDING)
+        self.assertIn('cv_id', response.data)
+        self.assertIn('resume_url', response.data)
+
+        # A CV record was created and the resume-parsing task was queued.
+        cv = CV.objects.get(id=response.data['cv_id'])
+        self.assertEqual(cv.student, self.user)
+        self.assertEqual(cv.processing_status, CV.STATUS_PENDING)
+        delay.assert_called_once_with(self.user.id)
+
+        # student.resume points to the stored object.
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.resume)
+        self.assertEqual(self.profile.resume.name, cv.file.name)
+
+    def test_upload_valid_docx_accepted(self):
+        from unittest.mock import patch
+
+        with patch('apps.students.views.parse_resume.delay'), \
+             patch('apps.students.tasks.generate_student_embedding_task.delay'):
+            response = self._upload(
+                self._docx_bytes(), 'resume.docx')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.resume.name.endswith('.docx'))
+
+    def test_exe_renamed_to_pdf_rejected(self):
+        """A Windows executable disguised as .pdf must be rejected (400)."""
+        exe_bytes = (
+            b"MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00"
+            b"\xb8\x00\x00\x00\x00\x00\x00\x00\x40\x00\x00\x00"
+            b"It's a PE, not a PDF."
+        )
+        response = self._upload(exe_bytes, 'malware.pdf')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', response.data)
+
+    def test_non_matching_content_extension_rejected(self):
+        """A real DOCX zip renamed to .pdf is rejected (content ≠ extension)."""
+        response = self._upload(self._docx_bytes(), 'actually.docx.pdf')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_zip_that_is_not_docx_rejected(self):
+        """A ZIP with PK magic but no OOXML word/ tree is not a DOCX → 400."""
+        from io import BytesIO
+        import zipfile
+
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("hello.txt", b"just a plain zip file")
+        response = self._upload(buffer.getvalue(), 'resume.docx')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_plain_text_as_pdf_rejected(self):
+        response = self._upload(b'not a pdf at all', 'resume.pdf')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_oversize_file_rejected(self):
+        big = self._pdf_bytes() + b'x' * (5 * 1024 * 1024 + 1024)
+        response = self._upload(big, 'resume.pdf')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_unallowed_extension_rejected(self):
+        response = self._upload(self._pdf_bytes(), 'resume.exe')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_missing_file_returns_400(self):
+        # The endpoint only accepts multipart form-data, so a multipart request
+        # with no file is how a client reaches the missing-file case.
+        response = self.client.post(
+            '/api/students/me/resume/', {}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_get_resume_status(self):
+        from unittest.mock import patch
+
+        self.assertEqual(self.client.get('/api/students/me/resume/').data[
+            'has_resume'], False)
+        with patch('apps.students.tasks.generate_student_embedding_task.delay'), \
+             patch('apps.students.views.parse_resume.delay'):
+            self._upload(self._pdf_bytes(), 'resume.pdf')
+        response = self.client.get('/api/students/me/resume/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['has_resume'])
+        self.assertIsNotNone(response.data['resume_url'])
+        self.assertEqual(response.data['processing_status'], 'PENDING')
+
+    def test_resume_endpoint_requires_student_role(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        admin = User.objects.create_user(
+            email='phase3_resume_admin@example.com',
+            username='phase3resumeadmin',
+            password='testpass123',
+            role=User.Role.ADMIN,
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=None)
+        token = str(RefreshToken.for_user(admin).access_token)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = self._upload(self._pdf_bytes(), 'resume.pdf')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class Phase3ResumeParsingTaskTest(TestCase):
+    """
+    Phase 3 Task 3.5 — async resume parsing via the ``parse_resume`` Celery
+    task (Section 5.3.6 / Figure 5.2).
+
+    On a successful upload the endpoint queues ``parse_resume.delay(student_id)``.
+    Tests run with ``CELERY_TASK_ALWAYS_EAGER=True`` (config.settings.test) so
+    the task executes synchronously — confirming it ran by observing the
+    ``StudentProfile.resume_parsed=True`` DB flag.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='phase3_parse@example.com',
+            username='phase3parse',
+            password='testpass123',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+        self.client.force_authenticate(user=self.user)
+
+    @staticmethod
+    def _pdf_bytes():
+        """
+        Build a real, parseable PDF with extractable text using pypdf's writer
+        (pypdf is already a dependency). Content-sniffing accepts it and the
+        eager parse_resume task can actually extract text from it.
+        """
+        from io import BytesIO
+        from pypdf import PdfWriter
+        from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+
+        w = PdfWriter()
+        page = w.add_blank_page(width=612, height=792)
+
+        stream = DecodedStreamObject()
+        stream.set_data(
+            b"BT /F1 24 Tf 100 700 Td "
+            b"(Python Django resume with solid web development skills) Tj ET"
+        )
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({
+                NameObject("/F1"): DictionaryObject({
+                    NameObject("/Type"): NameObject("/Font"),
+                    NameObject("/Subtype"): NameObject("/Type1"),
+                    NameObject("/BaseFont"): NameObject("/Helvetica"),
+                })
+            })
+        })
+        page[NameObject("/Contents")] = w._add_object(stream)
+
+        buf = BytesIO()
+        w.write(buf)
+        return buf.getvalue()
+
+    def test_upload_queues_and_runs_parse_resume_in_eager_mode(self):
+        """
+        Upload a valid PDF, then (with eager mode on) confirm the task ran by
+        checking that ``StudentProfile.resume_parsed`` was set to True.
+        """
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.students.tasks import parse_resume
+
+        # The broker is not wired until Phase 5, so eager execution is simulated
+        # here: the queued ``parse_resume`` task is run synchronously (exactly
+        # what ``CELERY_TASK_ALWAYS_EAGER=True`` does) via the on_commit hook,
+        # then we assert the resume_parsed DB flag reflects the completed run.
+        # The side-effectful embedding + skill-sync steps are stubbed (they are
+        # non-fatal in the pipeline, but slow / require external services).
+        with patch('apps.students.tasks.regenerate_student_embedding', return_value=None), \
+             patch('apps.students.tasks.generate_student_embedding_task.delay'), \
+             patch('apps.students.views.parse_resume.delay',
+                   side_effect=lambda sid: parse_resume.run(sid)):
+            with self.captureOnCommitCallbacks(execute=True):
+                resume = SimpleUploadedFile('resume.pdf', self._pdf_bytes())
+                response = self.client.post(
+                    '/api/students/me/resume/', {'file': resume})
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Task ran → the resume_parsed flag is now set.
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.resume_parsed)
+        self.assertIsNotNone(self.profile.resume_parsed_at)
+        # And the created CV reached COMPLETED.
+        from .models import CV
+        cv = CV.objects.filter(student=self.user).order_by("-created_at").first()
+        self.assertIsNotNone(cv)
+        self.assertEqual(cv.processing_status, 'COMPLETED')
+
+    def test_parse_resume_task_sets_flag_directly(self):
+        """
+        Directly invoke ``parse_resume`` (as the eager worker would) and assert
+        it runs end-to-end, setting resume_parsed=True and marking the CV done.
+        """
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import CV
+
+        cv = CV.objects.create(
+            student=self.user,
+            file=SimpleUploadedFile('resume.pdf', self._pdf_bytes()),
+            processing_status=CV.STATUS_PENDING,
+        )
+
+        from apps.students.tasks import parse_resume
+        with patch('apps.students.tasks.regenerate_student_embedding', return_value=None):
+            result = parse_resume.run(self.user.id)
+
+        self.assertEqual(result['status'], 'completed')
+        self.assertTrue(result['resume_parsed'])
+        self.assertEqual(result['cv_id'], cv.id)
+
+        cv.refresh_from_db()
+        self.assertEqual(cv.processing_status, CV.STATUS_COMPLETED)
+        self.assertTrue(cv.extracted_text)
+        self.profile.refresh_from_db()
+        self.assertTrue(self.profile.resume_parsed)
+        self.assertIsNotNone(self.profile.resume_parsed_at)
+
+
+class ProfileCompletionTest(TestCase):
+    """
+    Phase 3 Task 3.6 — profile completion indicator (Sections 3.9.1 / 3.9.2).
+
+    The completion percentage is based on how many of six sections are filled:
+    {personal, education, >=1 skill, >=1 interest, preferences, resume}.
+    Each section counts equally (1 of 6 → ~16.7%), so percentages climb in
+    predictable steps: 0, 17, 33, 50, 67, 83, 100.
+    """
+
+    def setUp(self):
+        self.skill = Skill.objects.create(name="Python")
+        self.interest = CareerInterest.objects.create(name="Software Development")
+        if not hasattr(self, "_user_seq"):
+            self._user_seq = 0
+
+    def _profile(self):
+        self._user_seq += 1
+        user = User.objects.create_user(
+            email=f"completion{self._user_seq}@example.com",
+            username=f"completion{self._user_seq}",
+            password="testpass123",
+            role=User.Role.STUDENT,
+        )
+        return StudentProfile.objects.create(user=user)
+
+    @staticmethod
+    def _fill_personal(p):
+        p.phone = "111-222-3333"
+
+    @staticmethod
+    def _fill_education(p):
+        p.education_level = "bachelor"
+
+    @staticmethod
+    def _fill_preferences(p):
+        p.work_type = "full_time"
+
+    @staticmethod
+    def _fill_resume(p):
+        p.resume.name = "student_resumes/dummy.pdf"
+
+    def _assert_percent(self, profile, expected):
+        from .services.profile_completion import compute_profile_completion
+        result = compute_profile_completion(profile)
+        self.assertEqual(result["percent"], expected)
+
+    def test_empty_profile_is_0_percent(self):
+        from .services.profile_completion import compute_profile_completion
+        p = self._profile()
+        self._assert_percent(p, 0)
+        self.assertFalse(any(compute_profile_completion(p)["sections"].values()))
+
+    def test_each_section_individually_counts_one_sixth(self):
+        """Filling only ONE section → 17% (16.7% rounded)."""
+        from .services.profile_completion import compute_profile_completion
+
+        cases = {
+            "personal":    lambda p: self._fill_personal(p),
+            "education":   lambda p: self._fill_education(p),
+            "skills":      lambda p: p.skills.add(self.skill),
+            "interests":   lambda p: p.interests.add(self.interest),
+            "preferences": lambda p: self._fill_preferences(p),
+            "resume":      lambda p: self._fill_resume(p),
+        }
+        for name, fill in cases.items():
+            p = self._profile()
+            fill(p)
+            p.save()
+            result = compute_profile_completion(p)
+            self.assertEqual(result["percent"], 17, msg=f"section={name}")
+            self.assertTrue(result["sections"][name], msg=f"section={name}")
+
+    def test_filling_all_sections_is_100_percent(self):
+        p = self._profile()
+        self._fill_personal(p)
+        self._fill_education(p)
+        p.skills.add(self.skill)
+        p.interests.add(self.interest)
+        self._fill_preferences(p)
+        self._fill_resume(p)
+        p.save()
+        self._assert_percent(p, 100)
+
+    def test_incremental_fill_increases_percentage_predictably(self):
+        """Filling one section at a time yields 17, 33, 50, 67, 83, 100."""
+        p = self._profile()
+
+        self._fill_personal(p)
+        p.save()
+        self._assert_percent(p, 17)
+
+        self._fill_education(p)
+        p.save()
+        self._assert_percent(p, 33)
+
+        p.skills.add(self.skill)
+        self._assert_percent(p, 50)
+
+        p.interests.add(self.interest)
+        self._assert_percent(p, 67)
+
+        self._fill_preferences(p)
+        p.save()
+        self._assert_percent(p, 83)
+
+        self._fill_resume(p)
+        p.save()
+        self._assert_percent(p, 100)
+
+    def test_preference_defaults_do_not_count_as_filled(self):
+        """
+        Preference fields that ship with a non-empty default (work_type=either,
+        internship_type=any) must NOT count as "filled" until a real choice is
+        made, so a profile left at defaults stays predictable.
+        """
+        from .services.profile_completion import _preferences_complete
+        p = self._profile()
+        self.assertFalse(_preferences_complete(p))
+        p.work_type = "full_time"
+        self.assertTrue(_preferences_complete(p))
+
+    def test_completion_exposed_in_me_endpoint(self):
+        from rest_framework.test import APIClient
+        client = APIClient()
+        user = User.objects.create_user(
+            email="completion_me@example.com",
+            username="completionme",
+            password="testpass123",
+            role=User.Role.STUDENT,
+        )
+        profile = StudentProfile.objects.create(user=user)
+        client.force_authenticate(user=user)
+        resp = client.get("/api/students/me/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["completion"]["percent"], 0)
+        # Fill one section and confirm the percentage rises via the API.
+        profile.field_of_study = "computer_science"
+        profile.save()
+        resp = client.get("/api/students/me/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["completion"]["percent"], 17)
+
+    def test_completion_exposed_in_full_profile_endpoint(self):
+        from rest_framework.test import APIClient
+        client = APIClient()
+        user = User.objects.create_user(
+            email="completion_profile@example.com",
+            username="completionprofile",
+            password="testpass123",
+            role=User.Role.STUDENT,
+        )
+        StudentProfile.objects.create(user=user)
+        client.force_authenticate(user=user)
+        resp = client.get("/api/profile/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("completion", resp.data)
+        self.assertIn("percent", resp.data["completion"])
+        self.assertIn("sections", resp.data["completion"])
+        self.assertEqual(resp.data["completion"]["percent"], 0)
+
+
+class Phase3DefinitionOfDoneTest(TestCase):
+    """
+    Phase 3 Definition of Done (Table 6.1, TC004-TC005).
+
+    A student can complete a full profile end-to-end via the API (personal,
+    education, skills, interests, preferences), upload a resume, and watch the
+    profile-completion percentage update live.
+    """
+
+    def setUp(self):
+        self.skill = Skill.objects.create(name="Python")
+        self.skill2 = Skill.objects.create(name="Django")
+        self.interest = CareerInterest.objects.create(name="Software Development")
+
+    def _register_verify_login(self, email):
+        """Full register -> verify-email -> login round trip, returns (client, token)."""
+        import re
+        from django.core import mail
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        self.assertEqual(client.post('/api/auth/register/', {
+            'full_name': 'Test Student',
+            'email': email,
+            'password': 'SecurePass123!',
+        }, format='json').status_code, 201)
+
+        user = User.objects.get(email=email)
+        match = re.search(
+            r'/api/auth/verify-email/(?P<uid>[^/]+)/(?P<token>[^/]+)/',
+            mail.outbox[0].body,
+        )
+        self.assertIsNotNone(match)
+        self.client.get(
+            f"/api/auth/verify-email/{match.group('uid')}/{match.group('token')}/"
+        )
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+        login = client.post('/api/auth/login/', {
+            'email': email,
+            'password': 'SecurePass123!',
+        }, format='json')
+        self.assertEqual(login.status_code, 200)
+        token = login.data['access']
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        return client, user
+
+    def test_tc004_full_profile_completion_via_api(self):
+        """
+        TC004: Complete personal + education + skills + interests + preferences
+        via the Phase 3 API. Completion percentage climbs live from 0% to the
+        expected value for five of six sections (83%).
+        """
+        client, user = self._register_verify_login("tc004@example.com")
+
+        # Starts at 0%
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.data['completion']['percent'], 0)
+
+        # 1. Personal + education (2 sections)
+        resp = client.patch('/api/students/me/', {
+            'phone': '+15551234567',
+            'country': 'Canada',
+            'city': 'Toronto',
+            'bio': 'Enthusiastic full-stack developer.',
+            'education_level': 'bachelor',
+            'current_year': 'third_year',
+            'field_of_study': 'computer_science',
+            'university': 'University of Toronto',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['completion']['percent'], 33)
+
+        # 2. Skill (3rd section)
+        resp = client.post('/api/students/me/skills/', {'skill_id': self.skill.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.data['completion']['percent'], 50)
+
+        # 3. Interest (4th section)
+        resp = client.post(
+            '/api/students/me/interests/', {'interest_id': self.interest.id}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.data['completion']['percent'], 67)
+
+        # 4. Preferences (5th section)
+        resp = client.patch('/api/students/me/preferences/', {
+            'work_mode': 'full_time',
+            'internship_type': 'remote',
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.data['completion']['percent'], 83)
+
+        # All five non-resume sections are complete.
+        self.assertTrue(me.data['completion']['sections']['personal'])
+        self.assertTrue(me.data['completion']['sections']['education'])
+        self.assertTrue(me.data['completion']['sections']['skills'])
+        self.assertTrue(me.data['completion']['sections']['interests'])
+        self.assertTrue(me.data['completion']['sections']['preferences'])
+        self.assertFalse(me.data['completion']['sections']['resume'])
+
+    def test_tc005_resume_upload_updates_completion_via_api(self):
+        """
+        TC005: Upload a valid resume via the API and confirm the resume section
+        becomes complete — the live completion percentage reaches 100%.
+        """
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from io import BytesIO
+        from pypdf import PdfWriter
+        from pypdf.generic import DictionaryObject, NameObject, DecodedStreamObject
+        from apps.students.tasks import parse_resume
+
+        client, user = self._register_verify_login("tc005@example.com")
+
+        # Pre-fill the profile via API (personal, education, skills, interests,
+        # preferences) so only the resume section remains.
+        client.patch('/api/students/me/', {
+            'phone': '+15555555555',
+            'education_level': 'master',
+            'field_of_study': 'data_science',
+        }, format='json')
+        client.post('/api/students/me/skills/', {'skill_id': self.skill.id}, format='json')
+        client.post('/api/students/me/interests/', {'interest_id': self.interest.id}, format='json')
+        client.patch('/api/students/me/preferences/', {
+            'work_mode': 'part_time',
+            'internship_type': 'hybrid',
+        }, format='json')
+
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.data['completion']['percent'], 83)
+
+        # Build and upload a genuine PDF resume.
+        w = PdfWriter()
+        page = w.add_blank_page(width=612, height=792)
+        stream = DecodedStreamObject()
+        stream.set_data(
+            b"BT /F1 24 Tf 100 700 Td "
+            b"(Python Django resume with solid web development skills) Tj ET"
+        )
+        page[NameObject("/Resources")] = DictionaryObject({
+            NameObject("/Font"): DictionaryObject({
+                NameObject("/F1"): DictionaryObject({
+                    NameObject("/Type"): NameObject("/Font"),
+                    NameObject("/Subtype"): NameObject("/Type1"),
+                    NameObject("/BaseFont"): NameObject("/Helvetica"),
+                })
+            })
+        })
+        page[NameObject("/Contents")] = w._add_object(stream)
+        buf = BytesIO()
+        w.write(buf)
+
+        with patch('apps.students.tasks.regenerate_student_embedding', return_value=None), \
+             patch('apps.students.tasks.generate_student_embedding_task.delay'), \
+             patch('apps.students.views.parse_resume.delay',
+                   side_effect=lambda sid: parse_resume.run(sid)):
+            with self.captureOnCommitCallbacks(execute=True):
+                resp = client.post('/api/students/me/resume/', {
+                    'file': SimpleUploadedFile('resume.pdf', buf.getvalue()),
+                }, format='multipart')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        from apps.students.models import StudentProfile
+        profile = StudentProfile.objects.get(user=user)
+        self.assertTrue(profile.resume)
+
+        # Resume section now complete → 100%.
+        me = client.get('/api/students/me/')
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.data['completion']['percent'], 100)
+        self.assertTrue(me.data['completion']['sections']['resume'])
+
+
+
 
 

@@ -21,3 +21,10 @@ rpds-py==2026.6.3
 sqlparse==0.5.5
 typing_extensions==4.16.0
 uritemplate==4.2.0
+# Django storage backends (Section 7.7.2): local filesystem by default,
+# S3-compatible object storage in production (STORAGE_BACKEND=s3).
+django-storages[s3]==1.14.6
+boto3==1.43.83
+botocore==1.43.83
+s3transfer==0.19.2
+jmespath==1.1.0

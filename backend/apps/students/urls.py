@@ -3,7 +3,11 @@ from django.urls import path
 from .views import (
     StudentProfileView,
     StudentMeView,
+    StudentPreferencesView,
+    StudentResumeView,
     StudentSkillsAddView,
+    StudentSkillsView,
+    StudentInterestsView,
     StudentCVUploadView,
     CVStatusView,
     CVStatusLatestView,
@@ -18,6 +22,43 @@ urlpatterns = [
         "me/",
         StudentMeView.as_view(),
         name="student-me",
+    ),
+
+    # ----------------------------------------------------------------
+    # Phase 3 Task 3.3 — /api/students/me/preferences/
+    # internship preferences: country, city, work_mode, internship_type,
+    # availability_start/end (availability_end < start → 400).
+    # ----------------------------------------------------------------
+    path(
+        "me/preferences/",
+        StudentPreferencesView.as_view(),
+        name="student-me-preferences",
+    ),
+
+    # ----------------------------------------------------------------
+    # Phase 3 Task 3.4 — /api/students/me/resume/
+    # Resume upload. PDF/DOCX only, ≤ 5 MB, MIME content-sniffed.
+    # ----------------------------------------------------------------
+    path(
+        "me/resume/",
+        StudentResumeView.as_view(),
+        name="student-me-resume",
+    ),
+
+    # ----------------------------------------------------------------
+    # Phase 3 Task 3.2 — /api/students/me/skills/  &  /interests/
+    # Skills & career interests validated against the Task 1.3 catalogue
+    # (no free-text). GET list, POST add, DELETE remove.
+    # ----------------------------------------------------------------
+    path(
+        "me/skills/",
+        StudentSkillsView.as_view(),
+        name="student-me-skills",
+    ),
+    path(
+        "me/interests/",
+        StudentInterestsView.as_view(),
+        name="student-me-interests",
     ),
 
     # ----------------------------------------------------------------

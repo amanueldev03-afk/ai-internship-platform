@@ -167,9 +167,13 @@ class StudentProfile(TimeStampedModel):
         related_name="student_profiles",
     )
 
-    interests = models.JSONField(
-        default=list,
+    # Phase 3 Task 3.2 — interests are validated against the CareerInterest
+    # catalogue (Task 1.3), never free-typed. This keeps Phase 6 skill/interest
+    # matching on canonical values instead of fuzzy string noise.
+    interests = models.ManyToManyField(
+        "CareerInterest",
         blank=True,
+        related_name="student_profiles",
     )
 
     experience = models.TextField(
@@ -249,7 +253,7 @@ class StudentProfile(TimeStampedModel):
     )
 
     # ==========================================================
-    # INTERNSHIP DURATION
+    # INTERNSHIP DURATION / AVAILABILITY
     # ==========================================================
 
     internship_duration_min_weeks = models.PositiveIntegerField(
@@ -262,19 +266,60 @@ class StudentProfile(TimeStampedModel):
         blank=True,
     )
 
-    available_from = models.DateField(
+    # Phase 3 Task 3.3 — availability window for internship preferences.
+    # `availability_start` was previously named `available_from`.
+    availability_start = models.DateField(
         null=True,
         blank=True,
+        help_text="Earliest date the student is available for an internship.",
+    )
+
+    availability_end = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Latest date the student is available for an internship.",
     )
 
     # ==========================================================
-    # CV
+    # CV / RESUME
     # ==========================================================
 
     cv = models.FileField(
         upload_to="student_cvs/",
         null=True,
         blank=True,
+    )
+
+    # Phase 3 Task 3.4 — resume pointer (Section 5.3.6 / Figure 5.2).
+    # Set exclusively via POST /api/students/me/resume/ (content-sniffed:
+    # real PDF/DOCX only, never a disguised executable). The stored object is
+    # the same file referenced by the latest ``CV`` record, which the resume
+    # parsing pipeline (Task 3.5) consumes.
+    resume = models.FileField(
+        upload_to="student_resumes/",
+        null=True,
+        blank=True,
+        help_text=(
+            "Canonical resume file. Uploaded via POST /api/students/me/resume/; "
+            "referenced by the latest CV record for async parsing."
+        ),
+    )
+
+    # Phase 3 Task 3.5 — resume parsing flag (Section 5.3.6, Figure 5.2).
+    # Set to True by the ``parse_resume`` Celery task once the latest resume
+    # has been parsed successfully (async; see Task 3.5).
+    resume_parsed = models.BooleanField(
+        default=False,
+        help_text=(
+            "True once the resume has been parsed by the async parse_resume "
+            "Celery task."
+        ),
+    )
+
+    resume_parsed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the resume was last parsed by the async parse_resume task.",
     )
 
     # ==========================================================
@@ -320,6 +365,17 @@ class StudentProfile(TimeStampedModel):
             errors["internship_duration_max_weeks"] = (
                 "Maximum duration must be greater "
                 "than or equal to minimum duration."
+            )
+
+        # Availability window invariant (Task 3.3)
+        if (
+            self.availability_start is not None
+            and self.availability_end is not None
+            and self.availability_end < self.availability_start
+        ):
+            errors["availability_end"] = (
+                "Availability end date must be on or after the availability "
+                "start date."
             )
 
         if errors:

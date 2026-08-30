@@ -25,6 +25,120 @@ def _mark_failed(cv, reason: str) -> None:
         logger.error(f"Could not persist FAILED status for CV {cv.id}: {e}")
 
 
+def _complete_cv_processing(cv, text: str) -> dict:
+    """
+    Shared pipeline used by both ``process_cv`` (general CV flow) and
+    ``parse_resume`` (Phase 3 Task 3.5, resume flow).
+
+    Given a CV record with already-extracted ``text``, it runs the
+    deterministic + AI analysis, persists the extracted fields, syncs skills
+    to the student profile, regenerates the embedding inline, marks the CV
+    COMPLETED, and busts the recommendation cache.
+
+    Never raises for analysis/embedding failures — those are non-fatal and
+    logged so the CV still completes with whatever was extracted.
+    """
+    # 4. Deterministic parser — always produces something useful
+    try:
+        basic_analysis = analyze_cv(text)
+        logger.info(
+            f"CV {cv.id} — deterministic parse: "
+            f"{len(basic_analysis.get('skills', []))} skills, "
+            f"{len(basic_analysis.get('experience', []))} experience items"
+        )
+    except Exception as exc:
+        logger.warning(f"CV {cv.id} deterministic parse error: {exc}")
+        basic_analysis = {
+            "skills": [], "education": [],
+            "experience": [], "projects": [], "certifications": [],
+        }
+
+    # 5. AI analysis — merges with deterministic result; falls back on any failure
+    try:
+        analysis = analyze_cv_intelligently(text, basic_analysis)
+        logger.info(
+            f"CV {cv.id} — final analysis: "
+            f"{len(analysis.get('skills', []))} skills"
+        )
+    except Exception as exc:
+        logger.warning(f"CV {cv.id} AI analysis error (using basic): {exc}")
+        analysis = basic_analysis
+
+    # Guarantee we always have at least the deterministic skills
+    if not analysis.get("skills") and basic_analysis.get("skills"):
+        analysis["skills"] = basic_analysis["skills"]
+
+    # 6. Persist extracted data
+    cv.extracted_text           = text
+    cv.extracted_skills         = analysis.get("skills",         [])
+    cv.extracted_education      = analysis.get("education",      [])
+    cv.extracted_experience     = analysis.get("experience",     [])
+    cv.extracted_projects       = analysis.get("projects",       [])
+    cv.extracted_certifications = analysis.get("certifications", [])
+    cv.save(update_fields=[
+        "extracted_text",
+        "extracted_skills",
+        "extracted_education",
+        "extracted_experience",
+        "extracted_projects",
+        "extracted_certifications",
+    ])
+    logger.info(f"CV {cv.id} — extracted data saved to DB")
+
+    # 7. Sync skills to student profile M2M
+    try:
+        profile = StudentProfile.objects.get(user=cv.student)
+        sync_cv_skills_to_profile(profile, cv.extracted_skills)
+        logger.info(f"CV {cv.id} — {len(cv.extracted_skills)} skills synced to profile")
+    except StudentProfile.DoesNotExist:
+        logger.warning(f"CV {cv.id} — no StudentProfile for user {cv.student_id}, skipping sync")
+        profile = None
+    except Exception as exc:
+        logger.warning(f"CV {cv.id} — skill sync failed (non-fatal): {exc}")
+        try:
+            profile = StudentProfile.objects.get(user=cv.student)
+        except Exception:
+            profile = None
+
+    # 8. Generate student embedding INLINE
+    #    We do NOT use .delay() here because calling broker.send from inside
+    #    a Celery worker can fail with connection errors on some setups.
+    #    Running it inline is safe — the model is already cached in this worker.
+    if profile:
+        try:
+            embedding = regenerate_student_embedding(profile)
+            logger.info(
+                f"CV {cv.id} — student embedding generated "
+                f"(dim={len(embedding) if embedding else 0})"
+            )
+        except Exception as exc:
+            logger.warning(f"CV {cv.id} — embedding generation failed (non-fatal): {exc}")
+    else:
+        logger.warning(f"CV {cv.id} — skipping embedding, no profile available")
+
+    # 9. Mark COMPLETED
+    cv.processing_status = CV.STATUS_COMPLETED
+    cv.processed_at      = timezone.now()
+    cv.save(update_fields=["processing_status", "processed_at"])
+    logger.info(f"CV {cv.id} → COMPLETED at {cv.processed_at}")
+
+    # 10. Bust recommendation cache
+    try:
+        from apps.recommendations.views import bust_recommendation_cache
+        bust_recommendation_cache(cv.student_id)
+        logger.info(f"CV {cv.id} — recommendation cache busted for user {cv.student_id}")
+    except Exception as exc:
+        logger.warning(f"CV {cv.id} — cache bust failed (non-fatal): {exc}")
+
+    return {
+        "cv_id":          cv.id,
+        "status":         "completed",
+        "skills_count":   len(cv.extracted_skills),
+        "education_count": len(cv.extracted_education),
+        "experience_count": len(cv.extracted_experience),
+    }
+
+
 @shared_task(bind=True, max_retries=3)
 def test_celery_task(self):
     """Simple task to verify Celery is working."""
@@ -96,119 +210,86 @@ def process_cv(self, cv_id: int):
 
     logger.info(f"CV {cv_id} — extracted {len(text)} chars")
 
-    # ------------------------------------------------------------------
-    # 4. Deterministic parser — always produces something useful
-    # ------------------------------------------------------------------
+    # 4-10. Deterministic + AI analysis, persist, sync skills, embedding,
+    #       mark COMPLETED, bust cache — shared with parse_resume (Task 3.5).
+    return _complete_cv_processing(cv, text)
+
+
+@shared_task(bind=True, max_retries=3)
+def parse_resume(self, student_id: int):
+    """
+    Phase 3 Task 3.5 — parse a student's resume asynchronously.
+
+    Queued via ``parse_resume.delay(student_id)`` on a successful resume
+    upload (POST /api/students/me/resume/). ``student_id`` is the auth
+    ``User`` id (CV records are keyed by ``CV.student`` = the user).
+
+    It loads the student's most recently uploaded ``CV``, extracts text, runs
+    the shared parsing pipeline, and sets ``StudentProfile.resume_parsed =
+    True`` (+ ``resume_parsed_at``) so callers can confirm the async run.
+
+    Fully wired broker arrives in Phase 5; this task can be run synchronously
+    today with ``CELERY_TASK_ALWAYS_EAGER=True`` (dev/test).
+    """
+    logger.info(f"parse_resume started — student_id={student_id}")
+
+    # Load the latest uploaded resume/CV record for this student.
+    cv = (
+        CV.objects.filter(student_id=student_id)
+        .order_by("-created_at")
+        .first()
+    )
+    if cv is None:
+        logger.error(f"parse_resume — no CV found for student_id={student_id}")
+        return {"status": "no_cv", "student_id": student_id}
+
+    # Mark PROCESSING
+    cv.processing_status = CV.STATUS_PROCESSING
+    cv.processing_error  = None
+    cv.save(update_fields=["processing_status", "processing_error"])
+
+    # Extract text (re-validating the file — defense in depth, Section 7.6.5).
     try:
-        basic_analysis = analyze_cv(text)
-        logger.info(
-            f"CV {cv_id} — deterministic parse: "
-            f"{len(basic_analysis.get('skills', []))} skills, "
-            f"{len(basic_analysis.get('experience', []))} experience items"
-        )
+        cv.file.open("rb")
+        text = extract_cv_text(cv.file)
+        cv.file.close()
+    except _UNRECOVERABLE as exc:
+        _mark_failed(cv, str(exc))
+        return {"status": "failed", "student_id": student_id, "reason": str(exc)}
     except Exception as exc:
-        logger.warning(f"CV {cv_id} deterministic parse error: {exc}")
-        basic_analysis = {
-            "skills": [], "education": [],
-            "experience": [], "projects": [], "certifications": [],
-        }
+        logger.error(f"parse_resume — extraction error for CV {cv.id}: {exc}", exc_info=True)
+        if self.request.retries >= self.max_retries:
+            _mark_failed(cv, str(exc))
+            raise
+        raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))
 
-    # ------------------------------------------------------------------
-    # 5. AI analysis — merges with deterministic result; falls back on any failure
-    # ------------------------------------------------------------------
-    try:
-        analysis = analyze_cv_intelligently(text, basic_analysis)
-        logger.info(
-            f"CV {cv_id} — final analysis: "
-            f"{len(analysis.get('skills', []))} skills"
+    if not text or len(text.strip()) < 30:
+        reason = (
+            f"Extracted text too short ({len(text.strip()) if text else 0} chars). "
+            "The PDF may contain scanned images rather than selectable text."
         )
-    except Exception as exc:
-        logger.warning(f"CV {cv_id} AI analysis error (using basic): {exc}")
-        analysis = basic_analysis
+        _mark_failed(cv, reason)
+        return {"status": "failed", "student_id": student_id, "reason": reason}
 
-    # Guarantee we always have at least the deterministic skills
-    if not analysis.get("skills") and basic_analysis.get("skills"):
-        analysis["skills"] = basic_analysis["skills"]
+    logger.info(f"parse_resume — CV {cv.id} extracted {len(text)} chars")
 
-    # ------------------------------------------------------------------
-    # 6. Persist extracted data
-    # ------------------------------------------------------------------
-    cv.extracted_text           = text
-    cv.extracted_skills         = analysis.get("skills",         [])
-    cv.extracted_education      = analysis.get("education",      [])
-    cv.extracted_experience     = analysis.get("experience",     [])
-    cv.extracted_projects       = analysis.get("projects",       [])
-    cv.extracted_certifications = analysis.get("certifications", [])
-    cv.save(update_fields=[
-        "extracted_text",
-        "extracted_skills",
-        "extracted_education",
-        "extracted_experience",
-        "extracted_projects",
-        "extracted_certifications",
-    ])
-    logger.info(f"CV {cv_id} — extracted data saved to DB")
+    # Run the shared parsing pipeline (analysis, persist, sync, embedding, cache).
+    result = _complete_cv_processing(cv, text)
 
-    # ------------------------------------------------------------------
-    # 7. Sync skills to student profile M2M
-    # ------------------------------------------------------------------
+    # Confirm the async parse by setting the resume_parsed flag.
     try:
-        profile = StudentProfile.objects.get(user=cv.student)
-        sync_cv_skills_to_profile(profile, cv.extracted_skills)
-        logger.info(f"CV {cv_id} — {len(cv.extracted_skills)} skills synced to profile")
+        profile = StudentProfile.objects.get(user_id=student_id)
+        profile.resume_parsed     = True
+        profile.resume_parsed_at  = timezone.now()
+        profile.save(update_fields=["resume_parsed", "resume_parsed_at", "updated_at"])
+        logger.info(f"parse_resume — resume_parsed=True set for student profile {profile.id}")
+        result["resume_parsed"] = True
     except StudentProfile.DoesNotExist:
-        logger.warning(f"CV {cv_id} — no StudentProfile for user {cv.student_id}, skipping sync")
-        profile = None
-    except Exception as exc:
-        logger.warning(f"CV {cv_id} — skill sync failed (non-fatal): {exc}")
-        try:
-            profile = StudentProfile.objects.get(user=cv.student)
-        except Exception:
-            profile = None
+        logger.warning(f"parse_resume — no StudentProfile for user {student_id}, flag not set")
 
-    # ------------------------------------------------------------------
-    # 8. Generate student embedding INLINE
-    #    We do NOT use .delay() here because calling broker.send from inside
-    #    a Celery worker can fail with connection errors on some setups.
-    #    Running it inline is safe — the model is already cached in this worker.
-    # ------------------------------------------------------------------
-    if profile:
-        try:
-            embedding = regenerate_student_embedding(profile)
-            logger.info(
-                f"CV {cv_id} — student embedding generated "
-                f"(dim={len(embedding) if embedding else 0})"
-            )
-        except Exception as exc:
-            logger.warning(f"CV {cv_id} — embedding generation failed (non-fatal): {exc}")
-    else:
-        logger.warning(f"CV {cv_id} — skipping embedding, no profile available")
+    result["student_id"] = student_id
+    return result
 
-    # ------------------------------------------------------------------
-    # 9. Mark COMPLETED
-    # ------------------------------------------------------------------
-    cv.processing_status = CV.STATUS_COMPLETED
-    cv.processed_at      = timezone.now()
-    cv.save(update_fields=["processing_status", "processed_at"])
-    logger.info(f"CV {cv_id} → COMPLETED at {cv.processed_at}")
-
-    # ------------------------------------------------------------------
-    # 10. Bust recommendation cache
-    # ------------------------------------------------------------------
-    try:
-        from apps.recommendations.views import bust_recommendation_cache
-        bust_recommendation_cache(cv.student_id)
-        logger.info(f"CV {cv_id} — recommendation cache busted for user {cv.student_id}")
-    except Exception as exc:
-        logger.warning(f"CV {cv_id} — cache bust failed (non-fatal): {exc}")
-
-    return {
-        "cv_id":          cv.id,
-        "status":         "completed",
-        "skills_count":   len(cv.extracted_skills),
-        "education_count": len(cv.extracted_education),
-        "experience_count": len(cv.extracted_experience),
-    }
 
 
 @shared_task(bind=True, max_retries=3)

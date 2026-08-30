@@ -10,13 +10,18 @@ from drf_spectacular.utils import extend_schema
 
 from apps.internships.models import Skill
 from apps.internships.permissions import IsStudent
-from .models import StudentProfile, CV
+from .models import StudentProfile, CareerInterest, CV
 from .serializers import (
     StudentProfileSerializer,
     StudentMeSerializer,
     AddStudentSkillsSerializer,
+    StudentSkillSerializer,
+    StudentInterestSerializer,
+    StudentSkillInputSerializer,
+    StudentInterestInputSerializer,
+    StudentPreferencesSerializer,
 )
-from .tasks import process_cv, generate_student_embedding_task
+from .tasks import process_cv, parse_resume, generate_student_embedding_task
 from apps.recommendations.views import bust_recommendation_cache
 
 logger = logging.getLogger(__name__)
@@ -42,10 +47,11 @@ def _handle_cv_file(cv_file, user):
     """
     Replace the student's existing CV with `cv_file`, create a new CV record,
     and queue background processing.
-    Returns a cv_info dict on success, raises ValueError on bad extension.
+    Returns a cv_info dict on success, raises ValueError on bad extension or
+    on content that fails MIME sniffing (Section 7.6.5).
     """
-    from .services.cv_extraction import validate_cv_extension
-    validate_cv_extension(cv_file.name)   # raises ValueError on bad extension
+    from .services.cv_extraction import validate_resume_file
+    validate_resume_file(cv_file)   # extension + size + content sniffing
 
     # Delete old CV records + their storage files
     old_cvs = CV.objects.filter(student=user)
@@ -75,6 +81,64 @@ def _handle_cv_file(cv_file, user):
         "cv_id": cv.id,
         "processing_status": cv.processing_status,
         "message": "CV uploaded. Processing in background.",
+    }
+
+
+def _store_resume(profile, resume_file):
+    """
+    Phase 3 Task 3.4 — store a validated resume (Section 5.3.6 / Figure 5.2).
+
+    1. Content-sniffed validation (extension + size + MIME sniffing).
+    2. Replace the student's CV records on disk (the resume parsing pipeline
+       in Task 3.5 consumes the newest ``CV`` record).
+    3. Create a new ``CV`` record holding the stored file.
+    4. Point the canonical ``StudentProfile.resume`` field at the same stored
+       object (no second copy — the DB field stores the same storage key).
+    5. Queue the ``parse_resume`` Celery task (Task 3.5).
+
+    Raises ValueError if the file is not a genuine PDF/DOCX.
+    """
+    from .services.cv_extraction import validate_resume_file
+    validate_resume_file(resume_file)   # extension + size + content sniffing
+
+    user = profile.user
+
+    # Delete old CV records + their storage files
+    old_cvs = CV.objects.filter(student=user)
+    for old_cv in old_cvs:
+        try:
+            if old_cv.file:
+                old_cv.file.delete(save=False)
+        except Exception as del_err:
+            logger.warning(f"Could not delete old resume/CV file: {del_err}")
+    old_cvs.delete()
+
+    # Create new CV record (async parsing pipeline artifact)
+    cv = CV.objects.create(
+        student=user,
+        file=resume_file,
+        processing_status=CV.STATUS_PENDING,
+    )
+    logger.info(f"Resume CV record created: id={cv.id} for user={user.id}")
+
+    # Point the canonical resume field at the same stored object.
+    profile.resume.name = cv.file.name
+    profile.save(update_fields=["resume", "updated_at"])
+
+    # Phase 3 Task 3.5 — queue async resume parsing. ``parse_resume.delay``
+    # runs the resume-parsing pipeline (Task 3.5) and sets
+    # ``StudentProfile.resume_parsed = True`` once done. Queued via
+    # ``transaction.on_commit`` so it only fires after the upload commits.
+    try:
+        transaction.on_commit(lambda: parse_resume.delay(profile.user_id))
+    except Exception as exc:
+        logger.warning(f"Could not queue resume parsing for user {profile.user_id}: {exc}")
+
+    return {
+        "cv_id": cv.id,
+        "processing_status": cv.processing_status,
+        "resume_url": cv.file.url,
+        "message": "Resume uploaded. Processing in background.",
     }
 
 
@@ -274,6 +338,380 @@ class StudentMeView(GenericAPIView):
             StudentMeSerializer(profile).data,
             status=status.HTTP_200_OK,
         )
+
+
+class StudentPreferencesView(GenericAPIView):
+    """
+    Phase 3 Task 3.3 — Internship preferences (Section 5.3.3).
+
+    GET   /api/students/me/preferences/   — return my internship preferences.
+    PATCH /api/students/me/preferences/   — update preferences.
+
+    Accepted PATCH fields:
+      - ``country`` / ``city``
+      - ``work_mode``        → full_time | part_time | either
+      - ``internship_type``  → remote | onsite | hybrid | any
+      - ``availability_start`` / ``availability_end`` (YYYY-MM-DD)
+
+    Basic invariant: ``availability_end`` before ``availability_start`` is
+    rejected with 400 so match times never invert.
+    """
+
+    permission_classes = [IsStudent]
+    serializer_class = StudentPreferencesSerializer
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def _get_profile(self, request):
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Get My Internship Preferences",
+        description=(
+            "Return the authenticated student's internship preferences: "
+            "country, city, work_mode, internship_type, availability window."
+        ),
+        responses={200: StudentPreferencesSerializer},
+    )
+    def get(self, request):
+        profile = self._get_profile(request)
+        return Response(
+            StudentPreferencesSerializer(profile).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Update My Internship Preferences",
+        description=(
+            "Partially update internship preferences. `availability_end` "
+            "before `availability_start` returns 400 (basic invariant)."
+        ),
+        request=StudentPreferencesSerializer,
+        responses={200: StudentPreferencesSerializer},
+    )
+    def patch(self, request):
+        profile = self._get_profile(request)
+        data = request.data if isinstance(request.data, dict) else dict(request.data)
+        serializer = StudentPreferencesSerializer(
+            profile,
+            data=data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        # Keep the AI matching inputs (Section 3.11.1) in sync.
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(
+            StudentPreferencesSerializer(profile).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class StudentResumeView(GenericAPIView):
+    """
+    Phase 3 Task 3.4 — Resume upload (Section 5.3.6 / Figure 5.2).
+
+    POST /api/students/me/resume/   — multipart field ``file``.
+        Accepts PDF / DOCX up to 5 MB. Validates MIME type by **content
+        sniffing** (Section 7.6.5) — genuine ``%PDF`` header for .pdf, a real
+        OOXML ZIP (``[Content_Types].xml`` + ``word/``) for .docx. An
+        executable renamed to ``.pdf`` is rejected with 400.
+
+        On success: the file is stored in Django storage (local filesystem in
+        dev, S3 in production via ``STORAGE_BACKEND=s3``), ``StudentProfile.resume``
+        points to it, a ``CV`` record is created, and the ``parse_resume``
+        Celery task (resume parsing pipeline, Task 3.5) is queued — setting
+        ``StudentProfile.resume_parsed = True`` once parsing completes.
+
+        Response 201:
+          { "cv_id", "processing_status", "resume_url", "message" }
+
+    GET  /api/students/me/resume/    — return resume metadata + CV summary.
+    """
+
+    permission_classes = [IsStudent]
+    serializer_class = None
+    parser_classes = [MultiPartParser, FormParser]
+
+    def _get_profile(self, request):
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Upload Resume",
+        description=(
+            "Upload PDF/DOCX (max 5 MB). The file is content-sniffed — a "
+            "genuine PDF/DOCX only; executables disguised as a .pdf are "
+            "rejected. Stored in Django storage and queued for the resume "
+            "parsing pipeline."
+        ),
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "description": "PDF or DOCX file, max 5 MB",
+                    }
+                },
+                "required": ["file"],
+            }
+        },
+        responses={
+            201: {
+                "type": "object",
+                "properties": {
+                    "message":           {"type": "string"},
+                    "cv_id":             {"type": "integer"},
+                    "processing_status": {"type": "string"},
+                    "resume_url":        {"type": "string"},
+                },
+            },
+            400: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
+        },
+    )
+    def post(self, request):
+        resume_file = request.FILES.get("file")
+        if not resume_file:
+            return Response(
+                {
+                    "detail": (
+                        "A resume file is required. Send it as form-data with "
+                        "key 'file'."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = self._get_profile(request)
+        try:
+            resume_info = _store_resume(profile, resume_file)
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(resume_info, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Get Resume Status",
+        operation_id="student_resume_status",
+        description=(
+            "Return resume metadata: whether a resume exists, its storage URL, "
+            "and the latest CV processing status."
+        ),
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "has_resume":        {"type": "boolean"},
+                    "resume_url":        {"type": "string", "nullable": True},
+                    "cv_id":             {"type": "integer", "nullable": True},
+                    "processing_status": {"type": "string", "nullable": True},
+                    "processing_error":  {"type": "string", "nullable": True},
+                },
+            }
+        },
+    )
+    def get(self, request):
+        profile = self._get_profile(request)
+        cv = (
+            CV.objects.filter(student=request.user)
+            .order_by("-created_at")
+            .first()
+        )
+        return Response(
+            {
+                "has_resume": bool(profile.resume),
+                "resume_url": profile.resume.url if profile.resume else None,
+                "cv_id": cv.id if cv else None,
+                "processing_status": cv.processing_status if cv else None,
+                "processing_error": cv.processing_error if cv else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class StudentSkillsView(GenericAPIView):
+    """
+    Phase 3 Task 3.2 — Skills for the authenticated student.
+
+    GET    /api/students/me/skills/   — list skills on my profile.
+    POST   /api/students/me/skills/   — add a skill by catalogue ID
+                                        (``skill_id``) from the Task 1.3
+                                        Skill catalogue.
+    DELETE /api/students/me/skills/   — remove a skill by catalogue ID
+                                        (``skill_id``).
+
+    Skills are never free-typed: the POST body must reference an existing
+    ``Skill`` from the catalogue, otherwise a 400 is returned. This keeps
+    Phase 6 skill matching on canonical values (Task 1.3) instead of
+    degrading to fuzzy string matching.
+    """
+
+    permission_classes = [IsStudent]
+    serializer_class = StudentSkillInputSerializer
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def _get_profile(self, request):
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="List My Skills",
+        description="Return the skills attached to the authenticated student's profile.",
+        responses={200: StudentSkillSerializer(many=True)},
+    )
+    def get(self, request):
+        profile = self._get_profile(request)
+        skills = profile.skills.filter(is_active=True).order_by("name")
+        return Response(
+            StudentSkillSerializer(skills, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Add a Skill to My Profile",
+        description=(
+            "Add a skill by catalogue ID (`skill_id`). The ID must reference an "
+            "existing Skill from the Task 1.3 catalogue or a 400 is returned. "
+            "Free-text skill names are rejected."
+        ),
+        request=StudentSkillInputSerializer,
+        responses={201: StudentSkillSerializer},
+    )
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = self._get_profile(request)
+        skill = Skill.objects.get(id=serializer.validated_data["skill_id"])
+        profile.skills.add(skill)
+
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(
+            StudentSkillSerializer(skill).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Remove a Skill from My Profile",
+        description="Remove a skill from the authenticated student's profile by catalogue ID (`skill_id`).",
+        request=StudentSkillInputSerializer,
+        responses={204: None},
+    )
+    def delete(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = self._get_profile(request)
+        skill = Skill.objects.get(id=serializer.validated_data["skill_id"])
+        profile.skills.remove(skill)
+
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StudentInterestsView(GenericAPIView):
+    """
+    Phase 3 Task 3.2 — Career interests for the authenticated student.
+
+    GET    /api/students/me/interests/   — list interests on my profile.
+    POST   /api/students/me/interests/   — add an interest by catalogue ID
+                                           (``interest_id``) from the Task 1.3
+                                           CareerInterest catalogue.
+    DELETE /api/students/me/interests/   — remove an interest by catalogue ID.
+
+    Interests are never free-typed: the POST body must reference an existing
+    ``CareerInterest`` from the catalogue, otherwise a 400 is returned.
+    """
+
+    permission_classes = [IsStudent]
+    serializer_class = StudentInterestInputSerializer
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def _get_profile(self, request):
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+        return profile
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="List My Career Interests",
+        description="Return the career interests attached to the authenticated student's profile.",
+        responses={200: StudentInterestSerializer(many=True)},
+    )
+    def get(self, request):
+        profile = self._get_profile(request)
+        interests = profile.interests.filter(is_active=True).order_by("name")
+        return Response(
+            StudentInterestSerializer(interests, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Add a Career Interest to My Profile",
+        description=(
+            "Add a career interest by catalogue ID (`interest_id`). The ID must "
+            "reference an existing CareerInterest from the Task 1.3 catalogue "
+            "or a 400 is returned. Free-text interests are rejected."
+        ),
+        request=StudentInterestInputSerializer,
+        responses={201: StudentInterestSerializer},
+    )
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = self._get_profile(request)
+        interest = CareerInterest.objects.get(id=serializer.validated_data["interest_id"])
+        profile.interests.add(interest)
+
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(
+            StudentInterestSerializer(interest).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        tags=["Student Profile (Phase 3)"],
+        summary="Remove a Career Interest from My Profile",
+        description="Remove a career interest from the authenticated student's profile by catalogue ID (`interest_id`).",
+        request=StudentInterestInputSerializer,
+        responses={204: None},
+    )
+    def delete(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = self._get_profile(request)
+        interest = CareerInterest.objects.get(id=serializer.validated_data["interest_id"])
+        profile.interests.remove(interest)
+
+        _queue_embedding(profile)
+        bust_recommendation_cache(request.user.id)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class StudentSkillsAddView(GenericAPIView):

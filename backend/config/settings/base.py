@@ -69,6 +69,8 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount.providers.google",
     "django.contrib.sites",
     "django_extensions",
+    # Django storage backends (Section 7.7.2): filesystem in dev, S3 in prod
+    "storages",
 ]
 
 LOCAL_APPS = [
@@ -230,8 +232,48 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # --------------------------------------------------
-# Media Files
+# Media Files / Storage (Section 7.7.2)
+#
+# Django 6 uses the ``STORAGES`` setting. ``default`` (user uploads: resumes,
+# CVs) lives on the local filesystem in development and swaps to an
+# S3-compatible bucket in production purely via environment variables.
 # --------------------------------------------------
+STORAGE_BACKEND = config("STORAGE_BACKEND", default="filesystem")
+
+_STORAGES_DEFAULT = {
+    "BACKEND": "django.core.files.storage.FileSystemStorage",
+    "OPTIONS": {
+        "location": BASE_DIR / "media",
+        "base_url": "/media/",
+    },
+}
+
+if STORAGE_BACKEND == "s3":
+    # S3-compatible object storage (Section 7.7.2 — django-storages/s3boto3).
+    AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+    AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+    AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
+    AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="")
+    AWS_S3_CUSTOM_DOMAIN = config("AWS_S3_CUSTOM_DOMAIN", default="")
+    AWS_S3_ENDPOINT_URL = config("AWS_S3_ENDPOINT_URL", default="")
+    # Resumes are private: URLs are signed unless a public CDN domain is given.
+    AWS_QUERYSTRING_AUTH = config(
+        "AWS_QUERYSTRING_AUTH", default=True, cast=bool
+    )
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",
+    }
+    _STORAGES_DEFAULT = {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {},
+    }
+
+STORAGES = {
+    "default": _STORAGES_DEFAULT,
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 
@@ -452,6 +494,22 @@ CELERY_ENABLE_UTC = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
+
+# Phase 3 Task 3.5 — run Celery tasks synchronously (no broker). Used in dev
+# and tests via ``CELERY_TASK_ALWAYS_EAGER=True`` (env-driven); the full broker
+# wiring lands in Phase 5.
+CELERY_TASK_ALWAYS_EAGER = config(
+    "CELERY_TASK_ALWAYS_EAGER",
+    default=False,
+    cast=bool,
+)
+
+# Propagate task exceptions in eager mode so failures surface in tests/dev.
+CELERY_TASK_EAGER_PROPAGATES = config(
+    "CELERY_TASK_EAGER_PROPAGATES",
+    default=True,
+    cast=bool,
+)
 
 CACHES = {
     "default": {
