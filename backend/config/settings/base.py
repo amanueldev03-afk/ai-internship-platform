@@ -364,6 +364,10 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "Applications",
             "description": "Internship application tracking"
+        },
+        {
+            "name": "Companies",
+            "description": "Admin-only company management endpoints (Phase 4 Task 4.1)"
         }
     ],
     "ENUM_NAME_OVERRIDES": {},

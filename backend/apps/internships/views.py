@@ -1,3 +1,4 @@
+from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -165,13 +166,10 @@ class InternshipListView(generics.ListAPIView):
         "-created_at",
     ]
 
-
-
     def get_queryset(self):
 
         now = timezone.now()
-
-        return (
+        queryset = (
             Internship.objects
             .filter(
                 status=Internship.STATUS_ACTIVE,
@@ -182,10 +180,18 @@ class InternshipListView(generics.ListAPIView):
                 | Q(application_deadline__gt=now)
             )
             .select_related("source")
-            .order_by("-created_at")
         )
 
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            vector = SearchVector("title", weight="A") + \
+                SearchVector("description", weight="B")
+            queryset = queryset.annotate(
+                search=vector).filter(search=SearchQuery(q))
 
+        filterset = InternshipFilter(
+            self.request.GET, queryset=queryset, request=self.request)
+        return filterset.qs.order_by("-created_at")
 
 
 class InternshipDetailView(generics.RetrieveAPIView):
@@ -224,7 +230,6 @@ class InternshipDetailView(generics.RetrieveAPIView):
         )
 
 
-
 class AdminInternshipListCreateView(generics.ListCreateAPIView):
     """
     Admin endpoint for listing and creating internships.
@@ -248,11 +253,8 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
         description="Create a new internship. Admin only.",
         tags=["Admin Internships"],
     )
-
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
-
-    
 
     def perform_create(self, serializer):
         internship = serializer.save()
@@ -360,8 +362,8 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
             # Log error but don't fail the update
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to queue internship embedding regeneration: {e}")
-
+            logger.warning(
+                f"Failed to queue internship embedding regeneration: {e}")
 
 
 class LatestInternshipListView(generics.ListAPIView):
@@ -400,7 +402,6 @@ class LatestInternshipListView(generics.ListAPIView):
         )
 
 
-
 class AdminInternshipSourceListCreateView(
     generics.ListCreateAPIView
 ):
@@ -435,7 +436,6 @@ class AdminInternshipSourceListCreateView(
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
-
 
 
 class AdminInternshipSourceDetailView(
@@ -501,7 +501,6 @@ class AdminCollectionLogListView(
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
-
 
 
 class AdminSourceCollectView(GenericAPIView):
@@ -718,7 +717,8 @@ class StudentUnsaveInternshipView(
         tags=["Internships"],
         summary="Remove Saved Internship",
         description="Remove a saved internship from the student profile",
-        responses={200: {'type': 'object', 'properties': {'message': {'type': 'string'}}}}
+        responses={200: {'type': 'object', 'properties': {
+            'message': {'type': 'string'}}}}
     )
     def delete(self, request, *args, **kwargs):
         return super().delete(request, *args, **kwargs)
@@ -771,7 +771,8 @@ class StudentApplicationCreateView(
         description="Record that the student has applied for an internship",
         request=InternshipApplicationSerializer,
         responses={201: InternshipApplicationSerializer},
-        examples=[OpenApiExample("Create Application", value={"internship": 1, "notes": "Applied on company portal"})]
+        examples=[OpenApiExample("Create Application", value={
+                                 "internship": 1, "notes": "Applied on company portal"})]
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
@@ -881,7 +882,6 @@ class StudentApplicationDetailView(
         )
 
 
-
 class AdminInternshipVerificationView(
     GenericAPIView
 ):
@@ -916,7 +916,8 @@ class AdminInternshipVerificationView(
             ),
             OpenApiExample(
                 "Reject Internship",
-                value={"action": "reject", "rejection_reason": "Incomplete position description"},
+                value={"action": "reject",
+                       "rejection_reason": "Incomplete position description"},
             )
         ]
     )
@@ -1027,7 +1028,6 @@ class AdminInternshipVerificationView(
             },
             status=status.HTTP_200_OK,
         )
-
 
 
 class StudentDashboardView(GenericAPIView):
@@ -1286,7 +1286,6 @@ class AdminDashboardView(GenericAPIView):
             status=Internship.STATUS_DRAFT
         ).count()
 
-
         recent_internships = (
             Internship.objects
             .order_by("-created_at")[:10]
@@ -1400,7 +1399,8 @@ class AdminSkillListCreateView(
         description="Create a new skill in the system. Admin only.",
         request=SkillSerializer,
         responses={201: SkillSerializer},
-        examples=[OpenApiExample("Create Skill", value={"name": "Python", "description": "Programming language", "is_active": True})]
+        examples=[OpenApiExample("Create Skill", value={
+                                 "name": "Python", "description": "Programming language", "is_active": True})]
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)

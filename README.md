@@ -273,6 +273,38 @@ exposed on both `/api/students/me/` and `/api/profile/`.
 
 ---
 
+## Phase 4 — Company & Internship Management (Sections 5.4–5.5)
+
+Phase 4 delivers the admin-side management layer for the supply pipeline:
+companies (Section 5.4) and, in later tasks, internships (Section 5.5). It is
+gated end-to-end by the `IsAdminRole` RBAC permission from Task 2.6 — a
+student JWT receives `403` on every verb.
+
+### Task 4.1 — Company CRUD (`/api/companies/`) (admin-only)
+
+`GET` / `POST` `/api/companies/` and `GET` / `PUT` / `PATCH` / `DELETE`
+`/api/companies/<id>/` manage the `Company` catalogue (Section 3.6 entity #7).
+Both views are locked down with `IsAdminRole`.
+
+| Method | Path | Action |
+|--------|------|--------|
+| `GET` | `/api/companies/` | Paginated list of all companies, each with a live `internship_count`. |
+| `POST` | `/api/companies/` | Create a company (`name` unique, `website` URL, `country`, `industry`). Duplicate name → `400`. |
+| `GET` | `/api/companies/<id>/` | Retrieve one company. |
+| `PATCH` / `PUT` | `/api/companies/<id>/` | Update one company. |
+| `DELETE` | `/api/companies/<id>/` | Delete one company; its internships' `company` links are nulled (`on_delete=SET_NULL`, migration `0018`), listings survive. |
+
+**Check (Table 6.1 TC006, as in tests):** a student JWT receives `403` on
+every verb; an anonymous client receives `401`; an admin can round-trip a
+company end to end — create → list → retrieve → patch → delete — and the
+`internship_count` reflects linked internships.
+
+> Note: the whole `/api/companies/` namespace is admin-only by design —
+> students reach companies indirectly through the internship catalogue and
+> recommendations, never through a company management surface.
+
+---
+
 ## Entity Relationship Diagram (Figure 3.1)
 
 ```mermaid
@@ -329,6 +361,7 @@ ai-internship-platform/
 │   │   ├── verify_phase1_definition_of_done.py  # Master Phase 1 DoD validator
 │   │   ├── verify_phase2_definition_of_done.py  # Master Phase 2 DoD validator (TC001–TC003)
 │   │   ├── verify_phase3_definition_of_done.py  # Master Phase 3 DoD validator (TC004–TC005)
+│   │   ├── verify_phase4_definition_of_done.py  # Master Phase 4 DoD validator (TC006)
 │   │   ├── verify_clean_db_migration.py         # Scratch DB migration validator
 │   │   ├── verify_task1_erd.py                  # ERD graph checker
 │   │   ├── verify_user_student.py               # Task 1.2 test suite
@@ -456,7 +489,22 @@ With the backend running:
 
 ## Testing and Verification
 
-### 1. Phase 3 Definition of Done Master Validator
+### 1. Phase 4 Definition of Done Master Validator
+
+Runs Table 6.1's **TC006** as an automated API round-trip: a non-admin
+(student JWT) receives `403` on every verb of the company CRUD API
+(`/api/companies/`), and an admin round-trips a company through
+create → list → retrieve → patch → delete:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_phase4_definition_of_done.py
+```
+
+Expected: `PHASE 4 DEFINITION OF DONE: ALL 1 CHECKS PASSED!`
+
+### 2. Phase 3 Definition of Done Master Validator
 
 Runs Table 6.1's **TC004–TC005** as automated API round-trips: a student
 completes a full profile end-to-end (personal, education, skills, interests,
@@ -475,7 +523,7 @@ Expected: `PHASE 3 DEFINITION OF DONE: ALL 2 CHECKS PASSED!`
 > Runs against `config.settings.test` (Celery tasks eager, in-memory email
 > outbox) so no broker/Redis or live database is needed.
 
-### 2. Phase 2 Definition of Done Master Validator
+### 3. Phase 2 Definition of Done Master Validator
 
 Runs Table 6.1's **TC001–TC003** as automated API round-trips covering registration, email verification, login, token refresh, password reset, and RBAC cross-role blocking:
 
@@ -492,7 +540,7 @@ Expected: `PHASE 2 DEFINITION OF DONE: ALL 3 CHECKS PASSED!`
 > python manage.py test apps.accounts --settings=config.settings.test
 > ```
 
-### 3. Phase 1 Definition of Done Master Validator
+### 4. Phase 1 Definition of Done Master Validator
 
 Runs full automated verification of all 13 entities, cascade deletion behaviors, unique constraints, `graph_models` output, and a clean database migration from scratch:
 
@@ -502,7 +550,7 @@ source .venv/bin/activate
 python scripts/verify_phase1_definition_of_done.py
 ```
 
-### 4. Django Unit Tests
+### 5. Django Unit Tests
 
 Run unit tests across all applications:
 
@@ -512,7 +560,7 @@ source .venv/bin/activate
 python manage.py test --noinput apps.accounts apps.companies apps.data_sources apps.applications apps.recommendations apps.students apps.internships apps.common
 ```
 
-### 5. Individual Phase 1 Verification Scripts
+### 6. Individual Phase 1 Verification Scripts
 
 ```bash
 python scripts/verify_user_student.py               # Task 1.2

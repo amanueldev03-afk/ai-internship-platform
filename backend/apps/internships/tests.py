@@ -58,7 +58,8 @@ class InternshipSourceModelTest(TestCase):
 
     def test_source_str(self):
         """Test source string representation"""
-        source = InternshipSource.objects.create(name='LinkedIn', source_type='api')
+        source = InternshipSource.objects.create(
+            name='LinkedIn', source_type='api')
         self.assertEqual(str(source), 'LinkedIn')
 
 
@@ -91,7 +92,8 @@ class InternshipModelTest(TestCase):
         internship.required_skills.add(self.skill)
         self.assertEqual(internship.title, 'Software Engineer Intern')
         self.assertEqual(internship.status, Internship.STATUS_DRAFT)
-        self.assertEqual(internship.embedding_status, Internship.EMBEDDING_STATUS_PENDING)
+        self.assertEqual(internship.embedding_status,
+                         Internship.EMBEDDING_STATUS_PENDING)
 
     def test_internship_str(self):
         """Test internship string representation"""
@@ -102,7 +104,8 @@ class InternshipModelTest(TestCase):
             application_url='https://example.com/apply',
             source=self.source
         )
-        self.assertEqual(str(internship), 'Software Engineer Intern - Tech Company')
+        self.assertEqual(
+            str(internship), 'Software Engineer Intern - Tech Company')
 
     def test_is_expired(self):
         """Test internship expiration check"""
@@ -221,7 +224,8 @@ class InternshipApplicationModelTest(TestCase):
             internship=self.internship,
             status=InternshipApplication.STATUS_APPLIED
         )
-        self.assertEqual(application.status, InternshipApplication.STATUS_APPLIED)
+        self.assertEqual(application.status,
+                         InternshipApplication.STATUS_APPLIED)
         self.assertEqual(application.student, self.user)
 
     def test_unique_application(self):
@@ -363,7 +367,7 @@ class InternshipAPITest(TestCase):
         """Test student recommendations endpoint"""
         from apps.students.models import StudentProfile
         from apps.accounts.services import create_student_user
-        
+
         # Create student with profile
         student = create_student_user(
             email='student@example.com',
@@ -372,7 +376,7 @@ class InternshipAPITest(TestCase):
         )
         student.is_email_verified = True
         student.save()
-        
+
         profile = StudentProfile.objects.create(
             user=student,
             preferred_locations=['Remote'],
@@ -381,7 +385,7 @@ class InternshipAPITest(TestCase):
             internship_type='any'
         )
         profile.skills.add(self.skill)
-        
+
         self.client.force_authenticate(user=student)
         response = self.client.get('/api/recommendations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -391,9 +395,9 @@ class InternshipAPITest(TestCase):
     def test_admin_create_internship_with_embedding(self):
         """Test admin creating internship queues embedding generation"""
         from unittest.mock import patch
-        
+
         self.client.force_authenticate(user=self.admin)
-        
+
         # Mock the embedding task to avoid actual Celery execution
         with patch('apps.internships.views.generate_internship_embedding_task.delay'):
             response = self.client.post('/api/internships/admin/', {
@@ -412,9 +416,9 @@ class InternshipAPITest(TestCase):
     def test_admin_update_internship_with_embedding(self):
         """Test admin updating internship queues embedding regeneration"""
         from unittest.mock import patch
-        
+
         self.client.force_authenticate(user=self.admin)
-        
+
         # Mock the embedding task to avoid actual Celery execution
         with patch('apps.internships.views.generate_internship_embedding_task.delay'):
             response = self.client.patch(f'/api/internships/admin/{self.internship.id}/', {
@@ -422,6 +426,182 @@ class InternshipAPITest(TestCase):
             }, format='json')
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertEqual(response.data['title'], 'Updated Title')
+
+
+class InternshipFilterAPITest(TestCase):
+    """Tests for internship list filtering and search behavior."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='filter@example.com',
+            username='filteruser',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.source = InternshipSource.objects.create(
+            name='Test Source',
+            source_type='api'
+        )
+
+        self.active_remote = Internship.objects.create(
+            title='Senior Python Developer',
+            organization_name='Alpha Labs',
+            description='Build APIs with Django and Python.',
+            application_url='https://example.com/alpha',
+            source=self.source,
+            external_id='filter-remote-1',
+            country='USA',
+            city='New York',
+            work_mode='remote',
+            internship_type='remote',
+            required_experience='Mid-level',
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+        )
+        self.active_remote_2 = Internship.objects.create(
+            title='Frontend Engineer',
+            organization_name='Beta Systems',
+            description='React and Node work for product design.',
+            application_url='https://example.com/beta',
+            source=self.source,
+            external_id='filter-remote-2',
+            country='Canada',
+            city='Toronto',
+            work_mode='hybrid',
+            internship_type='hybrid',
+            required_experience='Beginner',
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+        )
+        self.active_onsite = Internship.objects.create(
+            title='Data Analyst Intern',
+            organization_name='Gamma Analytics',
+            description='Work with dashboards and machine learning models.',
+            application_url='https://example.com/gamma',
+            source=self.source,
+            external_id='filter-onsite-1',
+            country='Germany',
+            city='Berlin',
+            work_mode='onsite',
+            internship_type='onsite',
+            required_experience='Junior',
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+        )
+        self.expired = Internship.objects.create(
+            title='AI Research Intern',
+            organization_name='Delta Labs',
+            description='Research and write about AI systems.',
+            application_url='https://example.com/delta',
+            source=self.source,
+            external_id='filter-expired-1',
+            country='USA',
+            city='Austin',
+            work_mode='remote',
+            internship_type='remote',
+            required_experience='Senior',
+            status=Internship.STATUS_EXPIRED,
+            is_verified=True,
+        )
+
+    def test_filter_q_matches_title_and_description_only(self):
+        response = self.client.get('/api/internships/', {'q': 'Django'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item['id'] for item in response.data['results']}
+        self.assertIn(self.active_remote.id, ids)
+        self.assertNotIn(self.active_remote_2.id, ids)
+        self.assertNotIn(self.active_onsite.id, ids)
+        self.assertNotIn(self.expired.id, ids)
+
+    def test_filter_location_matches_country_or_city(self):
+        response = self.client.get(
+            '/api/internships/', {'location': 'new york'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item['id'] for item in response.data['results']}
+        self.assertIn(self.active_remote.id, ids)
+        self.assertNotIn(self.active_remote_2.id, ids)
+        self.assertNotIn(self.active_onsite.id, ids)
+
+    def test_filter_work_mode_matches_value(self):
+        response = self.client.get(
+            '/api/internships/', {'work_mode': 'remote'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item['id'] for item in response.data['results']}
+        self.assertIn(self.active_remote.id, ids)
+        self.assertNotIn(self.active_remote_2.id, ids)
+        self.assertNotIn(self.active_onsite.id, ids)
+
+    def test_filter_type_matches_internship_type(self):
+        response = self.client.get('/api/internships/', {'type': 'hybrid'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item['id'] for item in response.data['results']}
+        self.assertIn(self.active_remote_2.id, ids)
+        self.assertNotIn(self.active_remote.id, ids)
+        self.assertNotIn(self.active_onsite.id, ids)
+
+    def test_filter_experience_matches_required_experience(self):
+        response = self.client.get(
+            '/api/internships/', {'experience': 'beginner'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item['id'] for item in response.data['results']}
+        self.assertIn(self.active_remote_2.id, ids)
+        self.assertNotIn(self.active_remote.id, ids)
+        self.assertNotIn(self.active_onsite.id, ids)
+
+
+class InternshipPaginationAPITest(TestCase):
+    """Tests for pagination metadata and page slicing."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='pagination@example.com',
+            username='paginationuser',
+            password='testpass123'
+        )
+        self.client.force_authenticate(user=self.user)
+        self.source = InternshipSource.objects.create(
+            name='Pagination Source',
+            source_type='api'
+        )
+
+        for i in range(25):
+            Internship.objects.create(
+                title=f'Pagination Internship {i}',
+                organization_name='Page Test Company',
+                description='This internship is used for pagination checks.',
+                application_url=f'https://example.com/internship/{i}',
+                source=self.source,
+                external_id=f'pagination-{i}',
+                country='USA',
+                city='Boston',
+                work_mode='remote',
+                internship_type='remote',
+                required_experience='Junior',
+                status=Internship.STATUS_ACTIVE,
+                is_verified=True,
+            )
+
+    def test_page_two_returns_next_slice_with_correct_metadata(self):
+        page_1 = self.client.get(
+            '/api/internships/', {'page': 1, 'page_size': 10})
+        page_2 = self.client.get(
+            '/api/internships/', {'page': 2, 'page_size': 10})
+
+        self.assertEqual(page_1.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_2.status_code, status.HTTP_200_OK)
+        self.assertEqual(page_1.data['count'], 25)
+        self.assertEqual(page_2.data['count'], 25)
+        self.assertEqual(len(page_1.data['results']), 10)
+        self.assertEqual(len(page_2.data['results']), 10)
+        self.assertIsNotNone(page_2.data['next'])
+        self.assertIsNotNone(page_2.data['previous'])
+
+        page_1_ids = {item['id'] for item in page_1.data['results']}
+        page_2_ids = {item['id'] for item in page_2.data['results']}
+        self.assertTrue(page_1_ids.isdisjoint(page_2_ids))
 
 
 class SemanticMatchingTest(TestCase):
@@ -443,7 +623,7 @@ class SemanticMatchingTest(TestCase):
         )
         self.skill = Skill.objects.create(name='Python')
         self.profile.skills.add(self.skill)
-        
+
         self.source = InternshipSource.objects.create(
             name='LinkedIn',
             source_type='api'
@@ -505,7 +685,7 @@ class SemanticMatchingTest(TestCase):
         """Test semantic similarity calculation with stored embeddings"""
         update_student_embedding(self.profile)
         update_internship_embedding(self.internship)
-        
+
         similarity = calculate_stored_semantic_similarity(
             self.profile,
             self.internship
@@ -521,7 +701,7 @@ class SemanticMatchingTest(TestCase):
         self.internship.embedding = None
         self.profile.save()
         self.internship.save()
-        
+
         similarity = calculate_stored_semantic_similarity(
             self.profile,
             self.internship
@@ -552,7 +732,7 @@ class HybridMatchingTest(TestCase):
         )
         self.skill = Skill.objects.create(name='Python')
         self.profile.skills.add(self.skill)
-        
+
         self.source = InternshipSource.objects.create(
             name='LinkedIn',
             source_type='api'
@@ -574,9 +754,9 @@ class HybridMatchingTest(TestCase):
         """Test hybrid matching calculation"""
         update_student_embedding(self.profile)
         update_internship_embedding(self.internship)
-        
+
         result = calculate_hybrid_match(self.profile, self.internship)
-        
+
         self.assertIsInstance(result, dict)
         self.assertIn('eligible', result)
         self.assertIn('score', result)
@@ -595,9 +775,9 @@ class HybridMatchingTest(TestCase):
         self.internship.embedding = None
         self.profile.save()
         self.internship.save()
-        
+
         result = calculate_hybrid_match(self.profile, self.internship)
-        
+
         # Should auto-generate embeddings and calculate similarity
         self.assertIsInstance(result, dict)
         self.assertIn('score', result)
@@ -609,10 +789,10 @@ class HybridMatchingTest(TestCase):
         """Test hybrid match explanation generation"""
         update_student_embedding(self.profile)
         update_internship_embedding(self.internship)
-        
+
         result = calculate_hybrid_match(self.profile, self.internship)
         explanation = result['explanation']
-        
+
         self.assertIn('summary', explanation)
         self.assertIn('matched_skills', explanation)
         self.assertIn('missing_skills', explanation)
@@ -685,7 +865,7 @@ class RecommendationEngineV2Test(TestCase):
 
         score = calculate_location_score(self.internship, self.profile)
         self.assertEqual(score, 1.0)  # Same city
-        
+
         self.profile.city = 'Boston'
         self.profile.save()
         score = calculate_location_score(self.internship, self.profile)
@@ -695,11 +875,12 @@ class RecommendationEngineV2Test(TestCase):
         """Test final weighted score calculation: 40% Semantic, 25% Skill, 20% Preference, 10% Location, 5% Salary"""
         semantic = 0.8  # 0.8 * 0.40 = 0.32
         skill = 0.6     # 0.6 * 0.25 = 0.15
-        preference = 0.7 # 0.7 * 0.20 = 0.14
+        preference = 0.7  # 0.7 * 0.20 = 0.14
         location = 0.5  # 0.5 * 0.10 = 0.05
         salary = 0.9    # 0.9 * 0.05 = 0.045
-        
-        score = calculate_final_score(semantic, skill, preference, location, salary)
+
+        score = calculate_final_score(
+            semantic, skill, preference, location, salary)
         # Expected: (0.32 + 0.15 + 0.14 + 0.05 + 0.045) * 100 = 70.5
         self.assertEqual(score, 70.5)
 
@@ -735,7 +916,7 @@ class RecommendationEngineV2Test(TestCase):
         from apps.students.models import StudentProfile
         from apps.accounts.services import create_student_user
         from rest_framework.test import APIClient
-        
+
         # Create student with profile
         student = create_student_user(
             email='student2@example.com',
@@ -744,7 +925,7 @@ class RecommendationEngineV2Test(TestCase):
         )
         student.is_email_verified = True
         student.save()
-        
+
         profile = StudentProfile.objects.create(
             user=student,
             preferred_locations=['Remote'],
@@ -753,14 +934,14 @@ class RecommendationEngineV2Test(TestCase):
             internship_type='any'
         )
         profile.skills.add(self.skill)
-        
+
         client = APIClient()
         client.force_authenticate(user=student)
         response = client.get('/api/recommendations/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('results', response.data)
         self.assertIsInstance(response.data['results'], list)
-        
+
         # Check new v2 response format with score breakdown
         if len(response.data['results']) > 0:
             result = response.data['results'][0]
@@ -817,7 +998,8 @@ class RecommendationModelTest(TestCase):
         self.assertEqual(recommendation.student, self.student)
         self.assertEqual(recommendation.internship, self.internship)
         self.assertEqual(recommendation.overall_score, 85.50)
-        self.assertEqual(recommendation.status, Recommendation.STATUS_RECOMMENDED)
+        self.assertEqual(recommendation.status,
+                         Recommendation.STATUS_RECOMMENDED)
 
     def test_recommendation_str(self):
         """Test recommendation string representation"""
@@ -939,7 +1121,8 @@ class RecommendationFeedbackAPITest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.recommendation.refresh_from_db()
-        self.assertEqual(self.recommendation.status, Recommendation.STATUS_VIEWED)
+        self.assertEqual(self.recommendation.status,
+                         Recommendation.STATUS_VIEWED)
 
     def test_recommendation_feedback_save(self):
         """Test marking recommendation as saved"""
@@ -950,7 +1133,8 @@ class RecommendationFeedbackAPITest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.recommendation.refresh_from_db()
-        self.assertEqual(self.recommendation.status, Recommendation.STATUS_SAVED)
+        self.assertEqual(self.recommendation.status,
+                         Recommendation.STATUS_SAVED)
 
     def test_recommendation_feedback_apply(self):
         """Test marking recommendation as applied"""
@@ -961,7 +1145,8 @@ class RecommendationFeedbackAPITest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.recommendation.refresh_from_db()
-        self.assertEqual(self.recommendation.status, Recommendation.STATUS_APPLIED)
+        self.assertEqual(self.recommendation.status,
+                         Recommendation.STATUS_APPLIED)
 
     def test_recommendation_feedback_ignore(self):
         """Test marking recommendation as ignored"""
@@ -972,7 +1157,8 @@ class RecommendationFeedbackAPITest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.recommendation.refresh_from_db()
-        self.assertEqual(self.recommendation.status, Recommendation.STATUS_IGNORED)
+        self.assertEqual(self.recommendation.status,
+                         Recommendation.STATUS_IGNORED)
 
     def test_recommendation_feedback_not_found(self):
         """Test feedback for non-existent recommendation"""
@@ -1036,8 +1222,10 @@ class InternshipSkillModelTest(TestCase):
     def test_internship_skills_and_reverse_relation(self):
         """Test adding InternshipSkills and checking reverse relation count."""
         from .models import InternshipSkill
-        is1 = InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
-        is2 = InternshipSkill.objects.create(internship=self.internship, skill=self.skill2)
+        is1 = InternshipSkill.objects.create(
+            internship=self.internship, skill=self.skill1)
+        is2 = InternshipSkill.objects.create(
+            internship=self.internship, skill=self.skill2)
 
         self.assertEqual(self.internship.internshipskill_set.count(), 2)
         self.assertIn("ML Research Intern - PyTorch", str(is1))
@@ -1046,7 +1234,8 @@ class InternshipSkillModelTest(TestCase):
         """Test unique constraint on (internship, skill)."""
         from .models import InternshipSkill
         from django.db import IntegrityError
-        InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
+        InternshipSkill.objects.create(
+            internship=self.internship, skill=self.skill1)
         with self.assertRaises(IntegrityError):
-            InternshipSkill.objects.create(internship=self.internship, skill=self.skill1)
-
+            InternshipSkill.objects.create(
+                internship=self.internship, skill=self.skill1)

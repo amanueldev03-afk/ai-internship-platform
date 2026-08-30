@@ -1,4 +1,5 @@
 import django_filters
+from django.db.models import Q
 
 from .models import Internship
 
@@ -10,25 +11,44 @@ class InternshipFilter(django_filters.FilterSet):
 
     country = django_filters.CharFilter(
         field_name="country",
-        lookup_expr="iexact",
+        lookup_expr="icontains",
     )
 
     city = django_filters.CharFilter(
         field_name="city",
-        lookup_expr="iexact",
+        lookup_expr="icontains",
+    )
+
+    location = django_filters.CharFilter(
+        method="filter_location",
     )
 
     category = django_filters.CharFilter(
         field_name="category",
-        lookup_expr="iexact",
+        lookup_expr="icontains",
     )
 
-    internship_type = django_filters.ChoiceFilter(
+    type = django_filters.ChoiceFilter(
+        field_name="internship_type",
         choices=Internship.INTERNSHIP_TYPE_CHOICES,
+    )
+
+    work_mode = django_filters.ChoiceFilter(
+        field_name="work_mode",
+        choices=Internship._meta.get_field("work_mode").choices,
     )
 
     work_type = django_filters.ChoiceFilter(
         choices=Internship.WORK_TYPE_CHOICES,
+    )
+
+    experience = django_filters.CharFilter(
+        field_name="required_experience",
+        lookup_expr="icontains",
+    )
+
+    internship_type = django_filters.ChoiceFilter(
+        choices=Internship.INTERNSHIP_TYPE_CHOICES,
     )
 
     compensation_type = django_filters.ChoiceFilter(
@@ -59,6 +79,11 @@ class InternshipFilter(django_filters.FilterSet):
         method="filter_skill",
     )
 
+    def filter_location(self, queryset, name, value):
+        lookup = Q(country__icontains=value) | Q(
+            city__icontains=value) | Q(location_text__icontains=value)
+        return queryset.filter(lookup)
+
     def filter_skill(self, queryset, name, value):
         """
         Filter internships whose required_skills contain
@@ -68,7 +93,6 @@ class InternshipFilter(django_filters.FilterSet):
         return queryset.filter(
             required_skills__icontains=value
         )
-        
 
     class Meta:
         model = Internship
@@ -76,9 +100,13 @@ class InternshipFilter(django_filters.FilterSet):
         fields = [
             "country",
             "city",
+            "location",
             "category",
+            "type",
+            "work_mode",
             "internship_type",
             "work_type",
+            "experience",
             "compensation_type",
             "minimum_compensation",
             "maximum_compensation",
