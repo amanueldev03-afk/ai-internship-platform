@@ -75,6 +75,7 @@ def _complete_cv_processing(cv, text: str) -> dict:
     cv.extracted_experience     = analysis.get("experience",     [])
     cv.extracted_projects       = analysis.get("projects",       [])
     cv.extracted_certifications = analysis.get("certifications", [])
+    cv.extracted_experience_years = analysis.get("experience_years", 0.0)
     cv.save(update_fields=[
         "extracted_text",
         "extracted_skills",
@@ -82,14 +83,16 @@ def _complete_cv_processing(cv, text: str) -> dict:
         "extracted_experience",
         "extracted_projects",
         "extracted_certifications",
+        "extracted_experience_years",
     ])
     logger.info(f"CV {cv.id} — extracted data saved to DB")
 
     # 7. Sync skills to student profile M2M
     try:
         profile = StudentProfile.objects.get(user=cv.student)
-        sync_cv_skills_to_profile(profile, cv.extracted_skills)
-        logger.info(f"CV {cv.id} — {len(cv.extracted_skills)} skills synced to profile")
+        # Phase 6 Task 6.1: Mark skills as source='resume' when extracted from CV
+        sync_cv_skills_to_profile(profile, cv.extracted_skills, source="resume")
+        logger.info(f"CV {cv.id} — {len(cv.extracted_skills)} skills synced to profile (source=resume)")
     except StudentProfile.DoesNotExist:
         logger.warning(f"CV {cv.id} — no StudentProfile for user {cv.student_id}, skipping sync")
         profile = None

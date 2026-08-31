@@ -83,6 +83,8 @@ def parse_cv(text: str) -> ParsedCV:
     """
     Parse CV text using the deterministic keyword parser.
     No external API calls — works offline.
+
+    Phase 6 Task 6.1 — Includes experience_years in output contract.
     """
     if not text:
         return ParsedCV(raw_text=text)
@@ -99,6 +101,7 @@ def parse_cv(text: str) -> ParsedCV:
         experience=result.get("experience", []),
         projects=result.get("projects", []),
         certifications=result.get("certifications", []),
+        experience_years=result.get("experience_years", 0.0),
         raw_text=text,
     )
 
@@ -107,6 +110,8 @@ def parse_cv_with_ai(text: str, fallback: Optional[ParsedCV] = None) -> ParsedCV
     """
     Parse CV text using OpenAI GPT-4o-mini.
     Falls back to deterministic parse if OpenAI is unavailable.
+
+    Phase 6 Task 6.1 — Includes experience_years in output contract.
     """
     if not text:
         return fallback or ParsedCV(raw_text=text)
@@ -131,5 +136,6 @@ def parse_cv_with_ai(text: str, fallback: Optional[ParsedCV] = None) -> ParsedCV
         experience=result.get("experience", []),
         projects=result.get("projects", []),
         certifications=result.get("certifications", []),
+        experience_years=result.get("experience_years", 0.0),
         raw_text=text,
     )

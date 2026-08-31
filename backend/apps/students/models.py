@@ -500,6 +500,13 @@ class CV(TimeStampedModel):
         blank=True,
     )
 
+    # Phase 6 Task 6.1 — Total years of professional experience calculated from
+    # parsed experience entries (e.g., "3 years" + "2 years" = 5.0 years)
+    extracted_experience_years = models.FloatField(
+        default=0.0,
+        blank=True,
+    )
+
     processing_status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -687,12 +694,18 @@ class StudentSkill(TimeStampedModel):
     """
     Through table linking Student and Skill with proficiency level (Task 1.3).
     Enforces uniqueness on (student, skill) to prevent duplicate score inflation.
-    """
 
+    Phase 6 Task 6.1 — Added source field to track whether a skill was added
+    manually by the student or extracted from their resume via the resume parser.
+    """
     class Proficiency(models.TextChoices):
         BEGINNER = "beginner", "Beginner"
         INTERMEDIATE = "intermediate", "Intermediate"
         ADVANCED = "advanced", "Advanced"
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        RESUME = "resume", "Resume"
 
     student = models.ForeignKey(
         Student,
@@ -712,6 +725,13 @@ class StudentSkill(TimeStampedModel):
         default=Proficiency.BEGINNER,
     )
 
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.MANUAL,
+        help_text="Source of this skill: manually added by student or extracted from resume.",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Student Skill"
@@ -725,7 +745,7 @@ class StudentSkill(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"{self.student.user.email} - {self.skill.name} ({self.get_proficiency_display()})"
+        return f"{self.student.user.email} - {self.skill.name} ({self.get_proficiency_display()}, {self.get_source_display()})"
 
 
 class StudentInterest(TimeStampedModel):

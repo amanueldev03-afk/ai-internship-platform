@@ -160,10 +160,13 @@ class StudentRecommendationView(APIView):
             recommendations = cached
             from_cache = True
         else:
-            # Score only active internships
+            # Score only active internships (excluding admin-review rows)
             internships = (
                 Internship.objects
-                .filter(status=Internship.STATUS_ACTIVE)
+                .filter(
+                    status=Internship.STATUS_ACTIVE,
+                    needs_review=False,
+                )
                 .prefetch_related("required_skills")
             )
 

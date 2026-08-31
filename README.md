@@ -273,6 +273,162 @@ exposed on both `/api/students/me/` and `/api/profile/`.
 
 ---
 
+## Phase 6 — AI Recommendation Engine (Complete)
+
+Phase 6 delivers the complete AI-powered recommendation engine that matches students with internships using semantic embeddings, skill matching, weighted scoring, and human-readable explanations. The engine processes student profiles and CVs, scores internships against student preferences, and returns ranked, explained recommendations.
+
+### What Phase 6 Delivers
+
+- **Task 6.1 — Resume Parser**: Pure Python module extracting skills, education, experience from PDF/DOCX using spaCy NER
+- **Task 6.2 — Skill Matching**: Exact-match skill intersection scoring (40% weight in final score)
+- **Task 6.3 — Semantic Matching**: Sentence-transformers embeddings for synonym detection (blended with exact-match)
+- **Task 6.4 — Scoring Functions**: Individual component scores (education, experience, interest, location, work_mode)
+- **Task 6.5 — Weighted Ranking**: Configurable weight aggregation per Table 3.1 (Section 3.11.8)
+- **Task 6.6 — Explanation Generation**: Threshold-based human-readable explanations (Section 3.11.9)
+- **Task 6.7 — Orchestration Entrypoint**: Django-integrated `generate_recommendations()` function with persistence
+
+### Definition of Done (Phase 6)
+
+Given a real (or realistically seeded) student profile and the Phase-5-collected internship pool, the engine returns a ranked, explained list matching the doc's worked examples in shape and behavior.
+
+### Verification
+
+Run the Phase 6 verification scripts:
+
+```bash
+cd backend
+source .venv/bin/activate
+
+# Task 6.1 — Resume Parser
+python scripts/verify_task61_resume_parser.py
+
+# Task 6.2 — Skill Matching
+python scripts/verify_task62_skill_matching.py
+
+# Task 6.3 — Semantic Matching
+python scripts/verify_task63_semantic_matching.py
+
+# Task 6.4 — Scoring Functions
+python scripts/verify_task64_scoring.py
+
+# Task 6.5 — Weighted Ranking
+python scripts/verify_task65_ranking.py
+
+# Task 6.6 — Explanation Generation
+python scripts/verify_task66_explanation.py
+
+# Task 6.7 — Orchestration Entrypoint
+python scripts/verify_task67_orchestration.py
+```
+
+Expected: All scripts show `ALL CHECKS PASSED!`
+
+### Phase 6 Architecture
+
+```
+ai_engine/
+├── resume_parser/          # CV text extraction + spaCy NER
+├── skill_matching/         # Exact-match skill intersection
+├── semantic_matching/      # Embedding-based similarity
+├── scoring/                # Component score functions
+├── ranking/
+│   └── scorer.py          # Weighted aggregation (Table 3.1)
+├── explanation.py          # Threshold-based explanations
+└── recommendation.py       # Django-integrated orchestrator
+```
+
+### Key Features
+
+**Resume Parser (Task 6.1)**
+- PDF/DOCX text extraction
+- spaCy NER for entity extraction
+- Section-based heuristics (Skills, Experience, Education)
+- Skill catalogue matching
+- Experience years calculation
+- Source tracking (manual vs resume)
+
+**Skill Matching (Task 6.2)**
+- Exact name-based intersection
+- Overlap ratio: `|student_skills ∩ internship_skills| / |internship_skills|`
+- Neutral score (0.5) when no requirements
+- Case-insensitive, whitespace-trimmed
+
+**Semantic Matching (Task 6.3)**
+- sentence-transformers (all-MiniLM-L6-v2, 384-dim)
+- Cosine similarity scaled to 0–100
+- Blended skill score: 60% exact-match + 40% semantic
+- Catches synonyms exact-match misses
+
+**Scoring Functions (Task 6.4)**
+- `education_score`: Field + level alignment (0.0–1.0)
+- `experience_score`: Bucket comparison + years boost
+- `interest_score`: Career interest match (exact + semantic)
+- `location_score`: City/country/remote/relocation
+- `work_mode_score`: Remote/hybrid/onsite match
+
+**Weighted Ranking (Task 6.5)**
+- Table 3.1 weights: Skills 40%, Education 20%, Interest 15%, Experience 10%, Location 10%, Work Mode 5%
+- Configurable weights (module-level constants)
+- Score clamping (0.0–100.0)
+- Weight validation (sum to 1.0)
+
+**Explanation Generation (Task 6.6)**
+- Threshold-based logic (high ≥0.70, medium ≥0.50)
+- Avoids false positives (no free-text generation)
+- Auditability: clear score → explanation mapping
+- Configurable thresholds via `ExplanationConfig`
+
+**Orchestration Entrypoint (Task 6.7)**
+- `generate_recommendations(student, limit=50, save_to_db=True)`
+- Loads student profile + skills + interests
+- Queries active internships
+- Applies hard filters (status, type, compensation)
+- Scores each using Tasks 6.4-6.6
+- Sorts descending by overall_score
+- Persists to Recommendation model (update_or_create)
+- Returns top N results
+
+### Integration with Django
+
+The orchestration function integrates with Django models:
+
+```python
+from ai_engine.recommendation import generate_recommendations
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+user = User.objects.get(username="student")
+
+results = generate_recommendations(user, limit=50, save_to_db=True)
+
+for result in results:
+    print(f"Score: {result.score:.2f}")
+    print(f"Internship: {result.internship.title}")
+    print(f"Explanation: {result.explanation}")
+    print(f"Breakdown: {result.score_breakdown}")
+```
+
+### Database Changes
+
+**StudentSkill Model** (Task 6.1)
+- Added `source` field (manual/resume tracking)
+
+**CV Model** (Task 6.1)
+- Added `extracted_experience_years` field
+
+**Recommendation Model** (Task 6.7)
+- Uses `update_or_create` keyed on (student, internship)
+- Stores all component scores + overall_score
+
+### Performance Considerations
+
+- Embedding model cached with `@lru_cache(maxsize=1)`
+- Django ORM optimization with prefetch/select_related
+- Limit parameter bounds compute (default 50)
+- Consider pagination for large internship pools
+
+---
+
 ## Phase 5 — Data Source Collection Pipeline (Complete)
 
 Phase 5 delivers the complete data ingestion pipeline with fault isolation,
@@ -313,8 +469,7 @@ Expected: `PHASE 5 DEFINITION OF DONE: ALL 1 CHECKS PASSED!`
 
 ### Testing Guides
 
-- `TASK_5_10_TESTING.md` — Celery Beat scheduling and manual sync verification
-- `TASK_5_11_TESTING.md` — Fault isolation testing with deliberate adapter failures
+All Phase 6 testing guides are consolidated in this main README above.
 
 ---
 

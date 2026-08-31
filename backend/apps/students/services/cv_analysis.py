@@ -348,9 +348,45 @@ def parse_certifications(text):
     return certifications
 
 
+def calculate_experience_years(experience_entries):
+    """
+    Calculate total years of experience from parsed experience entries.
+
+    Phase 6 Task 6.1 — Extracts duration information from experience entries
+    and sums them to estimate total professional experience in years.
+    """
+    import re
+
+    total_years = 0.0
+
+    for entry in experience_entries:
+        if not isinstance(entry, dict):
+            continue
+
+        # Look for duration patterns in the entry's description or years field
+        text = ""
+        if 'description' in entry:
+            text += str(entry['description']) + " "
+        if 'years' in entry:
+            text += str(entry['years']) + " "
+
+        # Pattern for "X years" or "X months"
+        year_match = re.search(r'(\d+(?:\.\d+)?)\s*years?', text.lower())
+        month_match = re.search(r'(\d+)\s*months?', text.lower())
+
+        if year_match:
+            total_years += float(year_match.group(1))
+        elif month_match:
+            total_years += float(month_match.group(1)) / 12
+
+    return round(total_years, 1)
+
+
 def analyze_cv(text):
     """
     Analyze CV text and return structured data.
+
+    Phase 6 Task 6.1 — Added experience_years calculation to output contract.
     """
 
     text = normalize_text(text)
@@ -362,12 +398,16 @@ def analyze_cv(text):
             "experience": [],
             "projects": [],
             "certifications": [],
+            "experience_years": 0.0,
         }
+
+    experience_entries = parse_experience(text)
 
     return {
         "skills": extract_skills(text),
         "education": parse_education(text),
-        "experience": parse_experience(text),
+        "experience": experience_entries,
         "projects": parse_projects(text),
         "certifications": parse_certifications(text),
+        "experience_years": calculate_experience_years(experience_entries),
     }

@@ -5,6 +5,15 @@ Entry point for the full matching pipeline:
   profile (StudentInput) + pool (list[InternshipInput])
   → ranked list[RecommendationOutput]
 
+Phase 6 Task 6.7 — Django-integrated orchestration entrypoint:
+  generate_recommendations(student) → list[RecommendationResult]
+  - Loads student profile + skills + interests
+  - Queries Internship.objects.filter(status='active')
+  - Scores each using Tasks 6.4-6.6 functions
+  - Sorts descending by overall_score
+  - Returns top N (paginate/limit, e.g., top 50)
+  - Persists to Recommendation model using update_or_create
+
 Business flow (step 3):
   For each internship:
     1. Hard filter  — skip inactive, wrong type, wrong compensation
@@ -23,16 +32,244 @@ logic as a pure-Python function for testing and standalone use.
 """
 
 from __future__ import annotations
+from typing import Optional
+from dataclasses import dataclass
+
 from ai_engine.models import (
     StudentInput,
     InternshipInput,
     ScoreBreakdown,
     RecommendationOutput,
 )
-from ai_engine.skill_matching import exact_skill_score, get_matched_skills
+from ai_engine.skill_matching import exact_skill_score, get_matched_skills, blended_skill_score
 from ai_engine.semantic_matching import student_internship_similarity
 from ai_engine.ranking import weighted_score, rank
+from ai_engine.ranking.scorer import ComponentScores, calculate_overall_score
 from ai_engine.explanation import build_explanation
+from ai_engine.scoring import (
+    education_score,
+    experience_score,
+    interest_score,
+    location_score,
+    work_mode_score,
+)
+
+
+@dataclass
+class RecommendationResult:
+    """Result from Django-integrated recommendation generation."""
+    internship: object
+    score: float
+    explanation: list[str]
+    score_breakdown: dict
+
+
+def generate_recommendations(
+    student,
+    limit: int = 50,
+    save_to_db: bool = True,
+) -> list[RecommendationResult]:
+    """
+    Phase 6 Task 6.7 — Django-integrated orchestration entrypoint.
+    
+    Loads student profile + skills + interests, queries active internships,
+    scores each using Tasks 6.4-6.6 functions, sorts descending by overall_score,
+    returns top N, and persists to Recommendation model.
+    
+    Args:
+        student: Django User object
+        limit: Maximum number of results to return (default 50)
+        save_to_db: Whether to persist results to Recommendation model
+    
+    Returns:
+        List of RecommendationResult objects sorted by score descending
+    """
+    from apps.students.models import StudentProfile
+    from apps.internships.models import Internship
+    from apps.recommendations.models import Recommendation
+    
+    # Load student profile with related data
+    try:
+        from apps.students.models import Student
+        student_record = (
+            Student.objects
+            .prefetch_related("skills")
+            .prefetch_related("interests")
+            .select_related("user")
+            .get(user=student)
+        )
+    except Student.DoesNotExist:
+        return []
+    
+    # Query active internships
+    internships = Internship.objects.filter(status="active")
+    
+    # Extract student data
+    student_skills = list(student_record.skills.values_list("name", flat=True))
+    student_interests = list(student_record.interests.values_list("name", flat=True))
+    
+    # Get student CV text for semantic matching
+    student_text = _build_student_text(student_record)
+    
+    results = []
+    
+    for internship in internships:
+        # Hard filter check
+        if not _passes_hard_filters(internship, student_record):
+            continue
+        
+        # Calculate component scores using Task 6.4 functions
+        skill = blended_skill_score(
+            student_skills,
+            list(internship.required_skills.values_list("name", flat=True)),
+            student_text,
+            internship.description,
+            exact_weight=0.6,
+            semantic_weight=0.4
+        )
+        
+        edu = education_score(
+            student_record.field_of_study or "",
+            student_record.education_level or "",
+            internship.category,
+            None  # internship education level not specified
+        )
+        
+        interest = interest_score(
+            student_interests,
+            internship.category,
+            use_semantic=True
+        )
+        
+        exp = experience_score(
+            "intermediate",  # Default student level
+            "intermediate",  # Default internship requirement
+            getattr(student_record, "extracted_experience_years", 0.0) or 0.0
+        )
+        
+        loc = location_score(
+            getattr(student_record, "country", "") or "",
+            getattr(student_record, "city", "") or "",
+            internship.country or "",
+            internship.city or "",
+            internship.internship_type or "onsite",
+            getattr(student_record, "willing_to_relocate", False) or False,
+            list(getattr(student_record, "preferred_locations", []) or [])
+        )
+        
+        work = work_mode_score(
+            getattr(student_record, "work_mode", "either") or "either",
+            internship.work_type or "onsite"
+        )
+        
+        # Calculate overall score using Task 6.5 weighted scoring
+        component_scores = ComponentScores(
+            skill_score=skill,
+            education_score=edu,
+            interest_score=interest,
+            experience_score=exp,
+            location_score=loc,
+            work_mode_score=work,
+        )
+        
+        overall_score = calculate_overall_score(component_scores)
+        
+        # Generate explanation using Task 6.6
+        matched = get_matched_skills(
+            student_skills,
+            list(internship.required_skills.values_list("name", flat=True))
+        )
+        
+        explanation = build_explanation(
+            skill_score=skill,
+            education_score=edu,
+            interest_score=interest,
+            experience_score=exp,
+            location_score=loc,
+            work_mode_score=work,
+            matched_skills=matched,
+            field_of_study=student_record.field_of_study,
+            internship_title=internship.title
+        )
+        
+        # Build score breakdown
+        score_breakdown = {
+            "skill_score": round(skill * 100, 2),
+            "education_score": round(edu * 100, 2),
+            "interest_score": round(interest * 100, 2),
+            "experience_score": round(exp * 100, 2),
+            "location_score": round(loc * 100, 2),
+            "work_mode_score": round(work * 100, 2),
+            "overall_score": overall_score,
+        }
+        
+        results.append(RecommendationResult(
+            internship=internship,
+            score=overall_score,
+            explanation=explanation,
+            score_breakdown=score_breakdown,
+        ))
+        
+        # Persist to Recommendation model if requested
+        if save_to_db:
+            Recommendation.objects.update_or_create(
+                student=student,
+                internship=internship,
+                defaults={
+                    "overall_score": overall_score,
+                    "skill_score": round(skill * 100, 2),
+                    "education_score": round(edu * 100, 2),
+                    "interest_score": round(interest * 100, 2),
+                    "experience_score": round(exp * 100, 2),
+                    "location_score": round(loc * 100, 2),
+                    "work_mode_score": round(work * 100, 2),
+                }
+            )
+    
+    # Sort descending by overall_score
+    results.sort(key=lambda r: r.score, reverse=True)
+    
+    # Apply limit
+    return results[:limit]
+
+
+def _build_student_text(student) -> str:
+    """Build text representation of student for semantic matching."""
+    parts = []
+    
+    if student.skills.exists():
+        skills = list(student.skills.values_list("name", flat=True))
+        parts.append("Skills: " + ", ".join(skills))
+    
+    if student.field_of_study:
+        parts.append("Field of Study: " + student.field_of_study)
+    
+    return "\n".join(parts)
+
+
+def _passes_hard_filters(internship, student) -> bool:
+    """Check if internship passes hard filters."""
+    # Skip inactive internships
+    if internship.status != "active":
+        return False
+    
+    # Internship type filter - skip if student has preference and it doesn't match
+    pref_type = getattr(student, "internship_type", None) or "either"
+    if pref_type != "either" and pref_type != "any":
+        intern_type = getattr(internship, "internship_type", None) or "onsite"
+        if intern_type != pref_type:
+            return False
+    
+    # Compensation filter - skip if student has preference and it doesn't match
+    comp_pref = getattr(student, "compensation_preference", None) or "either"
+    if comp_pref != "either":
+        comp_type = getattr(internship, "compensation_type", None) or "unknown"
+        if comp_pref == "paid" and comp_type == "unpaid":
+            return False
+        if comp_pref == "unpaid" and comp_type == "paid":
+            return False
+    
+    return True
 
 
 def score_single(

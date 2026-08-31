@@ -4,14 +4,23 @@ from apps.internships.models import Skill
 def sync_cv_skills_to_profile(
     student_profile,
     extracted_skills,
+    source="manual",
 ):
     """
     Synchronize CV-extracted skills with
     the student's existing skills.
+
+    Args:
+        student_profile: The StudentProfile instance
+        extracted_skills: List of skill names extracted from CV
+        source: Source of the skills - "manual" or "resume" (default: "manual")
+                 Phase 6 Task 6.1: Resume-extracted skills are marked with source='resume'
     """
 
     if not extracted_skills:
         return
+
+    from apps.students.models import StudentSkill
 
     skills = []
 
@@ -23,6 +32,12 @@ def sync_cv_skills_to_profile(
 
         skills.append(skill)
 
-    student_profile.skills.set(
-        skills
-    )
+    # Create StudentSkill entries with the specified source
+    # This replaces the simple M2M set() to allow tracking the source
+    student_profile.skills.clear()
+    for skill in skills:
+        StudentSkill.objects.create(
+            student=student_profile.student,
+            skill=skill,
+            source=source,
+        )

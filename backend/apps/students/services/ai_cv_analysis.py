@@ -128,6 +128,10 @@ CV_ANALYSIS_SCHEMA = {
             "items": {
                 "type": "string"
             }
+        },
+        "experience_years": {
+            "type": "number",
+            "description": "Total years of professional experience calculated from experience entries"
         }
     },
     "required": [
@@ -243,6 +247,8 @@ def analyze_cv_with_ai(cv_text):
 def normalize_ai_result(data):
     """
     Ensure AI output has the expected structure.
+
+    Phase 6 Task 6.1 — Added experience_years to normalization.
     """
 
     if not isinstance(data, dict):
@@ -295,6 +301,14 @@ def normalize_ai_result(data):
             )
             else []
         ),
+        "experience_years": (
+            data.get("experience_years", 0.0)
+            if isinstance(
+                data.get("experience_years", 0.0),
+                (int, float),
+            )
+            else 0.0
+        ),
     }
 
 
@@ -330,6 +344,8 @@ def analyze_cv_intelligently(cv_text, basic_analysis):
     """
     Merge deterministic CV analysis with AI analysis.
     Always returns a valid dict — falls back to basic_analysis if AI fails.
+
+    Phase 6 Task 6.1 — Added experience_years to merge result.
     """
     ai_result = analyze_cv_with_ai(cv_text)
 
@@ -360,4 +376,5 @@ def analyze_cv_intelligently(cv_text, basic_analysis):
         "experience":     ai_result["experience"]     or basic_analysis.get("experience",     []),
         "projects":       ai_result["projects"]       or basic_analysis.get("projects",       []),
         "certifications": ai_result["certifications"] or basic_analysis.get("certifications", []),
+        "experience_years": ai_result.get("experience_years", 0.0) or basic_analysis.get("experience_years", 0.0),
     }
