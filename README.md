@@ -273,6 +273,51 @@ exposed on both `/api/students/me/` and `/api/profile/`.
 
 ---
 
+## Phase 5 — Data Source Collection Pipeline (Complete)
+
+Phase 5 delivers the complete data ingestion pipeline with fault isolation,
+scheduling, and automated collection from external sources (API, RSS, career
+sites). The pipeline normalizes, deduplicates, and validates internship listings
+with zero manual intervention.
+
+### What Phase 5 delivers
+
+- **Task 5.2 — Adapter Interface**: Base adapter contract with `FakeAdapter` for testing
+- **Task 5.3 — API Collector**: HTTP/JSON adapter with retry logic and rate limiting
+- **Task 5.4 — RSS Collector**: feedparser-based RSS feed adapter
+- **Task 5.5 — Career Site Collector**: HTML scraping adapter with CSS selectors
+- **Task 5.6 — Normalization**: Maps external data to internal Task 1.5 schema with content hashing
+- **Task 5.7 — Deduplication**: Exact duplicate (SHA-256) and near-duplicate (fuzzy matching) detection
+- **Task 5.8 — Expiration**: Automated expiry of internships past their deadline
+- **Task 5.9 — URL Validation**: Async URL validation via Celery
+- **Task 5.10 — Scheduling**: Celery Beat schedule for periodic collection + manual sync endpoint
+- **Task 5.11 — Fault Isolation**: Try/except blocks ensure one source failing never blocks others
+
+### Definition of Done (Phase 5)
+
+Running the full scheduled pipeline against fixture/mock sources produces
+normalized, deduplicated, URL-validated, non-expired Internship rows in
+Postgres with zero manual intervention. **TC011 passes**.
+
+### Verification
+
+Run the Phase 5 Definition of Done master validator:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_phase5_definition_of_done.py
+```
+
+Expected: `PHASE 5 DEFINITION OF DONE: ALL 1 CHECKS PASSED!`
+
+### Testing Guides
+
+- `TASK_5_10_TESTING.md` — Celery Beat scheduling and manual sync verification
+- `TASK_5_11_TESTING.md` — Fault isolation testing with deliberate adapter failures
+
+---
+
 ## Phase 4 — Company & Internship Management (Sections 5.4–5.5)
 
 Phase 4 delivers the admin-side management layer for the supply pipeline:
@@ -489,7 +534,21 @@ With the backend running:
 
 ## Testing and Verification
 
-### 1. Phase 4 Definition of Done Master Validator
+### 1. Phase 5 Definition of Done Master Validator
+
+Runs Table 6.1's **TC011** as an automated API round-trip: the full scheduled
+pipeline runs end-to-end with mock sources, producing normalized, deduplicated,
+URL-validated, non-expired Internship rows with zero manual intervention:
+
+```bash
+cd backend
+source .venv/bin/activate
+python scripts/verify_phase5_definition_of_done.py
+```
+
+Expected: `PHASE 5 DEFINITION OF DONE: ALL 1 CHECKS PASSED!`
+
+### 2. Phase 4 Definition of Done Master Validator
 
 Runs Table 6.1's **TC006** as an automated API round-trip: a non-admin
 (student JWT) receives `403` on every verb of the company CRUD API
@@ -504,7 +563,7 @@ python scripts/verify_phase4_definition_of_done.py
 
 Expected: `PHASE 4 DEFINITION OF DONE: ALL 1 CHECKS PASSED!`
 
-### 2. Phase 3 Definition of Done Master Validator
+### 3. Phase 3 Definition of Done Master Validator
 
 Runs Table 6.1's **TC004–TC005** as automated API round-trips: a student
 completes a full profile end-to-end (personal, education, skills, interests,
@@ -523,7 +582,7 @@ Expected: `PHASE 3 DEFINITION OF DONE: ALL 2 CHECKS PASSED!`
 > Runs against `config.settings.test` (Celery tasks eager, in-memory email
 > outbox) so no broker/Redis or live database is needed.
 
-### 3. Phase 2 Definition of Done Master Validator
+### 4. Phase 2 Definition of Done Master Validator
 
 Runs Table 6.1's **TC001–TC003** as automated API round-trips covering registration, email verification, login, token refresh, password reset, and RBAC cross-role blocking:
 
@@ -540,7 +599,7 @@ Expected: `PHASE 2 DEFINITION OF DONE: ALL 3 CHECKS PASSED!`
 > python manage.py test apps.accounts --settings=config.settings.test
 > ```
 
-### 4. Phase 1 Definition of Done Master Validator
+### 5. Phase 1 Definition of Done Master Validator
 
 Runs full automated verification of all 13 entities, cascade deletion behaviors, unique constraints, `graph_models` output, and a clean database migration from scratch:
 
@@ -550,7 +609,7 @@ source .venv/bin/activate
 python scripts/verify_phase1_definition_of_done.py
 ```
 
-### 5. Django Unit Tests
+### 6. Django Unit Tests
 
 Run unit tests across all applications:
 
@@ -560,7 +619,7 @@ source .venv/bin/activate
 python manage.py test --noinput apps.accounts apps.companies apps.data_sources apps.applications apps.recommendations apps.students apps.internships apps.common
 ```
 
-### 6. Individual Phase 1 Verification Scripts
+### 7. Individual Phase 1 Verification Scripts
 
 ```bash
 python scripts/verify_user_student.py               # Task 1.2

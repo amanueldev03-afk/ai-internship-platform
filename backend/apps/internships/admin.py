@@ -5,6 +5,7 @@ from .models import (
     InternshipSkill,
     InternshipSource,
     InternshipCollectionLog,
+    InternshipDuplicateFlag,
     SavedInternship,
     InternshipApplication,
     Skill,
@@ -45,12 +46,14 @@ class InternshipAdmin(admin.ModelAdmin):
         "country",
         "status",
         "is_verified",
+        "needs_review",
         "application_deadline",
     ]
 
     list_filter = [
         "status",
         "is_verified",
+        "needs_review",
         "internship_type",
         "work_type",
         "compensation_type",
@@ -178,6 +181,40 @@ class InternshipAdmin(admin.ModelAdmin):
     ]
 
 
+
+
+@admin.register(InternshipDuplicateFlag)
+class InternshipDuplicateFlagAdmin(admin.ModelAdmin):
+    list_display = [
+        "title",
+        "internship",
+        "similarity_score",
+        "review_status",
+        "last_seen_at",
+        "created_at",
+    ]
+
+    list_filter = [
+        "review_status",
+    ]
+
+    search_fields = [
+        "title",
+        "organization_name",
+        "application_url",
+    ]
+
+    readonly_fields = [
+        "internship",
+        "title",
+        "organization_name",
+        "application_url",
+        "content_hash",
+        "similarity_score",
+        "last_seen_at",
+        "created_at",
+        "updated_at",
+    ]
 
 
 @admin.register(InternshipCollectionLog)

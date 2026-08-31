@@ -220,6 +220,13 @@ class Internship(TimeStampedModel):
         help_text="SHA-256 hash of title+company+description for duplicate detection (Task 5.x).",
     )
 
+    last_seen_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Last time this listing was seen by a collection run (Task 5.7).",
+    )
+
     category = models.CharField(
         max_length=150,
         blank=True,
@@ -386,6 +393,30 @@ class Internship(TimeStampedModel):
 
     is_verified = models.BooleanField(
         default=False,
+    )
+
+    needs_review = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Flagged for admin review (broken links, low-confidence skills, etc.) instead of auto-published (Section 3.10.8, Task 5.9).",
+    )
+
+    validated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the listing URLs were last validated by the Task 5.9 collector task.",
+    )
+
+    url_validation = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Per-URL validation results (HEAD/GET status, error) from Task 5.9.",
+    )
+
+    skills_review = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Low-confidence skill matches flagged for the Task 5.9 admin review.",
     )
 
     status = models.CharField(
@@ -590,6 +621,79 @@ class InternshipCollectionLog(models.Model):
 
     class Meta:
         ordering = ["-started_at"]
+
+
+
+
+class InternshipDuplicateFlag(TimeStampedModel):
+    """
+    A near-duplicate listing flagged for admin review instead of being
+    auto-merged or silently dropped (Section 3.10.6, Task 5.7).
+
+    A candidate with no exact ``content_hash`` match but a title that
+    fuzzy-matches (rapidfuzz token ratio) a stored row from the same
+    company is recorded here; an admin reviews the queue and merges or
+    dismisses each flag.
+    """
+
+    REVIEW_PENDING = "pending"
+    REVIEW_RESOLVED = "resolved"
+
+    REVIEW_STATUS_CHOICES = [
+        (REVIEW_PENDING, "Pending"),
+        (REVIEW_RESOLVED, "Resolved"),
+    ]
+
+    internship = models.ForeignKey(
+        Internship,
+        on_delete=models.CASCADE,
+        related_name="duplicate_flags",
+        help_text="Stored internship this candidate was matched against.",
+    )
+
+    title = models.CharField(
+        max_length=300,
+    )
+
+    organization_name = models.CharField(
+        max_length=300,
+    )
+
+    application_url = models.URLField()
+
+    content_hash = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+    )
+
+    similarity_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="rapidfuzz token ratio (0-100) between the two titles.",
+    )
+
+    review_status = models.CharField(
+        max_length=20,
+        choices=REVIEW_STATUS_CHOICES,
+        default=REVIEW_PENDING,
+        db_index=True,
+    )
+
+    last_seen_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time this candidate listing was seen by the collector (Task 5.7).",
+    )
+
+    def __str__(self):
+        return (
+            f"{self.title} ~ {self.internship.title} "
+            f"({self.similarity_score})"
+        )
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 

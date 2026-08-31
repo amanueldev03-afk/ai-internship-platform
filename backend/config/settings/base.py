@@ -42,6 +42,26 @@ SITE_BASE_URL = config(
 ).rstrip("/")
 
 # --------------------------------------------------
+# Trusted company career sites (Task 5.5, Section 3.10.4)
+# --------------------------------------------------
+# The career-site collector only scrapes hostnames listed here —
+# "trusted company websites only". Open/generic scraping is disabled.
+# Each allow-listed company also carries its own CSS-selector config,
+# which a per-DataSource ``config`` JSON may override.
+ALLOWED_CAREER_SITES = {
+    # "careers.example.com": {
+    #     "container_selector": "li.job",
+    #     "field_selectors": {
+    #         "title": ".job-title",
+    #         "link": "a",
+    #         "description": ".description",
+    #         "deadline": ".deadline",
+    #         "location": ".location",
+    #     },
+    # },
+}
+
+# --------------------------------------------------
 # Applications
 # --------------------------------------------------
 

@@ -17,7 +17,14 @@ from django.db import IntegrityError
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from apps.students.models import StudentCV, StudentProfile
-from .tasks import generate_internship_embedding_task
+from .tasks import (
+    collect_internships_from_source,
+    generate_internship_embedding_task,
+    validate_listing_urls_task,
+)
+from .pagination import (
+    RecommendationPagination,
+)
 
 from .models import (
     Internship,
@@ -41,10 +48,6 @@ from .serializers import (
 from .filters import InternshipFilter
 from .permissions import IsAdminRole, IsStudent
 from .services.collector import collect_source
-from .tasks import collect_internships_from_source
-from .pagination import (
-    RecommendationPagination,
-)
 
 
 User = get_user_model()
@@ -174,6 +177,7 @@ class InternshipListView(generics.ListAPIView):
             .filter(
                 status=Internship.STATUS_ACTIVE,
                 is_verified=True,
+                needs_review=False,
             )
             .filter(
                 Q(application_deadline__isnull=True)
@@ -220,6 +224,7 @@ class InternshipDetailView(generics.RetrieveAPIView):
             .filter(
                 status=Internship.STATUS_ACTIVE,
                 is_verified=True,
+                needs_review=False,
             )
             .filter(
                 Q(application_deadline__isnull=True)
@@ -269,6 +274,16 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to queue embedding generation: {e}")
+
+        # Queue URL validation after transaction commits (Task 5.9)
+        try:
+            transaction.on_commit(
+                lambda: validate_listing_urls_task.delay(internship.id)
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to queue URL validation: {e}")
 
     filter_backends = [
         DjangoFilterBackend,
@@ -365,6 +380,17 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
             logger.warning(
                 f"Failed to queue internship embedding regeneration: {e}")
 
+        # Queue URL validation after transaction commits (Task 5.9)
+        try:
+            transaction.on_commit(
+                lambda: validate_listing_urls_task.delay(internship.id)
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Failed to queue URL validation: {e}")
+
 
 class LatestInternshipListView(generics.ListAPIView):
     """
@@ -392,6 +418,7 @@ class LatestInternshipListView(generics.ListAPIView):
             .filter(
                 status="active",
                 is_verified=True,
+                needs_review=False,
             )
             .filter(
                 Q(application_deadline__isnull=True)

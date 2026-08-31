@@ -1,9 +1,13 @@
 from django.test import TestCase
 from django.utils import timezone
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication
+from unittest.mock import patch, MagicMock
+from .tasks import expire_internships, validate_listing_urls_task
+from apps.data_sources.services.urlcheck import validate_url, validate_listing_urls
 from apps.recommendations.models import Recommendation
 from apps.recommendations.services.semantic_matching import (
     build_student_text,
@@ -150,7 +154,501 @@ class InternshipModelTest(TestCase):
             internship.full_clean()
 
 
-class SavedInternshipModelTest(TestCase):
+class ExpireInternshipsTaskTest(TestCase):
+    """Task 5.8 — daily Celery Beat expiration (Section 3.10.7)."""
+
+    def setUp(self):
+        self.source = InternshipSource.objects.create(
+            name="Expiry Test Source",
+            source_type="api",
+        )
+
+    def _create_internship(self, title, deadline, **overrides):
+        defaults = {
+            "title": title,
+            "organization_name": "Example Corp",
+            "description": f"{title} description.",
+            "application_url": f"https://example.com/apply/{title}",
+            "source": self.source,
+            "status": Internship.STATUS_ACTIVE,
+            "is_verified": True,
+            "deadline": deadline,
+        }
+        defaults.update(overrides)
+        return Internship.objects.create(**defaults)
+
+    def _active_search_queryset(self):
+        """Mirror of Lemma 4's active search results (InternshipListView)."""
+        now = timezone.now()
+        return Internship.objects.filter(
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+        ).filter(
+            Q(application_deadline__isnull=True)
+            | Q(application_deadline__gt=now)
+        )
+
+    def test_yesterday_deadline_flips_and_leaves_active_results(self):
+        """Yesterday's deadline -> expired -> gone from active search."""
+        today = timezone.localdate()
+        yesterday = today - timezone.timedelta(days=1)
+
+        expired = self._create_internship(
+            "Expired Intern", yesterday
+        )
+
+        self.assertEqual(
+            self._active_search_queryset().filter(
+                pk=expired.pk
+            ).count(),
+            1,
+        )
+
+        result = expire_internships()
+
+        self.assertEqual(result["expired_count"], 1)
+
+        expired.refresh_from_db()
+        self.assertEqual(expired.status, Internship.STATUS_EXPIRED)
+
+        self.assertEqual(
+            self._active_search_queryset().filter(
+                pk=expired.pk
+            ).count(),
+            0,
+        )
+
+    def test_future_deadline_stays_active(self):
+        """A deadline still ahead keeps the internship active."""
+        today = timezone.localdate()
+        future = today + timezone.timedelta(days=30)
+
+        active = self._create_internship(
+            "Future Intern", future
+        )
+
+        result = expire_internships()
+
+        self.assertEqual(result["expired_count"], 0)
+        active.refresh_from_db()
+        self.assertEqual(active.status, Internship.STATUS_ACTIVE)
+
+    def test_non_active_internship_with_past_deadline_is_untouched(self):
+        """Only active internships are flipped by the task."""
+        today = timezone.localdate()
+        yesterday = today - timezone.timedelta(days=1)
+
+        draft = self._create_internship(
+            "Draft Intern",
+            yesterday,
+            status=Internship.STATUS_DRAFT,
+        )
+
+        result = expire_internships()
+
+        self.assertEqual(result["expired_count"], 0)
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Internship.STATUS_DRAFT)
+
+
+class ValidateListingUrlsTaskTest(TestCase):
+    """Tests for validate_listing_urls_task (Task 5.9)."""
+
+    def setUp(self):
+        self.source = InternshipSource.objects.create(
+            name="URL Test Source",
+            source_type="api",
+        )
+        # Create internship with both URLs set
+        self.internship = Internship.objects.create(
+            title="URL Test Internship",
+            organization_name="Test Corp",
+            description="Testing URL validation",
+            application_url="https://valid.example.com/apply",
+            source_url="https://invalid.example.com",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            is_verified=False,
+        )
+
+    @patch("apps.internships.tasks.validate_listing_urls")
+    def test_valid_urls_auto_publish(self, mock_validate):
+        # Simulate both URLs valid
+        mock_validate.return_value = {
+            "checks": {
+                "application_url": {
+                    "url": self.internship.application_url,
+                    "valid": True,
+                    "method": "HEAD",
+                    "status_code": 200,
+                    "error": None,
+                },
+                "source_url": {
+                    "url": self.internship.source_url,
+                    "valid": True,
+                    "method": "HEAD",
+                    "status_code": 200,
+                    "error": None,
+                },
+            },
+            "valid": True,
+            "invalid_urls": [],
+        }
+        result = validate_listing_urls_task(self.internship.id)
+        self.assertFalse(result["needs_review"])
+        self.internship.refresh_from_db()
+        self.assertEqual(self.internship.status, Internship.STATUS_ACTIVE)
+        self.assertTrue(self.internship.is_verified)
+        self.assertFalse(self.internship.needs_review)
+
+    @patch("apps.internships.tasks.validate_listing_urls")
+    def test_invalid_url_flagged(self, mock_validate):
+        # Simulate source_url invalid
+        mock_validate.return_value = {
+            "checks": {
+                "application_url": {
+                    "url": self.internship.application_url,
+                    "valid": True,
+                    "method": "HEAD",
+                    "status_code": 200,
+                    "error": None,
+                },
+                "source_url": {
+                    "url": self.internship.source_url,
+                    "valid": False,
+                    "method": "HEAD",
+                    "status_code": 404,
+                    "error": "not_found",
+                },
+            },
+            "valid": False,
+            "invalid_urls": ["source_url"],
+        }
+        result = validate_listing_urls_task(self.internship.id)
+        self.assertTrue(result["needs_review"])
+        self.internship.refresh_from_db()
+        self.assertEqual(self.internship.status, Internship.STATUS_DRAFT)
+        self.assertFalse(self.internship.is_verified)
+        self.assertTrue(self.internship.needs_review)
+
+
+class ValidateUrlServiceTest(TestCase):
+    """Tests for validate_url and validate_listing_urls (Section 3.10.8)."""
+
+    def _mock_response(self, status_code, method="HEAD"):
+        mock = MagicMock()
+        mock.status_code = status_code
+        mock.close.return_value = None
+        mock.__enter__ = MagicMock(return_value=mock)
+        mock.__exit__ = MagicMock(return_value=False)
+        return mock
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_valid_head_200(self, mock_request):
+        mock_request.return_value = self._mock_response(200)
+        result = validate_url("https://valid.example.com/apply")
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["method"], "HEAD")
+        self.assertEqual(result["status_code"], 200)
+        self.assertIsNone(result["error"])
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_404_returns_invalid(self, mock_request):
+        mock_request.return_value = self._mock_response(404)
+        result = validate_url("https://example.com/missing")
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["status_code"], 404)
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_head_403_falls_back_to_get(self, mock_request):
+        mock_request.side_effect = [
+            self._mock_response(403),
+            self._mock_response(200),
+        ]
+        result = validate_url("https://example.com/page")
+        self.assertTrue(result["valid"])
+        self.assertEqual(result["method"], "GET")
+        self.assertEqual(result["status_code"], 200)
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_empty_url_is_invalid(self, mock_request):
+        result = validate_url("")
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "empty_url")
+        mock_request.assert_not_called()
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_validate_listing_urls_aggregate(self, mock_request):
+        mock_request.side_effect = [
+            self._mock_response(200),
+            self._mock_response(404),
+        ]
+        result = validate_listing_urls(
+            "https://valid.example.com/apply",
+            "https://broken.example.com/source",
+        )
+        self.assertFalse(result["valid"])
+        self.assertIn("source_url", result["invalid_urls"])
+        self.assertNotIn("application_url", result["invalid_urls"])
+        self.assertTrue(result["checks"]["application_url"]["valid"])
+        self.assertFalse(result["checks"]["source_url"]["valid"])
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_empty_source_url_is_skipped(self, mock_request):
+        mock_request.return_value = self._mock_response(200)
+        result = validate_listing_urls(
+            "https://valid.example.com/apply",
+            "",
+        )
+        self.assertTrue(result["valid"])
+        self.assertEqual(
+            result["checks"]["source_url"]["method"], "skipped"
+        )
+        self.assertEqual(mock_request.call_count, 1)
+
+
+class AdminInternshipCreateQueuesValidationTest(TestCase):
+    """Admin create should queue validate_listing_urls_task."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.source = InternshipSource.objects.create(
+            name="Test Source",
+            source_type="api",
+        )
+
+    @patch("apps.internships.views.transaction.on_commit")
+    @patch("apps.internships.views.validate_listing_urls_task.delay")
+    def test_admin_create_queues_url_validation(self, mock_validate, mock_on_commit):
+        def execute(callback):
+            callback()
+        mock_on_commit.side_effect = execute
+
+        response = self.client.post(
+            "/api/internships/admin/",
+            {
+                "title": "New Internship",
+                "organization_name": "New Company",
+                "description": "Test description",
+                "application_url": "https://example.com/apply",
+                "source": self.source.id,
+                "external_id": "admin_create_1",
+                "internship_type": "remote",
+                "work_type": "full_time",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        internship_id = response.data["id"]
+        mock_validate.assert_called_once_with(internship_id)
+
+
+class AdminInternshipUpdateQueuesValidationTest(TestCase):
+    """Admin update should queue validate_listing_urls_task."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin2@example.com",
+            username="admin2",
+            password="adminpass123",
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.source = InternshipSource.objects.create(
+            name="Test Source 2",
+            source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Existing Internship",
+            organization_name="Existing Corp",
+            description="Existing description",
+            application_url="https://example.com/apply",
+            source=self.source,
+            external_id="admin_update_1",
+            internship_type="remote",
+            work_type="full_time",
+        )
+
+    @patch("apps.internships.views.transaction.on_commit")
+    @patch("apps.internships.views.validate_listing_urls_task.delay")
+    def test_admin_update_queues_url_validation(self, mock_validate, mock_on_commit):
+        def execute(callback):
+            callback()
+        mock_on_commit.side_effect = execute
+
+        response = self.client.patch(
+            f"/api/internships/admin/{self.internship.id}/",
+            {"title": "Updated Internship"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_validate.assert_called_once_with(self.internship.id)
+
+
+class CollectorQueuesValidationTest(TestCase):
+    """InternshipCollector should queue validation for new/updated listings."""
+
+    def setUp(self):
+        self.source = InternshipSource.objects.create(
+            name="Collector Test Source",
+            source_type="api",
+        )
+
+    @patch("apps.internships.services.collector.transaction.on_commit")
+    @patch("apps.internships.tasks.validate_listing_urls_task.delay")
+    def test_collect_queues_validation_for_new_listing(self, mock_validate, mock_on_commit):
+        from apps.internships.services.collector import InternshipCollector
+
+        def execute(callback):
+            callback()
+        mock_on_commit.side_effect = execute
+
+        records = [
+            {
+                "title": "New Listing",
+                "organization_name": "New Corp",
+                "description": "New description",
+                "application_url": "https://example.com/apply",
+                "external_id": "collector_new_1",
+                "internship_type": "remote",
+                "work_type": "full_time",
+            }
+        ]
+
+        collector = InternshipCollector(self.source)
+        log = collector.collect(records)
+
+        self.assertEqual(log.records_created, 1)
+        self.assertEqual(log.records_updated, 0)
+        mock_validate.assert_called_once()
+        called_with = mock_validate.call_args[0][0]
+        self.assertEqual(
+            Internship.objects.get(pk=called_with).external_id,
+            "collector_new_1",
+        )
+
+    @patch("apps.internships.services.collector.transaction.on_commit")
+    @patch("apps.internships.tasks.validate_listing_urls_task.delay")
+    def test_collect_queues_validation_for_updated_listing(self, mock_validate, mock_on_commit):
+        from apps.internships.services.collector import InternshipCollector
+
+        def execute(callback):
+            callback()
+        mock_on_commit.side_effect = execute
+
+        existing = Internship.objects.create(
+            title="Old Title",
+            organization_name="Old Corp",
+            description="Old description",
+            application_url="https://example.com/apply",
+            source=self.source,
+            external_id="collector_update_1",
+            internship_type="remote",
+            work_type="full_time",
+        )
+
+        records = [
+            {
+                "title": "Updated Title",
+                "organization_name": "Old Corp",
+                "description": "Updated description",
+                "application_url": "https://example.com/updated",
+                "external_id": "collector_update_1",
+                "internship_type": "remote",
+                "work_type": "full_time",
+            }
+        ]
+
+        collector = InternshipCollector(self.source)
+        log = collector.collect(records)
+
+        self.assertEqual(log.records_created, 0)
+        self.assertEqual(log.records_updated, 1)
+        mock_validate.assert_called_once_with(existing.id)
+
+
+class Task59EndToEndTest(TestCase):
+    """End-to-end check: valid URL auto-publishes, 404 URL flags for review."""
+
+    def setUp(self):
+        self.source = InternshipSource.objects.create(
+            name="E2E Source",
+            source_type="api",
+        )
+
+    @patch("apps.data_sources.services.urlcheck.requests.request")
+    def test_valid_url_auto_published_and_invalid_flagged(self, mock_request):
+        def make_response(status_code):
+            m = MagicMock()
+            m.status_code = status_code
+            m.close.return_value = None
+            return m
+
+        mock_request.side_effect = [
+            make_response(200),
+            make_response(200),
+            make_response(200),
+            make_response(404),
+        ]
+
+        valid_internship = Internship.objects.create(
+            title="Valid URL Internship",
+            organization_name="Valid Corp",
+            description="Valid description",
+            application_url="https://valid.example.com/apply",
+            source_url="https://valid.example.com/source",
+            source=self.source,
+            external_id="e2e_valid",
+            status=Internship.STATUS_DRAFT,
+            is_verified=False,
+        )
+
+        broken_internship = Internship.objects.create(
+            title="Broken URL Internship",
+            organization_name="Broken Corp",
+            description="Broken description",
+            application_url="https://broken.example.com/apply",
+            source_url="https://broken.example.com/source",
+            source=self.source,
+            external_id="e2e_broken",
+            status=Internship.STATUS_DRAFT,
+            is_verified=False,
+        )
+
+        validate_listing_urls_task(valid_internship.id)
+        validate_listing_urls_task(broken_internship.id)
+
+        valid_internship.refresh_from_db()
+        broken_internship.refresh_from_db()
+
+        self.assertEqual(valid_internship.status, Internship.STATUS_ACTIVE)
+        self.assertTrue(valid_internship.is_verified)
+        self.assertFalse(valid_internship.needs_review)
+
+        self.assertEqual(broken_internship.status, Internship.STATUS_DRAFT)
+        self.assertFalse(broken_internship.is_verified)
+        self.assertTrue(broken_internship.needs_review)
+
+        visible_to_students = Internship.objects.filter(
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+            needs_review=False,
+        ).count()
+        self.assertEqual(visible_to_students, 1)
+        self.assertTrue(
+            Internship.objects.filter(
+                pk=valid_internship.id,
+                status=Internship.STATUS_ACTIVE,
+                is_verified=True,
+                needs_review=False,
+            ).exists()
+        )
     """Test cases for SavedInternship model"""
 
     def setUp(self):

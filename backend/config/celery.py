@@ -14,6 +14,19 @@ app = Celery(
     "config",
 )
 
+# Ensure the broker is explicit and Redis-backed even before Django settings
+# are fully initialized during CLI startup. This keeps the phase-5 worker
+# workflow production-shaped while preserving the existing eager-mode dev/test
+# behavior when the env value is explicitly set.
+app.conf.broker_url = os.getenv(
+    "CELERY_BROKER_URL",
+    getattr(settings, "CELERY_BROKER_URL", "redis://127.0.0.1:6379/0"),
+)
+app.conf.result_backend = os.getenv(
+    "CELERY_RESULT_BACKEND",
+    getattr(settings, "CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/1"),
+)
+app.conf.broker_connection_retry_on_startup = True
 
 app.config_from_object(
     "django.conf:settings",

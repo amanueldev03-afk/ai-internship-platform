@@ -119,6 +119,12 @@ urlpatterns = [
         "api/data-sources/",
         include("apps.data_sources.urls"),
     ),
+    # Task 5.10 — admin manual syncing of a single data source.
+    # POST /api/admin/data-sources/<id>/sync-now/
+    path(
+        "api/admin/data-sources/",
+        include("apps.data_sources.urls"),
+    ),
 ]
 
 urlpatterns += static(
