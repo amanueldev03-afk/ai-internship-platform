@@ -17,7 +17,7 @@ from apps.students.models import StudentCV, StudentProfile, CV as CVModel
 from .models import Recommendation
 from .pagination import RecommendationPagination
 from .serializers import RecommendationSerializer, RecommendationFeedbackSerializer
-from .services.recommendation_engine_v2 import generate_recommendations
+from ai_engine.recommendation import generate_recommendations
 from apps.internships.serializers import InternshipSerializer
 
 logger = logging.getLogger(__name__)
@@ -160,17 +160,8 @@ class StudentRecommendationView(APIView):
             recommendations = cached
             from_cache = True
         else:
-            # Score only active internships (excluding admin-review rows)
-            internships = (
-                Internship.objects
-                .filter(
-                    status=Internship.STATUS_ACTIVE,
-                    needs_review=False,
-                )
-                .prefetch_related("required_skills")
-            )
-
-            raw_results = generate_recommendations(request.user, internships)
+            # Phase 6 engine queries active internships internally
+            raw_results = generate_recommendations(request.user, limit=50, save_to_db=False)
 
             # Serialise to plain dicts (ORM objects are not cacheable)
             recommendations = [
