@@ -66,7 +66,7 @@ class DataSourceSyncNowView(APIView):
 
         try:
             task = collect_data_source.delay(source.id)
-        except Exception as exc:  # broker unavailable — surface it
+        except (AttributeError, RuntimeError, ConnectionError) as exc:  # broker unavailable — surface it
             import logging
 
             logger = logging.getLogger(__name__)

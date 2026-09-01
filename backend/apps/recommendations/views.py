@@ -57,6 +57,7 @@ class StudentRecommendationView(APIView):
 
     @extend_schema(
         tags=["Recommendations"],
+        operation_id="student_recommendations",
         summary="Get Personalised Recommendations",
         description=(
             "Returns a paginated, ranked list of internship recommendations "
@@ -233,7 +234,8 @@ class RecommendationHistoryListView(ListAPIView):
 
     @extend_schema(
         tags=["Recommendations"],
-        summary="List Recommendation History",
+        operation_id="recommendation_history",
+        summary="Recommendation History",
         description=(
             "Retrieve every saved Recommendation row for the authenticated "
             "student, ordered newest first.  Includes the full score breakdown "
@@ -265,7 +267,8 @@ class RecommendationFeedbackView(GenericAPIView):
 
     @extend_schema(
         tags=["Recommendations"],
-        summary="Update Recommendation Feedback",
+        operation_id="recommendation_feedback",
+        summary="Recommendation Feedback",
         description=(
             "Mark a recommendation as viewed, saved, applied, or ignored. "
             "Tracks student behaviour for future ML personalisation."
@@ -370,7 +373,7 @@ def _build_cv_data(user) -> dict:
                 getattr(cv, "created_at",   None)
             ),
         }
-    except Exception as exc:
+    except (AttributeError, ValueError) as exc:
         logger.warning(f"Could not build CV data for user {user.id}: {exc}")
         return {"has_cv": False, "message": "CV data temporarily unavailable."}
 

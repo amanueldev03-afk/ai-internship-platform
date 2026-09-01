@@ -9,10 +9,11 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer, LoginSerializer
+from .jwt import LoginSerializer
 from .serializers import ( 
     EmailVerificationSerializer,
     StudentRegistrationSerializer,
@@ -30,6 +31,7 @@ class AuthTokenRefreshView(TokenRefreshView):
     """
     Refresh an expired access token using a valid refresh token.
     """
+    throttle_classes = [AnonRateThrottle]
 
 
 @extend_schema(tags=["Authentication"])
@@ -40,9 +42,11 @@ class StudentRegistrationView(generics.CreateAPIView):
 
     serializer_class = StudentRegistrationSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
+        operation_id="student_register",
         summary="Student Registration",
         description="Register a new student account with email verification requirement",
         responses={
@@ -118,6 +122,7 @@ class LogoutView(GenericAPIView):
 
     @extend_schema(
         tags=["Authentication"],
+        operation_id="user_logout",
         summary="User Logout",
         description="Logout by invalidating the JWT refresh token",
         responses={
@@ -163,6 +168,7 @@ class CurrentUserView(GenericAPIView):
 
     @extend_schema(
         tags=["Authentication"],
+        operation_id="get_current_user",
         summary="Get Current User",
         description="Retrieve account details and role information of the currently authenticated user",
         responses={200: UserSerializer}
@@ -173,67 +179,6 @@ class CurrentUserView(GenericAPIView):
 
         return Response(serializer.data)
 
-
-@extend_schema(
-    tags=["Authentication"],
-    summary="Admin Login",
-    description="Authenticate an administrator using username and password to obtain JWT tokens",
-    request=AdminTokenObtainPairSerializer,
-    responses={
-        200: {
-            'type': 'object',
-            'properties': {
-                'access': {'type': 'string'},
-                'refresh': {'type': 'string'}
-            }
-        }
-    },
-    examples=[
-        OpenApiExample(
-            "Admin Login",
-            value={
-                "username": "admin_username",
-                "password": "admin_password"
-            }
-        )
-    ]
-)
-class AdminLoginView(TokenObtainPairView):
-    """
-    Admin login endpoint using username/password.
-    """
-    serializer_class = AdminTokenObtainPairSerializer
-
-
-@extend_schema(
-    tags=["Authentication"],
-    summary="Student Login",
-    description="Authenticate a student using email and password to obtain JWT tokens",
-    request=StudentTokenObtainPairSerializer,
-    responses={
-        200: {
-            'type': 'object',
-            'properties': {
-                'access': {'type': 'string'},
-                'refresh': {'type': 'string'}
-            }
-        }
-    },
-    examples=[
-        OpenApiExample(
-            "Student Login",
-            value={
-                "email": "student@example.com",
-                "password": "SecurePassword123!"
-            }
-        )
-    ]
-)
-class StudentLoginView(TokenObtainPairView):
-    """
-    Student login endpoint using email/password.
-    """
-    serializer_class = StudentTokenObtainPairSerializer
 
 
 class LoginView(APIView):
@@ -253,9 +198,11 @@ class LoginView(APIView):
 
     permission_classes = [AllowAny]
     serializer_class = LoginSerializer
+    throttle_classes = [AnonRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
+        operation_id="token_obtain_pair",
         summary="Unified Login",
         description=(
             "Authenticate with email and password. Returns JWT access/refresh "
@@ -339,52 +286,6 @@ class LoginView(APIView):
         )
 
 
-class EmailVerificationView(GenericAPIView):
-    """
-    Verify a student's email address.
-    """
-
-    permission_classes = [AllowAny]
-    serializer_class = EmailVerificationSerializer
-
-    @extend_schema(
-        tags=["Authentication"],
-        summary="Verify Email",
-        description="Verify user email address using UID and verification token sent by email",
-        responses={
-            200: {
-                'type': 'object',
-                'properties': {
-                    'message': {'type': 'string'}
-                }
-            }
-        },
-        examples=[
-            OpenApiExample(
-                "Email Verification",
-                value={"uid": "MQ", "token": "abc123xyz"},
-            )
-        ]
-    )
-    def post(self, request):
-
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        serializer.save()
-
-        return Response(
-            {
-                "message": "Email verified successfully."
-            },
-            status=status.HTTP_200_OK,
-        )
-
 
 class EmailVerificationLinkView(GenericAPIView):
     """
@@ -453,6 +354,7 @@ class ResendVerificationView(GenericAPIView):
 
     permission_classes = [AllowAny]
     serializer_class = ResendVerificationSerializer
+    throttle_classes = [AnonRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -496,118 +398,16 @@ class ResendVerificationView(GenericAPIView):
         )
 
 
-class ForgotPasswordView(GenericAPIView):
-    """
-    Request a password reset email.
-    """
-
-    permission_classes = [AllowAny]
-    serializer_class = ForgotPasswordSerializer
-
-    @extend_schema(
-        tags=["Authentication"],
-        summary="Forgot Password",
-        description="Request a password reset link to be sent to specified email address",
-        responses={
-            200: {
-                'type': 'object',
-                'properties': {
-                    'message': {'type': 'string'}
-                }
-            }
-        },
-        examples=[
-            OpenApiExample(
-                "Forgot Password",
-                value={"email": "user@example.com"},
-            )
-        ]
-    )
-    def post(self, request):
-
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        serializer.save()
-
-        return Response(
-            {
-                "message": (
-                    "If an account exists with this "
-                    "email, a password reset link "
-                    "has been sent."
-                )
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-class ResetPasswordView(GenericAPIView):
-    """
-    Reset password using a valid reset token.
-    """
-
-    permission_classes = [AllowAny]
-    serializer_class = ResetPasswordSerializer
-
-    @extend_schema(
-        tags=["Authentication"],
-        summary="Reset Password",
-        description="Reset user password using token received via email",
-        responses={
-            200: {
-                'type': 'object',
-                'properties': {
-                    'message': {'type': 'string'}
-                }
-            }
-        },
-        examples=[
-            OpenApiExample(
-                "Reset Password",
-                value={
-                    "uid": "MQ",
-                    "token": "abc123xyz",
-                    "new_password": "newSecurePassword123"
-                },
-            )
-        ]
-    )
-    def post(self, request):
-
-        serializer = self.get_serializer(
-            data=request.data
-        )
-
-        serializer.is_valid(
-            raise_exception=True
-        )
-
-        serializer.save()
-
-        return Response(
-            {
-                "message":
-                "Password reset successfully."
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
 class PasswordResetView(GenericAPIView):
     """
     Request a password reset email (Task 2.5).
 
-    ``POST /api/auth/password-reset/`` with ``{"email": ...}``.
+    ``POST /api/auth/password-reset/`` with ``{"email": ...}`` in the body.
     """
 
     permission_classes = [AllowAny]
     serializer_class = ForgotPasswordSerializer
+    throttle_classes = [AnonRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -662,6 +462,7 @@ class PasswordResetConfirmView(GenericAPIView):
 
     permission_classes = [AllowAny]
     serializer_class = ResetPasswordSerializer
+    throttle_classes = [AnonRateThrottle]
 
     @extend_schema(
         tags=["Authentication"],
@@ -756,8 +557,7 @@ class ChangePasswordView(GenericAPIView):
 
         return Response(
             {
-                "message":
-                "Password changed successfully."
+                "message": "Password changed successfully."
             },
             status=status.HTTP_200_OK,
         )

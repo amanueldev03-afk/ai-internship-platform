@@ -89,6 +89,7 @@ class InternshipListView(generics.ListAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
+        operation_id="internship_list",
         summary="List Active Internships",
         description="Retrieve a paginated list of active and verified internships with filtering, search, and ordering capabilities.",
         parameters=[
@@ -208,9 +209,10 @@ class InternshipDetailView(generics.RetrieveAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
-        tags=["Internships"],
+        operation_id="internship_detail",
         summary="Get Internship Details",
         description="Get detailed information about a specific active and verified internship by ID.",
+        tags=["Internships"],
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
@@ -246,6 +248,7 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
+        operation_id="admin_internship_list",
         summary="Admin: List all internships",
         description="Retrieve a paginated list of all internships (including draft, expired, and unverified) with full filtering capabilities. Admin only.",
         tags=["Admin Internships"],
@@ -254,6 +257,7 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @extend_schema(
+        operation_id="admin_internship_create",
         summary="Admin: Create internship",
         description="Create a new internship. Admin only.",
         tags=["Admin Internships"],
@@ -269,7 +273,7 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
             transaction.on_commit(
                 lambda: generate_internship_embedding_task.delay(internship.id)
             )
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             # Log error but don't fail the creation
             import logging
             logger = logging.getLogger(__name__)
@@ -280,7 +284,7 @@ class AdminInternshipListCreateView(generics.ListCreateAPIView):
             transaction.on_commit(
                 lambda: validate_listing_urls_task.delay(internship.id)
             )
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to queue URL validation: {e}")
@@ -333,7 +337,8 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
     throttle_classes = [BurstRateThrottle, SustainedRateThrottle]
 
     @extend_schema(
-        summary="Admin: Retrieve internship",
+        operation_id="admin_internship_detail",
+        summary="Admin: Get internship details",
         description="Get detailed information about any internship by ID. Admin only.",
         tags=["Admin Internships"],
     )
@@ -341,6 +346,7 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @extend_schema(
+        operation_id="admin_internship_update",
         summary="Admin: Update internship",
         description="Update an existing internship by ID. Admin only.",
         tags=["Admin Internships"],
@@ -349,6 +355,7 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @extend_schema(
+        operation_id="admin_internship_partial_update",
         summary="Admin: Partial update internship",
         description="Partially update an existing internship by ID. Admin only.",
         tags=["Admin Internships"],
@@ -357,6 +364,7 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().patch(request, *args, **kwargs)
 
     @extend_schema(
+        operation_id="admin_internship_delete",
         summary="Admin: Delete internship",
         description="Delete an internship by ID. Admin only.",
         tags=["Admin Internships"],
@@ -373,7 +381,7 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
             transaction.on_commit(
                 lambda: generate_internship_embedding_task.delay(internship.id)
             )
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             # Log error but don't fail the update
             import logging
             logger = logging.getLogger(__name__)
@@ -385,7 +393,7 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
             transaction.on_commit(
                 lambda: validate_listing_urls_task.delay(internship.id)
             )
-        except Exception as e:
+        except (AttributeError, RuntimeError) as e:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(
@@ -598,7 +606,7 @@ class AdminSourceCollectView(GenericAPIView):
             task = collect_internships_from_source.delay(
                 source.id
             )
-        except Exception as e:
+        except (AttributeError, RuntimeError, ConnectionError) as e:
             # Log error but don't fail the request
             import logging
             logger = logging.getLogger(__name__)
@@ -1269,7 +1277,7 @@ class AdminDashboardView(GenericAPIView):
             status=Internship.STATUS_EXPIRED
         ).count()
 
-        applications = InternshipApplication.objects.all()
+        applications = InternshipApplication.objects.select_related('internship').all()
 
         total_applications = applications.count()
 
@@ -1410,7 +1418,7 @@ class AdminSkillListCreateView(
         IsAdminRole,
     ]
 
-    queryset = Skill.objects.all()
+    queryset = Skill.objects.all().order_by('name')
 
     @extend_schema(
         tags=["Admin Internships"],
@@ -1446,7 +1454,7 @@ class AdminSkillDetailView(
         IsAdminRole,
     ]
 
-    queryset = Skill.objects.all()
+    queryset = Skill.objects.all().order_by('name')
 
     @extend_schema(tags=["Admin Internships"], summary="Admin: Get skill details")
     def get(self, request, *args, **kwargs):

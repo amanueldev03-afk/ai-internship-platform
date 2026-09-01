@@ -39,7 +39,7 @@ def _queue_embedding(profile):
         transaction.on_commit(
             lambda: generate_student_embedding_task.delay(profile.id)
         )
-    except Exception as exc:
+    except (AttributeError, RuntimeError) as exc:
         logger.warning(f"Could not queue embedding regeneration for profile {profile.id}: {exc}")
 
 
@@ -59,7 +59,7 @@ def _handle_cv_file(cv_file, user):
         try:
             if old_cv.file:
                 old_cv.file.delete(save=False)
-        except Exception as del_err:
+        except (OSError, IOError) as del_err:
             logger.warning(f"Could not delete old CV file: {del_err}")
     old_cvs.delete()
 
@@ -74,7 +74,7 @@ def _handle_cv_file(cv_file, user):
     cv_id = cv.id
     try:
         transaction.on_commit(lambda: process_cv.delay(cv_id))
-    except Exception as exc:
+    except (AttributeError, RuntimeError) as exc:
         logger.warning(f"Could not queue CV processing: {exc}")
 
     return {
@@ -109,7 +109,7 @@ def _store_resume(profile, resume_file):
         try:
             if old_cv.file:
                 old_cv.file.delete(save=False)
-        except Exception as del_err:
+        except (OSError, IOError) as del_err:
             logger.warning(f"Could not delete old resume/CV file: {del_err}")
     old_cvs.delete()
 
@@ -131,7 +131,7 @@ def _store_resume(profile, resume_file):
     # ``transaction.on_commit`` so it only fires after the upload commits.
     try:
         transaction.on_commit(lambda: parse_resume.delay(profile.user_id))
-    except Exception as exc:
+    except (AttributeError, RuntimeError) as exc:
         logger.warning(f"Could not queue resume parsing for user {profile.user_id}: {exc}")
 
     return {
@@ -280,7 +280,8 @@ class StudentMeView(GenericAPIView):
         return profile
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_profile_get",
         summary="Get My Profile (personal info + education)",
         description=(
             "Return the authenticated student's personal information and "
@@ -296,7 +297,8 @@ class StudentMeView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_profile_update",
         summary="Update My Profile (personal info + education)",
         description=(
             "Partially update the authenticated student's personal information "
@@ -311,7 +313,8 @@ class StudentMeView(GenericAPIView):
         return self._update(request)
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_profile_full_update",
         summary="Update My Profile (full)",
         description="Full update — behaves like PATCH (all fields optional).",
         request=StudentMeSerializer,
@@ -366,7 +369,8 @@ class StudentPreferencesView(GenericAPIView):
         return profile
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_preferences_get",
         summary="Get My Internship Preferences",
         description=(
             "Return the authenticated student's internship preferences: "
@@ -382,7 +386,8 @@ class StudentPreferencesView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_preferences_update",
         summary="Update My Internship Preferences",
         description=(
             "Partially update internship preferences. `availability_end` "
@@ -443,7 +448,8 @@ class StudentResumeView(GenericAPIView):
         return profile
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
+        operation_id="student_resume_upload",
         summary="Upload Resume",
         description=(
             "Upload PDF/DOCX (max 5 MB). The file is content-sniffed — a "
@@ -508,7 +514,7 @@ class StudentResumeView(GenericAPIView):
         return Response(resume_info, status=status.HTTP_201_CREATED)
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="Get Resume Status",
         operation_id="student_resume_status",
         description=(
@@ -573,7 +579,7 @@ class StudentSkillsView(GenericAPIView):
         return profile
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="List My Skills",
         description="Return the skills attached to the authenticated student's profile.",
         responses={200: StudentSkillSerializer(many=True)},
@@ -587,7 +593,7 @@ class StudentSkillsView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="Add a Skill to My Profile",
         description=(
             "Add a skill by catalogue ID (`skill_id`). The ID must reference an "
@@ -613,7 +619,7 @@ class StudentSkillsView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="Remove a Skill from My Profile",
         description="Remove a skill from the authenticated student's profile by catalogue ID (`skill_id`).",
         request=StudentSkillInputSerializer,
@@ -655,7 +661,7 @@ class StudentInterestsView(GenericAPIView):
         return profile
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="List My Career Interests",
         description="Return the career interests attached to the authenticated student's profile.",
         responses={200: StudentInterestSerializer(many=True)},
@@ -669,7 +675,7 @@ class StudentInterestsView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="Add a Career Interest to My Profile",
         description=(
             "Add a career interest by catalogue ID (`interest_id`). The ID must "
@@ -695,7 +701,7 @@ class StudentInterestsView(GenericAPIView):
         )
 
     @extend_schema(
-        tags=["Student Profile (Phase 3)"],
+        tags=["Student Profiles"],
         summary="Remove a Career Interest from My Profile",
         description="Remove a career interest from the authenticated student's profile by catalogue ID (`interest_id`).",
         request=StudentInterestInputSerializer,

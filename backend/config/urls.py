@@ -100,18 +100,6 @@ urlpatterns = [
         "api/companies/",
         include("apps.companies.urls"),
     ),
-    path(
-        "api/applications/",
-        include("apps.applications.urls"),
-    ),
-    path(
-        "api/notifications/",
-        include("apps.notifications.urls"),
-    ),
-    path(
-        "api/analytics/",
-        include("apps.analytics.urls"),
-    ),
     # Task 5.10 — admin manual syncing of a single data source.
     # POST /api/admin/data-sources/<id>/sync-now/
     path(
