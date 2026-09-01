@@ -154,7 +154,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "field_of_study",
             "university",
 
-            # Skills & experience (read-only — use POST /api/profile/skills/add/
+            # Skills & experience (read-only — use POST /api/students/skills/add/
             # or /api/students/me/skills/ to change)
             "skills",
             "interests",
@@ -201,7 +201,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "user",
-            "skills",        # managed via POST /api/profile/skills/add/ only
+            "skills",        # managed via POST /api/students/skills/add/ only
             "interests",     # managed via /api/students/me/interests/ only
             "resume",        # managed via /api/students/me/resume/ only
             "cv_data",

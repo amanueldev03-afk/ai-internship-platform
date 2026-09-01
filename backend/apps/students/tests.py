@@ -132,7 +132,7 @@ class StudentProfileAPITest(TestCase):
     def test_get_profile(self):
         """Test getting student profile"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.get('/api/profile/')
+        response = self.client.get('/api/students/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # Profile should be auto-created
         self.assertIn('user', response.data)
@@ -145,7 +145,7 @@ class StudentProfileAPITest(TestCase):
         
         # Mock the embedding task to avoid actual Celery execution
         with patch('apps.students.views.generate_student_embedding_task.delay'):
-            response = self.client.patch('/api/profile/', {
+            response = self.client.patch('/api/students/', {
                 'phone': '+1234567890',
                 'country': 'USA',
                 'education_level': 'bachelor'
@@ -154,9 +154,9 @@ class StudentProfileAPITest(TestCase):
             self.assertEqual(response.data['phone'], '+1234567890')
 
     def test_update_profile_with_skills(self):
-        """Test updating profile (skills field is read-only via /api/profile/)."""
+        """Test updating profile (skills field is read-only via /api/students/)."""
         self.client.force_authenticate(user=self.user)
-        response = self.client.patch('/api/profile/', {
+        response = self.client.patch('/api/students/', {
             'phone': '+1234567890',
             'skills': [self.skill.id],
         }, format='json')
@@ -165,7 +165,7 @@ class StudentProfileAPITest(TestCase):
     def test_compensation_validation_api(self):
         """Test compensation validation through API"""
         self.client.force_authenticate(user=self.user)
-        response = self.client.patch('/api/profile/', {
+        response = self.client.patch('/api/students/', {
             'compensation_preference': 'paid',
             'minimum_compensation': None,
             'maximum_compensation': 10000
@@ -196,7 +196,7 @@ class StudentProfileAPITest(TestCase):
         
         # Mock the task to avoid actual Celery execution in tests
         with patch('apps.students.views.process_cv.delay'):
-            response = self.client.post('/api/profile/cv/upload/', {'file': cv_file})
+            response = self.client.post('/api/students/cv/upload/', {'file': cv_file})
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertIn('cv_id', response.data)
             self.assertIn('processing_status', response.data)
@@ -220,7 +220,7 @@ class StudentProfileAPITest(TestCase):
             content_type="text/plain"
         )
         
-        response = self.client.post('/api/profile/cv/upload/', {'file': invalid_file})
+        response = self.client.post('/api/students/cv/upload/', {'file': invalid_file})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_cv_status_endpoint(self):
@@ -236,7 +236,7 @@ class StudentProfileAPITest(TestCase):
             processing_error=None
         )
         
-        response = self.client.get(f'/api/profile/cv/{cv.id}/status/')
+        response = self.client.get(f'/api/students/cv/{cv.id}/status/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['cv_id'], cv.id)
         self.assertEqual(response.data['processing_status'], CV.STATUS_PROCESSING)
@@ -245,7 +245,7 @@ class StudentProfileAPITest(TestCase):
         """Test CV status endpoint with non-existent CV"""
         self.client.force_authenticate(user=self.user)
         
-        response = self.client.get('/api/profile/cv/99999/status/')
+        response = self.client.get('/api/students/cv/99999/status/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_cv_analysis_structured_data(self):
@@ -1269,7 +1269,7 @@ class ProfileCompletionTest(TestCase):
         )
         StudentProfile.objects.create(user=user)
         client.force_authenticate(user=user)
-        resp = client.get("/api/profile/")
+        resp = client.get("/api/students/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("completion", resp.data)
         self.assertIn("percent", resp.data["completion"])

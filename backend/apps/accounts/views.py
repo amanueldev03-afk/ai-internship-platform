@@ -9,7 +9,7 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from .jwt import AdminTokenObtainPairSerializer, StudentTokenObtainPairSerializer, LoginSerializer
@@ -25,6 +25,14 @@ from .serializers import (
 )
 
 
+@extend_schema(tags=["Authentication"])
+class AuthTokenRefreshView(TokenRefreshView):
+    """
+    Refresh an expired access token using a valid refresh token.
+    """
+
+
+@extend_schema(tags=["Authentication"])
 class StudentRegistrationView(generics.CreateAPIView):
     """
     Register a new student.

@@ -144,10 +144,10 @@ def _store_resume(profile, resume_file):
 
 class StudentProfileView(GenericAPIView):
     """
-    GET  /api/profile/   — return the student's full profile including cv_data.
-    PUT  /api/profile/   — update profile fields.  Optionally include a `cv`
+    GET  /api/students/   — return the student's full profile including cv_data.
+    PUT  /api/students/   — update profile fields.  Optionally include a `cv`
                            file (multipart/form-data) to replace the stored CV.
-    PATCH /api/profile/  — partial update (same behaviour as PUT).
+    PATCH /api/students/  — partial update (same behaviour as PUT).
 
     All preference fields (internship_type, work_type, compensation_preference,
     minimum_compensation, maximum_compensation, preferred_locations,
@@ -716,7 +716,7 @@ class StudentInterestsView(GenericAPIView):
 
 class StudentSkillsAddView(GenericAPIView):
     """
-    POST /api/profile/skills/add/
+    POST /api/students/skills/add/
     Add skills to the student profile by skill IDs.
     """
     permission_classes = [IsAuthenticated]
@@ -749,7 +749,7 @@ class StudentSkillsAddView(GenericAPIView):
 
 class StudentCVUploadView(GenericAPIView):
     """
-    POST /api/profile/cv/upload/
+    POST /api/students/cv/upload/
     Dedicated CV-only upload endpoint (no profile fields).
     Useful when you only want to replace the CV without touching profile data.
     """
@@ -762,7 +762,7 @@ class StudentCVUploadView(GenericAPIView):
         summary="Upload CV (dedicated endpoint)",
         description=(
             "Replace the student's CV without changing any other profile field.\n\n"
-            "For combined profile + CV upload, use `PUT /api/profile/` instead."
+            "For combined profile + CV upload, use `PUT /api/students/` instead."
         ),
         request={
             "multipart/form-data": {
@@ -815,7 +815,7 @@ class StudentCVUploadView(GenericAPIView):
 
 class CVStatusView(GenericAPIView):
     """
-    GET /api/profile/cv/<cv_id>/status/
+    GET /api/students/cv/<cv_id>/status/
     Check processing status and extracted data for a specific CV by ID.
     """
     permission_classes = [IsAuthenticated]
@@ -894,7 +894,7 @@ class CVStatusView(GenericAPIView):
 
 class CVStatusLatestView(CVStatusView):
     """
-    GET /api/profile/cv/status/
+    GET /api/students/cv/status/
     Check processing status of the most recently uploaded CV.
     """
 

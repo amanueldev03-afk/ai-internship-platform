@@ -45,7 +45,15 @@ Phase 2 delivers the complete student authentication lifecycle — registration,
 | 2.5 Password reset | `POST /api/auth/password-reset/` → `POST /api/auth/password-reset-confirm/<uid>/<token>/` | Full round trip via emailed link; new password set, old password invalidated. |
 | 2.6 RBAC | `apps.internships.permissions.IsStudent` / `IsAdminRole` | Custom permissions checking `request.user.role`. Student JWT → admin endpoint → `403` (Section 6.7.2). |
 
-> Note: the split endpoints (`/api/accounts/student/login/`, `/api/accounts/admin/login/`, `/api/accounts/forgot-password/`, `/api/accounts/reset-password/`, `/api/accounts/verify-email/`, `/api/accounts/token/refresh/`) remain available for backward compatibility.
+> Note: the canonical auth flow lives under `/api/auth/*`. A few split endpoints
+> remain under `/api/accounts/*` for backward compatibility:
+> `/api/accounts/student/login/`, `/api/accounts/admin/login/`,
+> `/api/accounts/logout/`, `/api/accounts/me/`,
+> `/api/accounts/forgot-password/`, `/api/accounts/reset-password/`,
+> `/api/accounts/verify-email/`, `/api/accounts/resend-verification/`,
+> `/api/accounts/change-password/`. Duplicate `register/`, `token/refresh/` and
+> `verify-email/<uid>/<token>/` routes were removed in favour of the canonical
+> `/api/auth/*` equivalents.
 
 ### Global security defaults
 
@@ -89,9 +97,10 @@ Access is restricted to `IsStudent` (RBAC from Task 2.6): an admin JWT receives
 `403`.
 
 > Note: a `current_year` field (fixed canonical codes) was added to
-> `StudentProfile` (migration `0015`) to support Section 5.3.2. The legacy
-> catch-all `PUT /api/profile/` serializer remains permissive; the fixed
-> choice validation is enforced at the `me/` endpoint boundary.
+> `StudentProfile` (migration `0015`) to support Section 5.3.2. The consolidated
+> student profile module lives under `/api/students/*` (`/api/students/me/` is
+> the canonical personal+education boundary); the more permissive catch-all
+> `/api/profile/` prefix was removed and folded into `/api/students/`.
 
 ### Task 3.2 — Skills & career interests endpoints
 
@@ -165,7 +174,7 @@ valid. The invariant is also enforced at the model layer (`StudentProfile.clean`
 **Model change (migration `0017`):** `StudentProfile.available_from` was
 renamed to `availability_start` (data preserved) and an `availability_end`
 field was added, completing the availability window. Both are writable on the
-permissive `/api/profile/` serializer too.
+full-student `/api/students/` serializer too.
 
 Access is restricted to `IsStudent` (RBAC from Task 2.6): an admin JWT
 receives `403`. Successful updates re-queue the student embedding and bust
@@ -233,8 +242,8 @@ is `True` and the created `CV` reached `COMPLETED`.
 
 ### Task 3.6 — Profile completion indicator (Sections 3.9.1 / 3.9.2)
 
-Both `GET /api/profile/` and `GET /api/students/me/` return a read-only
-`completion` block that powers the dashboard completion widget:
+Both `GET /api/students/` (full profile) and `GET /api/students/me/` return a
+read-only `completion` block that powers the dashboard completion widget:
 
 ```json
 {
@@ -269,7 +278,7 @@ no model columns, no migration.
 
 **Check (as in tests):** empty profile → `0%`; filling each section one at a
 time yields exactly `17/33/50/67/83/100`; all sections → `100%`; the field is
-exposed on both `/api/students/me/` and `/api/profile/`.
+exposed on both `/api/students/me/` and `/api/students/`.
 
 ---
 

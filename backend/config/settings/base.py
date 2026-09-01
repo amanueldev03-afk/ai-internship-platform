@@ -363,31 +363,39 @@ SPECTACULAR_SETTINGS = {
     "TAGS": [
         {
             "name": "Authentication",
-            "description": "User registration, login, and authentication endpoints"
+            "description": "Registration, login, token refresh, email verification, and password management"
+        },
+        {
+            "name": "Student Profile (Phase 3)",
+            "description": "Student onboarding and profile sub-resources (me, preferences, resume, skills, interests)"
         },
         {
             "name": "Student Profiles",
-            "description": "Student profile management and CV upload"
+            "description": "Full student profile, skill management, and CV upload/status"
         },
         {
             "name": "Internships",
-            "description": "Internship listing, search, and details"
-        },
-        {
-            "name": "Admin Internships",
-            "description": "Admin-only internship management endpoints"
-        },
-        {
-            "name": "Recommendations",
-            "description": "AI-powered internship recommendations"
+            "description": "Internship listing, search, details, saved internships, and student dashboard"
         },
         {
             "name": "Applications",
-            "description": "Internship application tracking"
+            "description": "Student internship applications"
+        },
+        {
+            "name": "Recommendations",
+            "description": "AI-powered internship recommendations, history, and feedback"
+        },
+        {
+            "name": "Admin Internships",
+            "description": "Admin-only internship management, data sources, collection logs, skills, and dashboard"
         },
         {
             "name": "Companies",
             "description": "Admin-only company management endpoints (Phase 4 Task 4.1)"
+        },
+        {
+            "name": "Admin Data Sources",
+            "description": "Admin-only data source management and manual sync (Task 5.10)"
         }
     ],
     "ENUM_NAME_OVERRIDES": {},

@@ -75,21 +75,6 @@ class UserAPITest(TestCase):
         """Set up test client"""
         self.client = APIClient()
 
-    def test_student_registration(self):
-        """Test student registration endpoint"""
-        data = {
-            'full_name': 'Jane Doe',
-            'email': 'newuser@example.com',
-            'password': 'SecurePass123!',
-            'password_confirm': 'SecurePass123!',
-            'phone': '+1234567890',
-        }
-        response = self.client.post('/api/accounts/register/', data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(User.objects.filter(email='newuser@example.com').exists())
-        self.assertIn('message', response.data)
-        self.assertIn('user', response.data)
-
     def test_student_registration_auth_endpoint(self):
         """Test student registration via the canonical /api/auth/register/ endpoint (Task 2.1)"""
         data = {
@@ -130,11 +115,11 @@ class UserAPITest(TestCase):
             'password': 'SecurePass123!',
             'password_confirm': 'SecurePass123!',
         }
-        first = self.client.post('/api/accounts/register/', data, format='json')
+        first = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(first.status_code, status.HTTP_201_CREATED)
 
         # Second attempt with the same email must be 400, not 500
-        second = self.client.post('/api/accounts/register/', data, format='json')
+        second = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('email', second.data)
 
@@ -146,7 +131,7 @@ class UserAPITest(TestCase):
             'password': 'SecurePass123!',
             'password_confirm': 'differentpass'
         }
-        response = self.client.post('/api/accounts/register/', data, format='json')
+        response = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_student_registration_weak_password(self):
@@ -158,7 +143,7 @@ class UserAPITest(TestCase):
             'password': '123',
             'password_confirm': '123'
         }
-        response = self.client.post('/api/accounts/register/', data, format='json')
+        response = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_student_registration_missing_full_name(self):
@@ -168,7 +153,7 @@ class UserAPITest(TestCase):
             'password': 'SecurePass123!',
             'password_confirm': 'SecurePass123!',
         }
-        response = self.client.post('/api/accounts/register/', data, format='json')
+        response = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('full_name', response.data)
 

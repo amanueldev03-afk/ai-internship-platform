@@ -5,13 +5,13 @@ from django.conf.urls.static import static
 from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.views import TokenRefreshView
 from apps.accounts.views import (
     StudentRegistrationView,
     EmailVerificationLinkView,
     LoginView,
     PasswordResetView,
     PasswordResetConfirmView,
+    AuthTokenRefreshView,
 )
 
 
@@ -59,7 +59,7 @@ urlpatterns = [
     # Phase 2 Task 2.4 — token refresh (public by SimpleJWT permission_classes)
     path(
         "api/auth/refresh/",
-        TokenRefreshView.as_view(),
+        AuthTokenRefreshView.as_view(),
         name="auth-token-refresh",
     ),
     # Phase 2 Task 2.5 — password reset (request + confirm with path token)
@@ -83,10 +83,7 @@ urlpatterns = [
         "accounts/",
         include("allauth.urls")
          ),
-    path(
-        "api/profile/",
-        include("apps.students.urls"),
-    ),
+    # Student profile module (Phase 3) — single canonical prefix.
     path(
         "api/students/",
         include("apps.students.urls"),
@@ -114,10 +111,6 @@ urlpatterns = [
     path(
         "api/analytics/",
         include("apps.analytics.urls"),
-    ),
-    path(
-        "api/data-sources/",
-        include("apps.data_sources.urls"),
     ),
     # Task 5.10 — admin manual syncing of a single data source.
     # POST /api/admin/data-sources/<id>/sync-now/
