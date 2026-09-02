@@ -1,9 +1,12 @@
 from django.test import TestCase
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.utils import timezone
 from apps.common.models import TimeStampedModel
 from apps.internships.models import Internship
+from apps.recommendations.models import Recommendation
+from apps.notifications.tasks import send_high_score_recommendation_notification
 from .models import ApplicationHistory
 
 User = get_user_model()
@@ -250,3 +253,60 @@ class ApplicationHistoryAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 0)
         self.assertEqual(response.data["results"], [])
+
+
+class StudentLifecycleIntegrationTest(TestCase):
+    """Verify the Phase 8 save, apply, notify, and history lifecycle."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email="lifecycle_student@example.com",
+            password="TestPassword123!",
+            role=User.Role.STUDENT,
+        )
+        self.internship = Internship.objects.create(
+            title="Lifecycle Internship",
+            organization_name="Tech Corp",
+            description="Build useful software",
+            application_url="https://example.com/apply",
+            internship_type="remote",
+            status=Internship.STATUS_ACTIVE,
+        )
+        self.client.force_authenticate(user=self.student)
+
+    def test_save_apply_notify_and_review_history(self):
+        save_response = self.client.post(
+            f"/api/internships/{self.internship.id}/save/"
+        )
+        self.assertIn(save_response.status_code, (200, 201))
+        self.assertTrue(save_response.data["saved"])
+
+        recommendation = Recommendation.objects.create(
+            student=self.student,
+            internship=self.internship,
+            overall_score=85,
+        )
+        notification_result = send_high_score_recommendation_notification.run(
+            recommendation.id
+        )
+        self.assertEqual(notification_result["status"], "sent")
+        self.assertEqual(mail.outbox[0].to, [self.student.email])
+
+        apply_response = self.client.post(
+            "/api/applications/track/",
+            {"internship": self.internship.id},
+            format="json",
+        )
+        self.assertEqual(apply_response.status_code, 201)
+        self.assertTrue(apply_response.data["clicked_apply"])
+
+        history_response = self.client.get("/api/applications/history/")
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual(history_response.data["count"], 1)
+        self.assertEqual(
+            history_response.data["results"][0]["internship"],
+            self.internship.id,
+        )
