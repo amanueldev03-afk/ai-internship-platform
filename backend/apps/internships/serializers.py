@@ -61,6 +61,10 @@ class InternshipSerializer(serializers.ModelSerializer):
         help_text="Whether the internship application deadline has passed"
     )
 
+    is_flagged = serializers.SerializerMethodField(
+        help_text="Whether the internship has been flagged for admin review or broken links"
+    )
+
     class Meta:
         model = Internship
 
@@ -111,6 +115,8 @@ class InternshipSerializer(serializers.ModelSerializer):
             # Status
             "is_verified",
             "is_expired",
+            "is_flagged",
+            "url_validation",
             "status",
             "embedding_status",
             "embedding_error",
@@ -123,6 +129,8 @@ class InternshipSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "source_name",
+            "is_flagged",
+            "url_validation",
             "embedding_status",
             "embedding_error",
             "created_at",
@@ -243,6 +251,14 @@ class InternshipSerializer(serializers.ModelSerializer):
         """
 
         return obj.is_expired()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_flagged(self, obj):
+        """
+        Return whether the internship is flagged / needs review.
+        """
+
+        return getattr(obj, "needs_review", False)
 
 
 class InternshipCollectionLogSerializer(

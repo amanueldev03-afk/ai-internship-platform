@@ -32,18 +32,20 @@ urlpatterns = [
     ),
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema", permission_classes=[AllowAny]),
+        SpectacularSwaggerView.as_view(
+            url_name="schema", permission_classes=[AllowAny]),
         name="swagger-ui",
     ),
     path(
         "api/redoc/",
-        SpectacularRedocView.as_view(url_name="schema", permission_classes=[AllowAny]),
+        SpectacularRedocView.as_view(
+            url_name="schema", permission_classes=[AllowAny]),
         name="redoc",
     ),
     path(
-        "api/accounts/", 
+        "api/accounts/",
         include("apps.accounts.urls")
-        ),
+    ),
     # Phase 2 Task 2.1 — canonical auth registration endpoint
     path(
         "api/auth/register/",
@@ -82,7 +84,7 @@ urlpatterns = [
     path(
         "accounts/",
         include("allauth.urls")
-         ),
+    ),
     # Student profile module (Phase 3) — single canonical prefix.
     path(
         "api/students/",
@@ -99,6 +101,10 @@ urlpatterns = [
     path(
         "api/companies/",
         include("apps.companies.urls"),
+    ),
+    path(
+        "api/applications/",
+        include("apps.applications.urls"),
     ),
     # Task 5.10 — admin manual syncing of a single data source.
     # POST /api/admin/data-sources/<id>/sync-now/

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { Recommendation } from '@/types'
-import { saveInternship, unsaveInternship } from '@/services/internshipApi'
-import { applyToInternship } from '@/services/recommendationApi'
+import { saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
+import { validateApplicationUrl } from '@/utils/urlValidation'
 
 interface RecommendationCardProps {
   recommendation: Recommendation
@@ -23,7 +23,6 @@ export default function RecommendationCard({
 }: RecommendationCardProps) {
   const { internship, match_score, explanation } = recommendation
   const [isSaving, setIsSaving] = useState(false)
-  const [isApplying, setIsApplying] = useState(false)
   const [localSaved, setLocalSaved] = useState(isSaved)
   const [localApplied, setLocalApplied] = useState(isApplied)
   const [error, setError] = useState<string | null>(null)
@@ -65,24 +64,26 @@ export default function RecommendationCard({
     }
   }
 
-  const handleApply = async () => {
-    if (isApplying || localApplied) return
-    setIsApplying(true)
+  const handleApply = () => {
+    if (localApplied) return
     setError(null)
 
-    try {
-      if (internship.application_url) {
-        window.open(internship.application_url, '_blank', 'noopener,noreferrer')
-      }
-      await applyToInternship(internship.id)
-      setLocalApplied(true)
-      onApply?.(internship.id)
-    } catch (err: any) {
-      setError('Failed to apply to internship')
-      console.error('Apply error:', err)
-    } finally {
-      setIsApplying(false)
+    // 1. Validate application URL (syntax, protocol, flagging, dead links)
+    const validation = validateApplicationUrl(internship)
+    if (!validation.isValid) {
+      setError(validation.error || 'The application link for this internship is invalid or unavailable.')
+      return
     }
+
+    // 2. Fire-and-forget background tracking (non-blocking with short timeout)
+    trackApplication(internship.id).catch((err) => {
+      console.warn('Background application tracking failed (non-blocking):', err)
+    })
+
+    // 3. Immediately redirect student to external employer portal
+    window.open(internship.application_url!, '_blank', 'noopener,noreferrer')
+    setLocalApplied(true)
+    onApply?.(internship.id)
   }
 
   const getMatchScoreColor = (score: number) => {
@@ -185,14 +186,14 @@ export default function RecommendationCard({
       <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
         <button
           onClick={handleApply}
-          disabled={isApplying || localApplied}
+          disabled={localApplied}
           className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
             localApplied
               ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
               : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed'
           }`}
         >
-          {isApplying ? 'Applying...' : localApplied ? 'Applied' : 'Apply'}
+          {localApplied ? 'Applied' : 'Apply'}
         </button>
         <button
           onClick={handleSave}

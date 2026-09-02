@@ -73,3 +73,22 @@ export async function unsaveInternship(
   return response.data
 }
 
+/**
+ * Track an application click event (Task 8.2).
+ * Uses a short bounded timeout (1500ms) for non-blocking fire-and-forget background tracking.
+ * @param internshipId - The ID of the internship
+ * @param timeoutMs - Optional timeout in milliseconds (default: 1500ms)
+ */
+export async function trackApplication(
+  internshipId: number,
+  timeoutMs = 1500
+): Promise<{ message: string; clicked_apply: boolean; internship_id: number; applied_date: string }> {
+  const response = await api.post(
+    '/applications/track/',
+    { internship: internshipId },
+    { timeout: timeoutMs }
+  )
+  return response.data
+}
+
+

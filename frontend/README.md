@@ -177,9 +177,19 @@ npm run preview
 - **Frontend Toggle & Real-Time Sync**:
   - Save / Unsave toggle button (`♥ Saved` vs `♡ Save`) on recommendation cards, search cards, and internship detail view.
   - Toggling immediately updates local UI state without page reloads.
-  - Dedicated **Saved Internships** page (`/saved` and `/saved-internships`) showing bookmarked opportunities.
-  - Unsaving an internship from the Saved Internships list removes it instantaneously from the view without a full page refresh.
-  - Robust error handling: API failures do not falsely alter the button state and display actionable error alerts.
+### Task 8.2 — Application Redirect + Application Tracking (Section 5.13 / Figure 5.3)
+
+- **Backend Tracking Endpoint**:
+  - `POST /api/applications/track/` — Records student application interaction, creating or updating an `ApplicationHistory` row with `clicked_apply=True` and timestamping `applied_date`.
+  - Supports both `{"internship": <id>}` and `{"internship_id": <id>}` payloads.
+  - Enforces authenticated student access, user isolation, and returns 404 for invalid internship IDs.
+- **Fire-and-Forget Non-Blocking Tracking**:
+  - Tracking is initiated with a short bounded timeout (1500ms).
+  - Redirection to the employer's `application_url` is non-blocking and executes immediately without waiting indefinitely for API responses.
+  - Background tracking failures or timeouts do not prevent the student from reaching the employer site.
+- **Application URL Validation & Error Handling**:
+  - Robust URL validation (`validateApplicationUrl`) verifying syntax, HTTPS/HTTP protocols, flagged status (`is_flagged` / `needs_review`), dead/unreachable links (`url_validation`), and deadline expiration.
+  - If a listing has an invalid, dead, or flagged URL, redirect is suppressed and an in-app error alert is displayed.
 
 ---
 

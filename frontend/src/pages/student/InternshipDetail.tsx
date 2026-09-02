@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAppSelector } from '@/store/hooks'
-import { getInternshipDetail, getSavedInternships } from '@/services/internshipApi'
-import { saveInternship, unsaveInternship } from '@/services/recommendationApi'
+import { getInternshipDetail, getSavedInternships, saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
+import { validateApplicationUrl } from '@/utils/urlValidation'
 import type { Internship } from '@/types'
 
 export default function InternshipDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { isAuthenticated, role } = useAppSelector((state) => state.auth)
-  
+
   const [internship, setInternship] = useState<Internship | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isSaved, setIsSaved] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [isApplied, setIsApplied] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated || role !== 'student') {
@@ -27,6 +29,7 @@ export default function InternshipDetail() {
       setIsLoading(true)
       setError(null)
       setSaveError(null)
+      setApplyError(null)
 
       try {
         const [data, savedData] = await Promise.all([
@@ -56,7 +59,7 @@ export default function InternshipDetail() {
 
   const handleSave = async () => {
     if (!internship || isSaving) return
-    
+
     setIsSaving(true)
     setSaveError(null)
 
@@ -77,10 +80,25 @@ export default function InternshipDetail() {
   }
 
   const handleApply = () => {
-    if (!internship?.application_url) return
-    
-    // Open external application URL in new tab with security attributes
-    window.open(internship.application_url, '_blank', 'noopener,noreferrer')
+    setApplyError(null)
+
+    // 1. Validate application URL (syntax, reachability, flagging, dead links)
+    const validation = validateApplicationUrl(internship ?? undefined)
+    if (!validation.isValid) {
+      setApplyError(validation.error || 'The application link for this internship is unavailable or invalid.')
+      return
+    }
+
+    // 2. Fire-and-forget background tracking (non-blocking with short timeout)
+    if (internship) {
+      trackApplication(internship.id).catch((err) => {
+        console.warn('Background application tracking failed (non-blocking):', err)
+      })
+    }
+
+    // 3. Immediately redirect student to external employer portal in a new tab
+    window.open(internship!.application_url!, '_blank', 'noopener,noreferrer')
+    setIsApplied(true)
   }
 
   const formatDate = (dateString?: string) => {
@@ -275,16 +293,36 @@ export default function InternshipDetail() {
             </div>
           )}
 
+          {/* Apply Error */}
+          {applyError && (
+            <div className="p-4 bg-red-50 text-red-700 text-sm border-t border-red-100 flex items-center justify-between">
+              <span>{applyError}</span>
+              <button
+                onClick={() => setApplyError(null)}
+                className="text-red-500 hover:text-red-700 font-bold ml-4"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="p-6 sm:p-8 bg-gray-50">
             {hasApplicationUrl ? (
-              <button
-                onClick={handleApply}
-                className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              >
-                Apply Now
-                <span className="sr-only"> — Opens employer website in a new tab</span>
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleApply}
+                  className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  {isApplied ? 'Applied ✓' : 'Apply Now'}
+                  <span className="sr-only"> — Opens employer website in a new tab</span>
+                </button>
+                {isApplied && (
+                  <span className="text-sm text-green-700 font-medium">
+                    Redirected to employer site
+                  </span>
+                )}
+              </div>
             ) : (
               <div className="text-gray-500 text-sm">
                 Application URL not available. Please check back later or contact the employer directly.

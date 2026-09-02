@@ -142,3 +142,115 @@ describe('RecommendationCard - Save/Unsave Toggle', () => {
     })
   })
 })
+
+describe('RecommendationCard - Apply Flow (Task 8.2 / TC009)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(window, 'open').mockImplementation(() => null)
+  })
+
+  it('TC009: Valid Apply initiates tracking and immediately redirects to employer application_url', async () => {
+    const trackSpy = vi.spyOn(internshipApi, 'trackApplication').mockResolvedValueOnce({
+      message: 'Application tracked successfully.',
+      clicked_apply: true,
+      internship_id: 1,
+      applied_date: '2026-09-01T00:00:00Z',
+    })
+    const onApply = vi.fn()
+
+    render(
+      <MemoryRouter>
+        <RecommendationCard
+          recommendation={mockRecommendation}
+          onApply={onApply}
+        />
+      </MemoryRouter>
+    )
+
+    const applyBtn = screen.getByRole('button', { name: /^Apply$/i })
+    fireEvent.click(applyBtn)
+
+    // Verify window.open was called immediately with valid URL and security flags
+    expect(window.open).toHaveBeenCalledWith('https://example.com/apply/1', '_blank', 'noopener,noreferrer')
+
+    // Verify background tracking was initiated
+    expect(trackSpy).toHaveBeenCalledWith(1)
+    expect(onApply).toHaveBeenCalledWith(1)
+  })
+
+  it('TC009: Invalid/Flagged Apply shows in-app error state and DOES NOT redirect', async () => {
+    const flaggedRec = {
+      ...mockRecommendation,
+      internship: {
+        ...mockRecommendation.internship,
+        is_flagged: true,
+      },
+    }
+
+    render(
+      <MemoryRouter>
+        <RecommendationCard recommendation={flaggedRec} />
+      </MemoryRouter>
+    )
+
+    const applyBtn = screen.getByRole('button', { name: /^Apply$/i })
+    fireEvent.click(applyBtn)
+
+    // Verify NO redirect occurred
+    expect(window.open).not.toHaveBeenCalled()
+
+    // Verify in-app error state rendered
+    await waitFor(() => {
+      expect(screen.getByText(/flagged for a broken or unreachable application link/i)).toBeInTheDocument()
+    })
+  })
+
+  it('TC009: Dead/unreachable URL shows in-app error and DOES NOT redirect', async () => {
+    const deadRec = {
+      ...mockRecommendation,
+      internship: {
+        ...mockRecommendation.internship,
+        url_validation: { application_url_valid: false, status: 'dead' },
+      },
+    }
+
+    render(
+      <MemoryRouter>
+        <RecommendationCard recommendation={deadRec} />
+      </MemoryRouter>
+    )
+
+    const applyBtn = screen.getByRole('button', { name: /^Apply$/i })
+    fireEvent.click(applyBtn)
+
+    // Verify NO redirect
+    expect(window.open).not.toHaveBeenCalled()
+
+    // Verify error displayed
+    await waitFor(() => {
+      expect(screen.getByText(/employer application link is unreachable or dead/i)).toBeInTheDocument()
+    })
+  })
+
+  it('TC009: Tracking backend failure or timeout STILL redirects student to valid employer URL', async () => {
+    // Tracking fails/times out
+    vi.spyOn(internshipApi, 'trackApplication').mockRejectedValueOnce(new Error('Tracking service timeout'))
+    const onApply = vi.fn()
+
+    render(
+      <MemoryRouter>
+        <RecommendationCard
+          recommendation={mockRecommendation}
+          onApply={onApply}
+        />
+      </MemoryRouter>
+    )
+
+    const applyBtn = screen.getByRole('button', { name: /^Apply$/i })
+    fireEvent.click(applyBtn)
+
+    // Verify redirect STILL succeeded without getting blocked
+    expect(window.open).toHaveBeenCalledWith('https://example.com/apply/1', '_blank', 'noopener,noreferrer')
+    expect(onApply).toHaveBeenCalledWith(1)
+  })
+})
