@@ -93,6 +93,7 @@ All test scripts are located in `backend/scripts/`:
 - `test_endpoints_comprehensive.sh` - Comprehensive endpoint testing
 
 Run tests:
+
 ```bash
 cd backend
 source .venv/bin/activate
@@ -140,6 +141,7 @@ ai-internship-platform/
 ## Key Features
 
 ### Authentication System
+
 - Student registration and login
 - Admin login with role-based access
 - JWT token authentication
@@ -147,6 +149,7 @@ ai-internship-platform/
 - Password reset
 
 ### Student Profile Management
+
 - Profile creation and updates
 - Skills management (catalogue-validated)
 - Career interests
@@ -154,17 +157,20 @@ ai-internship-platform/
 - CV upload and processing
 
 ### Internship Management
+
 - Internship listing and details
 - Admin can create/update/delete internships
 - Skills catalog
 - Data source management
 
 ### Application System
+
 - Students can apply to internships
 - Application tracking
 - Save/unsave internships
 
 ### AI Recommendation System
+
 - Embedding generation (384-dim vectors)
 - Semantic similarity matching
 - Skill matching (exact + blended)
@@ -172,12 +178,14 @@ ai-internship-platform/
 - Ranked recommendations with scoring
 
 ### CV Extraction
+
 - CV parser module (extracts skills, experience, education)
 - CV models in database
 - Profile + CV data merging for recommendations
 - CV-based matching score calculation
 
 ### Dashboards
+
 - Student dashboard (applications and saved internships)
 - Admin dashboard (statistics and recent activity)
 
@@ -188,6 +196,7 @@ ai-internship-platform/
 **Total Endpoints:** 78 REST API endpoints
 
 **Categories:**
+
 - System Endpoints (4): Health check, API schema, Swagger UI, ReDoc
 - Authentication (10): Registration, login, refresh, password reset, email verification
 - Student Profiles (19): Profile CRUD, skills, interests, preferences, CV upload
@@ -209,13 +218,14 @@ All business logic has been verified and is working correctly:
 ✅ Authentication and authorization working  
 ✅ AI recommendation system operational  
 ✅ CV extraction and profile merging implemented  
-✅ End-to-end business logic test passed  
+✅ End-to-end business logic test passed
 
 ---
 
 ## Backend Audit Summary
 
 **Completed Phases:**
+
 - Removed 5 duplicate authentication endpoints
 - Fixed 71 code issues across 6 files
 - Added operation IDs to 23 critical endpoints
@@ -225,6 +235,7 @@ All business logic has been verified and is working correctly:
 - Optimized queries with select_related
 
 **Files Modified:**
+
 - `config/urls.py` - Removed empty URL includes
 - `apps/internships/views.py` - Query optimization + exception handling + operation IDs
 - `apps/students/views.py` - Swagger tags + exception handling + operation IDs
@@ -237,6 +248,7 @@ All business logic has been verified and is working correctly:
 ## Deployment Checklist
 
 ### Pre-Deployment
+
 - [ ] Review all code changes
 - [ ] Run regression tests
 - [ ] Test error handling scenarios
@@ -245,12 +257,14 @@ All business logic has been verified and is working correctly:
 - [ ] Create database backup
 
 ### Deployment
+
 - [ ] Deploy to staging environment
 - [ ] Monitor for errors
 - [ ] Test all critical endpoints
 - [ ] Verify no breaking changes
 
 ### Post-Deployment
+
 - [ ] Monitor application logs
 - [ ] Check for error spikes
 - [ ] Verify performance metrics
@@ -296,14 +310,14 @@ Phase 2 delivers the complete student authentication lifecycle — registration,
 
 ### Task coverage
 
-| Task | Endpoint(s) | Behavior |
-|------|-------------|----------|
-| 2.1 Registration | `POST /api/auth/register/` | `full_name`, `email`, `password`, optional `phone`. Creates an **inactive** user + empty `StudentProfile` shell and emails a verification link. Duplicate email → `400`. |
-| 2.2 Email verification | `GET /api/auth/verify-email/<uid>/<token>/` | Decodes the token, checks expiry, flips `is_email_verified=True` **and** `is_active=True`. Single-use (a redeemed token → `400`). |
-| 2.3 Login & JWT | `POST /api/auth/login/` | Valid creds → `200` with access + refresh tokens, **`role` embedded in the JWT claims** for front-end routing. Wrong password → `401`; unverified/inactive account → `403` "verify your email". |
-| 2.4 Refresh & protected routes | `POST /api/auth/refresh/` | Issues new access (+ rotated refresh) token. Global `IsAuthenticated` default; public endpoints opt out with `AllowAny`. No token → `401`. |
-| 2.5 Password reset | `POST /api/auth/password-reset/` → `POST /api/auth/password-reset-confirm/<uid>/<token>/` | Full round trip via emailed link; new password set, old password invalidated. |
-| 2.6 RBAC | `apps.internships.permissions.IsStudent` / `IsAdminRole` | Custom permissions checking `request.user.role`. Student JWT → admin endpoint → `403` (Section 6.7.2). |
+| Task                           | Endpoint(s)                                                                               | Behavior                                                                                                                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 Registration               | `POST /api/auth/register/`                                                                | `full_name`, `email`, `password`, optional `phone`. Creates an **inactive** user + empty `StudentProfile` shell and emails a verification link. Duplicate email → `400`.                        |
+| 2.2 Email verification         | `GET /api/auth/verify-email/<uid>/<token>/`                                               | Decodes the token, checks expiry, flips `is_email_verified=True` **and** `is_active=True`. Single-use (a redeemed token → `400`).                                                               |
+| 2.3 Login & JWT                | `POST /api/auth/login/`                                                                   | Valid creds → `200` with access + refresh tokens, **`role` embedded in the JWT claims** for front-end routing. Wrong password → `401`; unverified/inactive account → `403` "verify your email". |
+| 2.4 Refresh & protected routes | `POST /api/auth/refresh/`                                                                 | Issues new access (+ rotated refresh) token. Global `IsAuthenticated` default; public endpoints opt out with `AllowAny`. No token → `401`.                                                      |
+| 2.5 Password reset             | `POST /api/auth/password-reset/` → `POST /api/auth/password-reset-confirm/<uid>/<token>/` | Full round trip via emailed link; new password set, old password invalidated.                                                                                                                   |
+| 2.6 RBAC                       | `apps.internships.permissions.IsStudent` / `IsAdminRole`                                  | Custom permissions checking `request.user.role`. Student JWT → admin endpoint → `403` (Section 6.7.2).                                                                                          |
 
 > Note: the canonical auth flow lives under `/api/auth/*`. A few split endpoints
 > remain under `/api/accounts/*` for backward compatibility:
@@ -339,9 +353,9 @@ student's **personal info** (Section 5.3.1) and **education** (Section 5.3.2),
 backed by `StudentProfile` (the canonical profile consumed by the AI matching
 engine in Section 3.11.1 / `semantic_matching.build_student_text`).
 
-| Method | Action |
-|--------|--------|
-| `GET` | Return my personal info + education. |
+| Method        | Action                                         |
+| ------------- | ---------------------------------------------- |
+| `GET`         | Return my personal info + education.           |
 | `PATCH`/`PUT` | Partially update my personal info + education. |
 
 **Business logic — fixed choice lists (Section 3.11.1).** The profile fields
@@ -368,16 +382,16 @@ Access is restricted to `IsStudent` (RBAC from Task 2.6): an admin JWT receives
 `/api/students/me/interests/` manage the catalogue-validated skills and
 career interests on the authenticated student's profile.
 
-| Method  | `/me/skills/`            | `/me/interests/`          |
-|---------|--------------------------|---------------------------|
-| `GET`   | List skills on my profile (active catalogue skills, ordered by name). | List interests on my profile (active catalogue interests, ordered by name). |
-| `POST`  | `{"skill_id": <id>}` → 201. Adds the catalogue skill. | `{"interest_id": <id>}` → 201. Adds the catalogue interest. |
-| `DELETE`| `{"skill_id": <id>}` → 204. Removes it (idempotent). | `{"interest_id": <id>}` → 204. Removes it (idempotent). |
+| Method   | `/me/skills/`                                                         | `/me/interests/`                                                            |
+| -------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `GET`    | List skills on my profile (active catalogue skills, ordered by name). | List interests on my profile (active catalogue interests, ordered by name). |
+| `POST`   | `{"skill_id": <id>}` → 201. Adds the catalogue skill.                 | `{"interest_id": <id>}` → 201. Adds the catalogue interest.                 |
+| `DELETE` | `{"skill_id": <id>}` → 204. Removes it (idempotent).                  | `{"interest_id": <id>}` → 204. Removes it (idempotent).                     |
 
 **Catalogue validation (Task 1.3) — no free-text.** The POST body must carry a
 `skill_id` / `interest_id` referencing an existing **active** `Skill` /
 `CareerInterest` row from the catalogue. Anything else — an unknown ID or a
-skill/interest *name* string — is rejected with `400`.
+skill/interest _name_ string — is rejected with `400`.
 
 **Decision (documented for Phase 6):** there is **no "suggest new skill"
 flow**. Free-text is always rejected with `400`; expanding the catalogue is an
@@ -406,19 +420,19 @@ bust the recommendation cache so follow-up recommendations reflect the change.
 `GET` / `PATCH` `/api/students/me/preferences/` reads and updates the
 authenticated student's internship preferences (Section 5.3.3).
 
-| Method  | Action |
-|---------|--------|
-| `GET`   | Return my internship preferences. |
+| Method  | Action                                      |
+| ------- | ------------------------------------------- |
+| `GET`   | Return my internship preferences.           |
 | `PATCH` | Partially update them; all fields optional. |
 
-| Field | Accepted values | Stored on `StudentProfile` | AI engine use |
-|-------|-----------------|----------------------------|---------------|
-| `country` | free text | `country` | Location score + semantic profile text |
-| `city` | free text | `city` | Location score + semantic profile text |
-| `work_mode` | `full_time`, `part_time`, `either` | `work_type` | Work-mode score (`calculate_work_mode_score`) |
-| `internship_type` | `remote`, `onsite`, `hybrid`, `any` | `internship_type` | Hard filter (`passes_hard_filters`) |
-| `availability_start` | `YYYY-MM-DD` | `availability_start` | — |
-| `availability_end` | `YYYY-MM-DD` | `availability_end` | — |
+| Field                | Accepted values                     | Stored on `StudentProfile` | AI engine use                                 |
+| -------------------- | ----------------------------------- | -------------------------- | --------------------------------------------- |
+| `country`            | free text                           | `country`                  | Location score + semantic profile text        |
+| `city`               | free text                           | `city`                     | Location score + semantic profile text        |
+| `work_mode`          | `full_time`, `part_time`, `either`  | `work_type`                | Work-mode score (`calculate_work_mode_score`) |
+| `internship_type`    | `remote`, `onsite`, `hybrid`, `any` | `internship_type`          | Hard filter (`passes_hard_filters`)           |
+| `availability_start` | `YYYY-MM-DD`                        | `availability_start`       | —                                             |
+| `availability_end`   | `YYYY-MM-DD`                        | `availability_end`         | —                                             |
 
 **Naming note.** The API keyword is `work_mode`, but it maps onto
 `StudentProfile.work_type` (the commitment — full/part-time — that the AI
@@ -445,10 +459,10 @@ the recommendation cache.
 `POST` and `GET` `/api/students/me/resume/` handle the student's canonical
 resume file (Section 5.3.6 / Figure 5.2).
 
-| Method | Action |
-|--------|--------|
+| Method | Action                                                                 |
+| ------ | ---------------------------------------------------------------------- |
 | `POST` | Upload a resume via `multipart/form-data` field `file`. PDF/DOCX only. |
-| `GET`  | Return resume metadata + latest CV processing status. |
+| `GET`  | Return resume metadata + latest CV processing status.                  |
 
 **Validation (Section 7.6.5 — no disguised executables).** The upload is
 validated three ways, in order:
@@ -456,7 +470,7 @@ validated three ways, in order:
 1. **Size** — max 5 MB (`ValueError` → 400).
 2. **Extension** — filename must be `.pdf` / `.docx`.
 3. **MIME by content sniffing** — never the extension alone:
-   - `.pdf`  → the bytes must begin with a genuine `%PDF` header.
+   - `.pdf` → the bytes must begin with a genuine `%PDF` header.
    - `.docx` → the bytes must be a real ZIP whose manifest carries the OOXML
      `[Content_Types].xml` + `word/` tree.
    - **A Windows/Linux executable renamed to `.pdf` (MZ/ELF magic) is
@@ -487,11 +501,11 @@ parsing pipeline (deterministic + AI analysis, skill sync, embedding, cache
 bust), and sets `StudentProfile.resume_parsed = True`
 (+ `resume_parsed_at`) once done — the DB flag used to confirm the async run.
 
-| Piece | Detail |
-|-------|--------|
-| Task | `apps.students.tasks.parse_resume(student_id)` (shared pipeline extracted into `_complete_cv_processing`). |
-| Trigger | `transaction.on_commit(lambda: parse_resume.delay(profile.user_id))` in `_store_resume`. |
-| Flag | `StudentProfile.resume_parsed` (Boolean) + `resume_parsed_at` (DateTime), migration `0019`. |
+| Piece      | Detail                                                                                                                                               |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task       | `apps.students.tasks.parse_resume(student_id)` (shared pipeline extracted into `_complete_cv_processing`).                                           |
+| Trigger    | `transaction.on_commit(lambda: parse_resume.delay(profile.user_id))` in `_store_resume`.                                                             |
+| Flag       | `StudentProfile.resume_parsed` (Boolean) + `resume_parsed_at` (DateTime), migration `0019`.                                                          |
 | Eager mode | `CELERY_TASK_ALWAYS_EAGER=True` runs tasks synchronously (no broker) for dev/tests — driven by env (default `False`, set in `config.settings.test`). |
 
 The full broker is wired up in Phase 5; this task exists now and is verified
@@ -509,12 +523,12 @@ read-only `completion` block that powers the dashboard completion widget:
 {
   "percent": 50,
   "sections": {
-    "personal":    true,
-    "education":   true,
-    "skills":      true,
-    "interests":   false,
+    "personal": true,
+    "education": true,
+    "skills": true,
+    "interests": false,
     "preferences": false,
-    "resume":      true
+    "resume": true
   }
 }
 ```
@@ -522,14 +536,14 @@ read-only `completion` block that powers the dashboard completion widget:
 **Business logic.** The percentage is the share of six equally-weighted
 sections that are filled:
 
-| Section | Filled when |
-|---------|-------------|
-| `personal` | any of `phone` / `country` / `city` / `date_of_birth` / `bio` is set |
-| `education` | any of `education_level` / `current_year` / `field_of_study` / `university` is set |
-| `skills` | profile has ≥ 1 catalogue `Skill` |
-| `interests` | profile has ≥ 1 catalogue `CareerInterest` |
+| Section       | Filled when                                                                                                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `personal`    | any of `phone` / `country` / `city` / `date_of_birth` / `bio` is set                                                                                                                      |
+| `education`   | any of `education_level` / `current_year` / `field_of_study` / `university` is set                                                                                                        |
+| `skills`      | profile has ≥ 1 catalogue `Skill`                                                                                                                                                         |
+| `interests`   | profile has ≥ 1 catalogue `CareerInterest`                                                                                                                                                |
 | `preferences` | a real preference is expressed (e.g. `work_type` ≠ default `either`, `internship_type` ≠ default `any`, availability window, preferred locations, relocation) — defaults do **not** count |
-| `resume` | `StudentProfile.resume` points to a stored file |
+| `resume`      | `StudentProfile.resume` points to a stored file                                                                                                                                           |
 
 Each section = 1/6 (≈ 16.7%), so an empty profile is `0%` and percentage
 climbs in predictable steps: `0, 17, 33, 50, 67, 83, 100`. `completion` is a
@@ -609,6 +623,7 @@ ai_engine/
 ### Key Features
 
 **Resume Parser (Task 6.1)**
+
 - PDF/DOCX text extraction
 - spaCy NER for entity extraction
 - Section-based heuristics (Skills, Experience, Education)
@@ -617,18 +632,21 @@ ai_engine/
 - Source tracking (manual vs resume)
 
 **Skill Matching (Task 6.2)**
+
 - Exact name-based intersection
 - Overlap ratio: `|student_skills ∩ internship_skills| / |internship_skills|`
 - Neutral score (0.5) when no requirements
 - Case-insensitive, whitespace-trimmed
 
 **Semantic Matching (Task 6.3)**
+
 - sentence-transformers (all-MiniLM-L6-v2, 384-dim)
 - Cosine similarity scaled to 0–100
 - Blended skill score: 60% exact-match + 40% semantic
 - Catches synonyms exact-match misses
 
 **Scoring Functions (Task 6.4)**
+
 - `education_score`: Field + level alignment (0.0–1.0)
 - `experience_score`: Bucket comparison + years boost
 - `interest_score`: Career interest match (exact + semantic)
@@ -636,18 +654,21 @@ ai_engine/
 - `work_mode_score`: Remote/hybrid/onsite match
 
 **Weighted Ranking (Task 6.5)**
+
 - Table 3.1 weights: Skills 40%, Education 20%, Interest 15%, Experience 10%, Location 10%, Work Mode 5%
 - Configurable weights (module-level constants)
 - Score clamping (0.0–100.0)
 - Weight validation (sum to 1.0)
 
 **Explanation Generation (Task 6.6)**
+
 - Threshold-based logic (high ≥0.70, medium ≥0.50)
 - Avoids false positives (no free-text generation)
 - Auditability: clear score → explanation mapping
 - Configurable thresholds via `ExplanationConfig`
 
 **Orchestration Entrypoint (Task 6.7)**
+
 - `generate_recommendations(student, limit=50, save_to_db=True)`
 - Loads student profile + skills + interests
 - Queries active internships
@@ -680,12 +701,15 @@ for result in results:
 ### Database Changes
 
 **StudentSkill Model** (Task 6.1)
+
 - Added `source` field (manual/resume tracking)
 
 **CV Model** (Task 6.1)
+
 - Added `extracted_experience_years` field
 
 **Recommendation Model** (Task 6.7)
+
 - Uses `update_or_create` keyed on (student, internship)
 - Stores all component scores + overall_score
 
@@ -755,13 +779,13 @@ student JWT receives `403` on every verb.
 `/api/companies/<id>/` manage the `Company` catalogue (Section 3.6 entity #7).
 Both views are locked down with `IsAdminRole`.
 
-| Method | Path | Action |
-|--------|------|--------|
-| `GET` | `/api/companies/` | Paginated list of all companies, each with a live `internship_count`. |
-| `POST` | `/api/companies/` | Create a company (`name` unique, `website` URL, `country`, `industry`). Duplicate name → `400`. |
-| `GET` | `/api/companies/<id>/` | Retrieve one company. |
-| `PATCH` / `PUT` | `/api/companies/<id>/` | Update one company. |
-| `DELETE` | `/api/companies/<id>/` | Delete one company; its internships' `company` links are nulled (`on_delete=SET_NULL`, migration `0018`), listings survive. |
+| Method          | Path                   | Action                                                                                                                      |
+| --------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `GET`           | `/api/companies/`      | Paginated list of all companies, each with a live `internship_count`.                                                       |
+| `POST`          | `/api/companies/`      | Create a company (`name` unique, `website` URL, `country`, `industry`). Duplicate name → `400`.                             |
+| `GET`           | `/api/companies/<id>/` | Retrieve one company.                                                                                                       |
+| `PATCH` / `PUT` | `/api/companies/<id>/` | Update one company.                                                                                                         |
+| `DELETE`        | `/api/companies/<id>/` | Delete one company; its internships' `company` links are nulled (`on_delete=SET_NULL`, migration `0018`), listings survive. |
 
 **Check (Table 6.1 TC006, as in tests):** a student JWT receives `403` on
 every verb; an anonymous client receives `401`; an admin can round-trip a
@@ -936,7 +960,7 @@ cd backend && python manage.py runserver
 | Task queue        | Celery + Redis                                      |
 | AI / embeddings   | sentence-transformers (all-MiniLM-L6-v2, 384-dim)   |
 | CV parsing        | spaCy (en_core_web_sm) + OpenAI GPT-4o-mini         |
-| File storage      | django-storages (local filesystem / S3-compatible) |
+| File storage      | django-storages (local filesystem / S3-compatible)  |
 | Frontend          | Vite + React 18 + TypeScript                        |
 | State management  | Redux Toolkit                                       |
 | Styling           | Tailwind CSS                                        |
@@ -1019,6 +1043,7 @@ python scripts/verify_phase2_definition_of_done.py
 Expected: `PHASE 2 DEFINITION OF DONE: ALL 3 CHECKS PASSED!`
 
 > Tests run against `config.settings.test` (throttling disabled, in-memory email outbox) so they do not touch a live database or send real emails:
+>
 > ```bash
 > python manage.py test apps.accounts --settings=config.settings.test
 > ```
