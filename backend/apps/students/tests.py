@@ -140,9 +140,9 @@ class StudentProfileAPITest(TestCase):
     def test_update_profile(self):
         """Test updating student profile with background embedding regeneration"""
         from unittest.mock import patch
-        
+
         self.client.force_authenticate(user=self.user)
-        
+
         # Mock the embedding task to avoid actual Celery execution
         with patch('apps.students.views.generate_student_embedding_task.delay'):
             response = self.client.patch('/api/students/', {
@@ -176,12 +176,12 @@ class StudentProfileAPITest(TestCase):
         """Test CV upload endpoint with background processing"""
         from unittest.mock import patch
         from .models import CV
-        
+
         self.client.force_authenticate(user=self.user)
-        
+
         from io import BytesIO
         from django.core.files.uploadedfile import SimpleUploadedFile
-        
+
         cv_content = (
             b"%PDF-1.4\n"
             b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
@@ -193,15 +193,17 @@ class StudentProfileAPITest(TestCase):
             cv_content,
             content_type="application/pdf"
         )
-        
+
         # Mock the task to avoid actual Celery execution in tests
         with patch('apps.students.views.process_cv.delay'):
-            response = self.client.post('/api/students/cv/upload/', {'file': cv_file})
+            response = self.client.post(
+                '/api/students/cv/upload/', {'file': cv_file})
             self.assertEqual(response.status_code, status.HTTP_201_CREATED)
             self.assertIn('cv_id', response.data)
             self.assertIn('processing_status', response.data)
-            self.assertEqual(response.data['processing_status'], CV.STATUS_PENDING)
-            
+            self.assertEqual(
+                response.data['processing_status'], CV.STATUS_PENDING)
+
             # Verify CV was created
             cv = CV.objects.get(id=response.data['cv_id'])
             self.assertEqual(cv.student, self.user)
@@ -210,48 +212,50 @@ class StudentProfileAPITest(TestCase):
     def test_upload_cv_invalid_format(self):
         """Test CV upload with invalid file format"""
         self.client.force_authenticate(user=self.user)
-        
+
         from io import BytesIO
         from django.core.files.uploadedfile import SimpleUploadedFile
-        
+
         invalid_file = SimpleUploadedFile(
             "test.txt",
             b"Invalid file",
             content_type="text/plain"
         )
-        
-        response = self.client.post('/api/students/cv/upload/', {'file': invalid_file})
+
+        response = self.client.post(
+            '/api/students/cv/upload/', {'file': invalid_file})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_cv_status_endpoint(self):
         """Test CV status endpoint"""
         from .models import CV
-        
+
         self.client.force_authenticate(user=self.user)
-        
+
         # Create a CV
         cv = CV.objects.create(
             student=self.user,
             processing_status=CV.STATUS_PROCESSING,
             processing_error=None
         )
-        
+
         response = self.client.get(f'/api/students/cv/{cv.id}/status/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['cv_id'], cv.id)
-        self.assertEqual(response.data['processing_status'], CV.STATUS_PROCESSING)
+        self.assertEqual(
+            response.data['processing_status'], CV.STATUS_PROCESSING)
 
     def test_cv_status_not_found(self):
         """Test CV status endpoint with non-existent CV"""
         self.client.force_authenticate(user=self.user)
-        
+
         response = self.client.get('/api/students/cv/99999/status/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_cv_analysis_structured_data(self):
         """Test that CV analysis returns structured JSON data"""
         from .services.cv_analysis import analyze_cv
-        
+
         test_cv_text = """
         Skills: Python, Django, React, SQL
         Education: Bachelor of Computer Science, University of Gondar
@@ -259,15 +263,53 @@ class StudentProfileAPITest(TestCase):
         Projects: AI Internship Platform using Python and Django
         Certifications: AWS Certified Developer
         """
-        
+
         analysis = analyze_cv(test_cv_text)
-        
+
         # Verify all fields are lists
         self.assertIsInstance(analysis['skills'], list)
         self.assertIsInstance(analysis['education'], list)
         self.assertIsInstance(analysis['experience'], list)
         self.assertIsInstance(analysis['projects'], list)
         self.assertIsInstance(analysis['certifications'], list)
+
+    def test_cv_analysis_extracts_all_projects_multiple(self):
+        """Test that CV analysis parses ALL projects from a multi-project CV."""
+        from .services.cv_analysis import analyze_cv
+
+        test_cv = """
+        John Doe
+        Email: john@example.com
+        
+        SKILLS
+        Python, Django, React, TypeScript, PostgreSQL, Docker
+        
+        PROJECTS
+        1. Hospital Management System
+        Built an end-to-end electronic health records management platform for clinics.
+        Technologies: Python, Django, PostgreSQL
+        
+        2. E-Commerce Platform | React, Node.js, Stripe
+        Developed a modern responsive storefront with seamless online checkout.
+        
+        3. AI Chat Assistant
+        Created an intelligent conversational bot using OpenAI API and FastAPI.
+        Technologies: Python, FastAPI, Docker
+        
+        EDUCATION
+        B.Sc. in Computer Science - AAU
+        """
+
+        analysis = analyze_cv(test_cv)
+        projects = analysis['projects']
+
+        # Should extract all 3 projects
+        self.assertEqual(len(projects), 3)
+        self.assertEqual(projects[0]['name'], 'Hospital Management System')
+        self.assertIn('Django', projects[0]['technologies'])
+        self.assertEqual(projects[1]['name'], 'E-Commerce Platform')
+        self.assertEqual(projects[2]['name'], 'AI Chat Assistant')
+        self.assertIn('FastAPI', projects[2]['technologies'])
 
 
 class StudentModelTest(TestCase):
@@ -456,8 +498,10 @@ class SkillsAndInterestsModelTest(TestCase):
         """
         from .models import StudentSkill, StudentInterest
 
-        ss = StudentSkill.objects.create(student=self.student, skill=self.skill)
-        si = StudentInterest.objects.create(student=self.student, interest=self.interest)
+        ss = StudentSkill.objects.create(
+            student=self.student, skill=self.skill)
+        si = StudentInterest.objects.create(
+            student=self.student, interest=self.interest)
         ss_id = ss.id
         si_id = si.id
         skill_id = self.skill.id
@@ -524,14 +568,16 @@ class Phase3StudentMeAPITest(TestCase):
         self.assertEqual(get_response.status_code, status.HTTP_200_OK)
         self.assertEqual(get_response.data['education_level'], 'master')
         self.assertEqual(get_response.data['current_year'], 'first_year')
-        self.assertEqual(get_response.data['field_of_study'], 'artificial_intelligence')
+        self.assertEqual(
+            get_response.data['field_of_study'], 'artificial_intelligence')
         self.assertEqual(get_response.data['university'], 'MIT')
 
         # Persisted at the model level too
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.education_level, 'master')
         self.assertEqual(self.profile.current_year, 'first_year')
-        self.assertEqual(self.profile.field_of_study, 'artificial_intelligence')
+        self.assertEqual(self.profile.field_of_study,
+                         'artificial_intelligence')
 
     def test_patch_invalid_education_level_returns_400(self):
         self.client.force_authenticate(user=self.user)
@@ -595,8 +641,10 @@ class Phase3StudentSkillsInterestsAPITest(TestCase):
             role=User.Role.STUDENT,
         )
         self.profile = StudentProfile.objects.create(user=self.user)
-        self.python = Skill.objects.create(name='Python', category='Programming Languages')
-        self.django = Skill.objects.create(name='Django', category='Frameworks')
+        self.python = Skill.objects.create(
+            name='Python', category='Programming Languages')
+        self.django = Skill.objects.create(
+            name='Django', category='Frameworks')
         self.ai_interest = CareerInterest.objects.create(name='AI & ML')
         self.profile.interests.set([self.ai_interest])
         self.client.force_authenticate(user=self.user)
@@ -608,30 +656,37 @@ class Phase3StudentSkillsInterestsAPITest(TestCase):
         self.assertEqual(response.data, [])
 
     def test_post_skill_adds_to_profile(self):
-        response = self.client.post('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        response = self.client.post(
+            '/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['name'], 'Python')
-        self.assertEqual(set(self.profile.skills.values_list('name', flat=True)), {'Python'})
+        self.assertEqual(
+            set(self.profile.skills.values_list('name', flat=True)), {'Python'})
 
     def test_post_skill_not_in_catalogue_returns_400(self):
         """Free-text / non-catalogue skill must be rejected (400)."""
-        response = self.client.post('/api/students/me/skills/', {'skill_id': 999999}, format='json')
+        response = self.client.post(
+            '/api/students/me/skills/', {'skill_id': 999999}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('skill_id', response.data)
 
     def test_post_free_text_skill_name_returns_400(self):
         """Students must send a catalogue ID, not a skill name string."""
-        response = self.client.post('/api/students/me/skills/', {'skill_id': 'Cobol'}, format='json')
+        response = self.client.post(
+            '/api/students/me/skills/', {'skill_id': 'Cobol'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_delete_skill_removes_from_profile(self):
         self.profile.skills.add(self.python, self.django)
-        response = self.client.delete('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        response = self.client.delete(
+            '/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(set(self.profile.skills.values_list('name', flat=True)), {'Django'})
+        self.assertEqual(
+            set(self.profile.skills.values_list('name', flat=True)), {'Django'})
 
     def test_delete_skill_not_in_profile_is_idempotent(self):
-        response = self.client.delete('/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
+        response = self.client.delete(
+            '/api/students/me/skills/', {'skill_id': self.python.id}, format='json')
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_get_skills_after_add(self):
@@ -659,12 +714,14 @@ class Phase3StudentSkillsInterestsAPITest(TestCase):
         )
 
     def test_post_interest_not_in_catalogue_returns_400(self):
-        response = self.client.post('/api/students/me/interests/', {'interest_id': 999999}, format='json')
+        response = self.client.post(
+            '/api/students/me/interests/', {'interest_id': 999999}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('interest_id', response.data)
 
     def test_post_free_text_interest_returns_400(self):
-        response = self.client.post('/api/students/me/interests/', {'interest_id': 'Blockchain'}, format='json')
+        response = self.client.post(
+            '/api/students/me/interests/', {'interest_id': 'Blockchain'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_delete_interest_removes_from_profile(self):
@@ -751,7 +808,8 @@ class Phase3StudentPreferencesAPITest(TestCase):
         self.assertEqual(patch_response.data['city'], 'Addis Ababa')
         self.assertEqual(patch_response.data['work_mode'], 'full_time')
         self.assertEqual(patch_response.data['internship_type'], 'remote')
-        self.assertEqual(patch_response.data['availability_start'], '2026-09-01')
+        self.assertEqual(
+            patch_response.data['availability_start'], '2026-09-01')
         self.assertEqual(patch_response.data['availability_end'], '2026-12-31')
 
         # Persisted at the model level (work_mode → StudentProfile.work_type)
@@ -907,7 +965,7 @@ class Phase3ResumeUploadAPITest(TestCase):
         from unittest.mock import patch
 
         with patch('apps.students.views.parse_resume.delay'), \
-             patch('apps.students.tasks.generate_student_embedding_task.delay'):
+                patch('apps.students.tasks.generate_student_embedding_task.delay'):
             response = self._upload(
                 self._docx_bytes(), 'resume.docx')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -967,7 +1025,7 @@ class Phase3ResumeUploadAPITest(TestCase):
         self.assertEqual(self.client.get('/api/students/me/resume/').data[
             'has_resume'], False)
         with patch('apps.students.tasks.generate_student_embedding_task.delay'), \
-             patch('apps.students.views.parse_resume.delay'):
+                patch('apps.students.views.parse_resume.delay'):
             self._upload(self._pdf_bytes(), 'resume.pdf')
         response = self.client.get('/api/students/me/resume/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -1064,9 +1122,9 @@ class Phase3ResumeParsingTaskTest(TestCase):
         # The side-effectful embedding + skill-sync steps are stubbed (they are
         # non-fatal in the pipeline, but slow / require external services).
         with patch('apps.students.tasks.regenerate_student_embedding', return_value=None), \
-             patch('apps.students.tasks.generate_student_embedding_task.delay'), \
-             patch('apps.students.views.parse_resume.delay',
-                   side_effect=lambda sid: parse_resume.run(sid)):
+            patch('apps.students.tasks.generate_student_embedding_task.delay'), \
+            patch('apps.students.views.parse_resume.delay',
+                  side_effect=lambda sid: parse_resume.run(sid)):
             with self.captureOnCommitCallbacks(execute=True):
                 resume = SimpleUploadedFile('resume.pdf', self._pdf_bytes())
                 response = self.client.post(
@@ -1080,7 +1138,8 @@ class Phase3ResumeParsingTaskTest(TestCase):
         self.assertIsNotNone(self.profile.resume_parsed_at)
         # And the created CV reached COMPLETED.
         from .models import CV
-        cv = CV.objects.filter(student=self.user).order_by("-created_at").first()
+        cv = CV.objects.filter(student=self.user).order_by(
+            "-created_at").first()
         self.assertIsNotNone(cv)
         self.assertEqual(cv.processing_status, 'COMPLETED')
 
@@ -1127,7 +1186,8 @@ class ProfileCompletionTest(TestCase):
 
     def setUp(self):
         self.skill = Skill.objects.create(name="Python")
-        self.interest = CareerInterest.objects.create(name="Software Development")
+        self.interest = CareerInterest.objects.create(
+            name="Software Development")
         if not hasattr(self, "_user_seq"):
             self._user_seq = 0
 
@@ -1166,19 +1226,20 @@ class ProfileCompletionTest(TestCase):
         from .services.profile_completion import compute_profile_completion
         p = self._profile()
         self._assert_percent(p, 0)
-        self.assertFalse(any(compute_profile_completion(p)["sections"].values()))
+        self.assertFalse(
+            any(compute_profile_completion(p)["sections"].values()))
 
     def test_each_section_individually_counts_one_sixth(self):
         """Filling only ONE section → 17% (16.7% rounded)."""
         from .services.profile_completion import compute_profile_completion
 
         cases = {
-            "personal":    lambda p: self._fill_personal(p),
-            "education":   lambda p: self._fill_education(p),
-            "skills":      lambda p: p.skills.add(self.skill),
-            "interests":   lambda p: p.interests.add(self.interest),
+            "personal": lambda p: self._fill_personal(p),
+            "education": lambda p: self._fill_education(p),
+            "skills": lambda p: p.skills.add(self.skill),
+            "interests": lambda p: p.interests.add(self.interest),
             "preferences": lambda p: self._fill_preferences(p),
-            "resume":      lambda p: self._fill_resume(p),
+            "resume": lambda p: self._fill_resume(p),
         }
         for name, fill in cases.items():
             p = self._profile()
@@ -1289,7 +1350,8 @@ class Phase3DefinitionOfDoneTest(TestCase):
     def setUp(self):
         self.skill = Skill.objects.create(name="Python")
         self.skill2 = Skill.objects.create(name="Django")
-        self.interest = CareerInterest.objects.create(name="Software Development")
+        self.interest = CareerInterest.objects.create(
+            name="Software Development")
 
     def _register_verify_login(self, email):
         """Full register -> verify-email -> login round trip, returns (client, token)."""
@@ -1353,7 +1415,8 @@ class Phase3DefinitionOfDoneTest(TestCase):
         self.assertEqual(resp.data['completion']['percent'], 33)
 
         # 2. Skill (3rd section)
-        resp = client.post('/api/students/me/skills/', {'skill_id': self.skill.id}, format='json')
+        resp = client.post('/api/students/me/skills/',
+                           {'skill_id': self.skill.id}, format='json')
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         me = client.get('/api/students/me/')
         self.assertEqual(me.data['completion']['percent'], 50)
@@ -1403,8 +1466,10 @@ class Phase3DefinitionOfDoneTest(TestCase):
             'education_level': 'master',
             'field_of_study': 'data_science',
         }, format='json')
-        client.post('/api/students/me/skills/', {'skill_id': self.skill.id}, format='json')
-        client.post('/api/students/me/interests/', {'interest_id': self.interest.id}, format='json')
+        client.post('/api/students/me/skills/',
+                    {'skill_id': self.skill.id}, format='json')
+        client.post('/api/students/me/interests/',
+                    {'interest_id': self.interest.id}, format='json')
         client.patch('/api/students/me/preferences/', {
             'work_mode': 'part_time',
             'internship_type': 'hybrid',
@@ -1435,9 +1500,9 @@ class Phase3DefinitionOfDoneTest(TestCase):
         w.write(buf)
 
         with patch('apps.students.tasks.regenerate_student_embedding', return_value=None), \
-             patch('apps.students.tasks.generate_student_embedding_task.delay'), \
-             patch('apps.students.views.parse_resume.delay',
-                   side_effect=lambda sid: parse_resume.run(sid)):
+            patch('apps.students.tasks.generate_student_embedding_task.delay'), \
+            patch('apps.students.views.parse_resume.delay',
+                  side_effect=lambda sid: parse_resume.run(sid)):
             with self.captureOnCommitCallbacks(execute=True):
                 resp = client.post('/api/students/me/resume/', {
                     'file': SimpleUploadedFile('resume.pdf', buf.getvalue()),
@@ -1455,6 +1520,79 @@ class Phase3DefinitionOfDoneTest(TestCase):
         self.assertTrue(me.data['completion']['sections']['resume'])
 
 
+class StudentCatalogueEndpointTest(TestCase):
+    """
+    Phase 7 Task 7.2 — read-only Task 1.3 catalogues for the student
+    profile editor (skill & interest pickers). Both endpoints must only
+    return active catalogue rows and require authentication.
+    """
 
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='catalogue@example.com',
+            username='catalogueuser',
+            password='testpass123'
+        )
+        self.admin = User.objects.create_user(
+            email='catalogue_admin@example.com',
+            username='catalogueadmin',
+            password='testpass123',
+            role='admin',
+        )
 
+        self.active_skill = Skill.objects.create(
+            name='Python', category='Programming')
+        self.inactive_skill = Skill.objects.create(
+            name='COBOL', is_active=False)
+        self.active_interest = CareerInterest.objects.create(
+            name='Machine Learning',
+            description='AI/ML career paths',
+        )
+        self.inactive_interest = CareerInterest.objects.create(
+            name='Legacy COBOL',
+            is_active=False,
+        )
 
+    def test_skills_catalogue_returns_only_active_student(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/students/skills/choices/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [row['name'] for row in response.data]
+        self.assertIn('Python', names)
+        self.assertNotIn('COBOL', names)
+        self.assertTrue(all(row['is_active'] for row in response.data))
+        # shape matches what POST /api/students/me/skills/ consumes by id
+        self.assertIn('id', response.data[0])
+        self.assertIn('name', response.data[0])
+
+    def test_skills_catalogue_accessible_to_admin(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/students/skills/choices/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_interests_catalogue_returns_only_active_student(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/students/interests/choices/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [row['name'] for row in response.data]
+        self.assertIn('Machine Learning', names)
+        self.assertNotIn('Legacy COBOL', names)
+        self.assertIn('id', response.data[0])
+        self.assertIn('description', response.data[0])
+
+    def test_catalogue_requires_authentication(self):
+        response = self.client.get('/api/students/skills/choices/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        response = self.client.get('/api/students/interests/choices/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_catalogue_rows_feed_me_skills_endpoint(self):
+        """Adding a catalogue skill by id must succeed for the same id."""
+        from unittest.mock import patch
+        self.client.force_authenticate(user=self.user)
+        with patch('apps.students.views.generate_student_embedding_task.delay'):
+            response = self.client.post('/api/students/me/skills/', {
+                'skill_id': self.active_skill.id,
+            })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

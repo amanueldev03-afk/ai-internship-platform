@@ -148,6 +148,7 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the authenticated user.
     """
+    profile_photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -159,8 +160,49 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "first_name",
             "last_name",
+            "profile_photo",
+            "profile_photo_url",
             "date_joined",
         )
+
+    def get_profile_photo_url(self, obj):
+        if obj.profile_photo:
+            return obj.profile_photo.url
+        return None
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    """
+    Writable serializer for authenticated user profile updates
+    (profile photo, name). Used by PATCH /api/accounts/me/.
+    """
+
+    class Meta:
+        model = User
+
+        fields = (
+            "first_name",
+            "last_name",
+            "profile_photo",
+        )
+
+    def validate_profile_photo(self, value):
+        """Validate profile photo file type and size."""
+        if value:
+            # Check file size (max 5MB)
+            max_size = 5 * 1024 * 1024  # 5MB
+            if value.size > max_size:
+                raise serializers.ValidationError(
+                    "Profile photo must be less than 5MB."
+                )
+            
+            # Check file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Profile photo must be a JPEG, PNG, GIF, or WebP image."
+                )
+        return value
 
 class LogoutSerializer(serializers.Serializer):
     """

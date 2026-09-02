@@ -51,6 +51,7 @@ def _complete_cv_processing(cv, text: str) -> dict:
         basic_analysis = {
             "skills": [], "education": [],
             "experience": [], "projects": [], "certifications": [],
+            "languages": [],
         }
 
     # 5. AI analysis — merges with deterministic result; falls back on any failure
@@ -75,6 +76,7 @@ def _complete_cv_processing(cv, text: str) -> dict:
     cv.extracted_experience     = analysis.get("experience",     [])
     cv.extracted_projects       = analysis.get("projects",       [])
     cv.extracted_certifications = analysis.get("certifications", [])
+    cv.extracted_languages      = analysis.get("languages",      [])
     cv.extracted_experience_years = analysis.get("experience_years", 0.0)
     cv.save(update_fields=[
         "extracted_text",
@@ -83,6 +85,7 @@ def _complete_cv_processing(cv, text: str) -> dict:
         "extracted_experience",
         "extracted_projects",
         "extracted_certifications",
+        "extracted_languages",
         "extracted_experience_years",
     ])
     logger.info(f"CV {cv.id} — extracted data saved to DB")

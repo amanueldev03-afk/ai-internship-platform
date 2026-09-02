@@ -64,9 +64,11 @@ def send_verification_email(user):
         user
     )
 
+    # Point to frontend verify email page instead of backend API
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
     verification_url = (
-        f"{settings.SITE_BASE_URL}"
-        f"/api/auth/verify-email/{uid}/{token}/"
+        f"{frontend_url}"
+        f"/verify-email?uid={uid}&token={token}"
     )
 
     try:
@@ -108,9 +110,11 @@ def send_password_reset_email(user):
         user
     )
 
+    # Point to frontend reset password page instead of backend API
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
     reset_url = (
-        f"{settings.SITE_BASE_URL}"
-        f"/api/auth/password-reset-confirm/{uid}/{token}/"
+        f"{frontend_url}"
+        f"/reset-password?uid={uid}&token={token}"
     )
 
     send_mail(

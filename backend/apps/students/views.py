@@ -1,4 +1,5 @@
 import logging
+from django.conf import settings
 
 from django.db import transaction
 from rest_framework import status
@@ -137,7 +138,7 @@ def _store_resume(profile, resume_file):
     return {
         "cv_id": cv.id,
         "processing_status": cv.processing_status,
-        "resume_url": cv.file.url,
+        "resume_url": f"{settings.SITE_BASE_URL}{cv.file.url}",
         "message": "Resume uploaded. Processing in background.",
     }
 
@@ -544,7 +545,7 @@ class StudentResumeView(GenericAPIView):
         return Response(
             {
                 "has_resume": bool(profile.resume),
-                "resume_url": profile.resume.url if profile.resume else None,
+                "resume_url": f"{settings.SITE_BASE_URL}{profile.resume.url}" if profile.resume else None,
                 "cv_id": cv.id if cv else None,
                 "processing_status": cv.processing_status if cv else None,
                 "processing_error": cv.processing_error if cv else None,
@@ -753,6 +754,67 @@ class StudentSkillsAddView(GenericAPIView):
         )
 
 
+class StudentSkillCatalogueView(GenericAPIView):
+    """
+    Phase 7 Task 7.2 — read-only Skill catalogue (Task 1.3) for the student
+    profile editor. ``GET`` returns every active Skill (id, name, category,
+    description) so the skills picker can offer catalogue options and submit
+    ``skill_id`` values to POST /api/students/me/skills/ — never free-text.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = StudentSkillSerializer
+
+    @extend_schema(
+        tags=["Student Profiles"],
+        operation_id="student_skill_catalogue",
+        summary="List Skill Catalogue",
+        description=(
+            "Read-only catalogue of active Skills (Task 1.3). The profile "
+            "editor loads picker options from here and adds them to a student "
+            "profile via POST /api/students/me/skills/ by ``skill_id``."
+        ),
+        responses={200: StudentSkillSerializer(many=True)},
+    )
+    def get(self, request):
+        skills = Skill.objects.filter(is_active=True).order_by("name")
+        return Response(
+            StudentSkillSerializer(skills, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class StudentInterestCatalogueView(GenericAPIView):
+    """
+    Phase 7 Task 7.2 — read-only CareerInterest catalogue (Task 1.3) for the
+    student profile editor. ``GET`` returns every active CareerInterest
+    (id, name, description) so the interests picker can offer catalogue
+    options and submit ``interest_id`` to POST /api/students/me/interests/.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = StudentInterestSerializer
+
+    @extend_schema(
+        tags=["Student Profiles"],
+        operation_id="student_interest_catalogue",
+        summary="List Career Interest Catalogue",
+        description=(
+            "Read-only catalogue of active CareerInterests (Task 1.3). The "
+            "profile editor loads picker options from here and adds them to a "
+            "student profile via POST /api/students/me/interests/ by "
+            "``interest_id``."
+        ),
+        responses={200: StudentInterestSerializer(many=True)},
+    )
+    def get(self, request):
+        interests = CareerInterest.objects.filter(is_active=True).order_by("name")
+        return Response(
+            StudentInterestSerializer(interests, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
+
 class StudentCVUploadView(GenericAPIView):
     """
     POST /api/students/cv/upload/
@@ -849,7 +911,8 @@ class CVStatusView(GenericAPIView):
                     "extracted_education":     {"type": "array", "items": {"type": "object"}},
                     "extracted_experience":    {"type": "array", "items": {"type": "object"}},
                     "extracted_projects":      {"type": "array", "items": {"type": "object"}},
-                    "extracted_certifications":{"type": "array", "items": {"type": "string"}},
+                    "extracted_certifications":{"type": "array", "items": {"type": "object"}},
+                    "extracted_languages":     {"type": "array", "items": {"type": "object"}},
                 },
             },
             404: {"type": "object", "properties": {"detail": {"type": "string"}}},
@@ -881,6 +944,7 @@ class CVStatusView(GenericAPIView):
             "extracted_experience":     cv.extracted_experience    or [],
             "extracted_projects":       cv.extracted_projects      or [],
             "extracted_certifications": cv.extracted_certifications or [],
+            "extracted_languages":      cv.extracted_languages      or [],
         }
 
         if cv.processing_status == CV.STATUS_PENDING:
@@ -923,7 +987,8 @@ class CVStatusLatestView(CVStatusView):
                     "extracted_education":     {"type": "array", "items": {"type": "object"}},
                     "extracted_experience":    {"type": "array", "items": {"type": "object"}},
                     "extracted_projects":      {"type": "array", "items": {"type": "object"}},
-                    "extracted_certifications":{"type": "array", "items": {"type": "string"}},
+                    "extracted_certifications":{"type": "array", "items": {"type": "object"}},
+                    "extracted_languages":     {"type": "array", "items": {"type": "object"}},
                 },
             },
             404: {"type": "object", "properties": {"detail": {"type": "string"}}},

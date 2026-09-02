@@ -126,6 +126,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "config.middleware.AllowMediaFrameEmbedding",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
 ]
@@ -472,6 +473,28 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
+# --------------------------------------------------
+# Allauth (email + Google OAuth social login)
+# --------------------------------------------------
+SOCIALACCOUNT_ADAPTER = "apps.accounts.adapter.CustomSocialAccountAdapter"
+ACCOUNT_ADAPTER = "apps.accounts.adapter.CustomAccountAdapter"
+
+# After a successful allauth (social) login, redirect to the SPA callback
+# route carrying the minted JWT tokens. This reuses our custom adapter.
+LOGIN_REDIRECT_URL = "http://localhost:5173/auth/callback"
+
+# URL the frontend considers the OAuth callback (with query params appended).
+FRONTEND_OAUTH_CALLBACK_URL = "http://localhost:5173/auth/callback"
+
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Google has already verified the email at consent time, so skip the
+# intermediate "confirm your email" step for social logins.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {

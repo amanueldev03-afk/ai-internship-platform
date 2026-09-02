@@ -10,6 +10,7 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
@@ -19,6 +20,7 @@ from .serializers import (
     StudentRegistrationSerializer,
     LogoutSerializer,
     UserSerializer,
+    UserProfileUpdateSerializer,
     ResendVerificationSerializer,
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
@@ -165,6 +167,7 @@ class CurrentUserView(GenericAPIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = UserSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @extend_schema(
         tags=["Authentication"],
@@ -176,6 +179,28 @@ class CurrentUserView(GenericAPIView):
     def get(self, request):
 
         serializer = self.get_serializer(request.user)
+
+        return Response(serializer.data)
+
+    @extend_schema(
+        tags=["Authentication"],
+        operation_id="update_current_user",
+        summary="Update Current User",
+        description="Update the current user's profile (e.g. profile photo).",
+        request=UserProfileUpdateSerializer,
+        responses={200: UserSerializer},
+    )
+    def patch(self, request):
+
+        update_serializer = UserProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+        update_serializer.is_valid(raise_exception=True)
+        update_serializer.save()
+
+        serializer = UserSerializer(request.user)
 
         return Response(serializer.data)
 

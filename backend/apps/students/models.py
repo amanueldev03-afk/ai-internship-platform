@@ -280,6 +280,13 @@ class StudentProfile(TimeStampedModel):
         help_text="Latest date the student is available for an internship.",
     )
 
+    # Phase 7 — 'Immediately' availability shortcut. When true the student is
+    # available immediately and the date window is optional.
+    availability_immediately = models.BooleanField(
+        default=False,
+        help_text="True if the student is available for an internship immediately.",
+    )
+
     # ==========================================================
     # CV / RESUME
     # ==========================================================
@@ -498,6 +505,17 @@ class CV(TimeStampedModel):
     extracted_certifications = models.JSONField(
         default=list,
         blank=True,
+    )
+
+    # Phase 7 — Languages are extracted as a separate section from
+    # certifications. Each entry is ``{"name": str, "proficiency": str|None}``.
+    extracted_languages = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Spoken languages extracted from the CV as a list of "
+            "{name, proficiency} objects. Populated by the CV analysis pipeline."
+        ),
     )
 
     # Phase 6 Task 6.1 — Total years of professional experience calculated from

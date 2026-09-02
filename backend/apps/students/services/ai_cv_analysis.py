@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 
@@ -126,7 +127,52 @@ CV_ANALYSIS_SCHEMA = {
         "certifications": {
             "type": "array",
             "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "issuer": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "date": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "issuer",
+                    "date"
+                ],
+                "additionalProperties": False
+            }
+        },
+        "languages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "proficiency": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                },
+                "required": [
+                    "name",
+                    "proficiency"
+                ],
+                "additionalProperties": False
             }
         },
         "experience_years": {
@@ -139,7 +185,8 @@ CV_ANALYSIS_SCHEMA = {
         "education",
         "experience",
         "projects",
-        "certifications"
+        "certifications",
+        "languages"
     ],
     "additionalProperties": False
 }
@@ -149,35 +196,33 @@ def build_cv_prompt(cv_text):
     return f"""
 Analyze the following student's CV.
 
-Extract only information explicitly supported
-by the CV. Do not invent information.
+Extract all information explicitly supported by the CV. Do not invent information.
 
 Identify:
 
 1. Technical and professional skills.
 2. Education.
 3. Work/internship experience.
-4. Projects.
-5. Certifications.
+4. Projects — Extract EVERY project mentioned in the CV. Do not limit to only one project.
+   If the student has 2, 3, 4, 5, or more projects, extract every single one of them as a separate object with:
+   - `name`: string (e.g. "Hospital Management System")
+   - `description`: string (details of what was built, key features, architecture)
+   - `technologies`: array of strings (e.g. ["Python", "Django", "React", "PostgreSQL"])
+5. Certifications — extract EACH certification separately as an object with
+   `name` (required), `issuer` (optional, may be null), and `date` (optional,
+   may be null). Do NOT combine multiple certifications into a single string.
+6. Languages — extract EACH language separately as an object with `name`
+   (required) and `proficiency` (optional, e.g. "Native", "Fluent",
+   "Conversational", "Intermediate", "Basic"; may be null if not stated).
 
-Normalize obvious variations where appropriate.
+Normalize obvious variations where appropriate (e.g. "Django REST Framework" and "Django REST API" -> consistent skill).
 
-For example:
-
-"Django REST Framework"
-and
-"Django REST API"
-
-may be represented as a consistent skill.
-
-Do not infer a skill merely because another
-skill normally accompanies it.
+IMPORTANT FOR PROJECTS: You MUST extract ALL projects from all project sections, bullets, portfolios, or coursework. Never omit any project.
 
 CV:
 
 {cv_text}
 """
-
 
 
 def analyze_cv_with_ai(cv_text):
@@ -243,12 +288,66 @@ def analyze_cv_with_ai(cv_text):
         return None
 
 
+def _normalize_certifications(value):
+    """Coerce AI certifications output into a list of structured objects.
+
+    Accepts either the new structured shape
+    ``[{"name": ..., "issuer": ..., "date": ...}, ...]`` or the legacy
+    flat-string shape ``["AWS Certified Developer", ...]`` and always
+    returns the structured form.
+    """
+    if not isinstance(value, list):
+        return []
+
+    normalised = []
+    for item in value:
+        if isinstance(item, str):
+            name = item.strip()
+            if name:
+                normalised.append({"name": name, "issuer": None, "date": None})
+            continue
+        if isinstance(item, dict):
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            normalised.append({
+                "name": name,
+                "issuer": item.get("issuer") or None,
+                "date": item.get("date") or None,
+            })
+    return normalised
+
+
+def _normalize_languages(value):
+    """Coerce AI languages output into ``[{"name": ..., "proficiency": ...}]``."""
+    if not isinstance(value, list):
+        return []
+    normalised = []
+    for item in value:
+        if isinstance(item, str):
+            name = item.strip()
+            if name:
+                normalised.append({"name": name, "proficiency": None})
+            continue
+        if isinstance(item, dict):
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            proficiency = item.get("proficiency")
+            normalised.append({
+                "name": name,
+                "proficiency": (proficiency.strip() if isinstance(proficiency, str) and proficiency.strip() else None),
+            })
+    return normalised
+
 
 def normalize_ai_result(data):
     """
     Ensure AI output has the expected structure.
 
     Phase 6 Task 6.1 — Added experience_years to normalization.
+    Phase 7 — Certifications and languages are normalised into structured
+    objects even if the model returned them as plain strings.
     """
 
     if not isinstance(data, dict):
@@ -287,19 +386,11 @@ def normalize_ai_result(data):
             )
             else []
         ),
-        "certifications": (
-            data.get(
-                "certifications",
-                [],
-            )
-            if isinstance(
-                data.get(
-                    "certifications",
-                    [],
-                ),
-                list,
-            )
-            else []
+        "certifications": _normalize_certifications(
+            data.get("certifications", []),
+        ),
+        "languages": _normalize_languages(
+            data.get("languages", []),
         ),
         "experience_years": (
             data.get("experience_years", 0.0)
@@ -310,7 +401,6 @@ def normalize_ai_result(data):
             else 0.0
         ),
     }
-
 
 
 def merge_skills(
@@ -339,42 +429,103 @@ def merge_skills(
     return sorted(combined)
 
 
+def merge_projects(basic_projects, ai_projects):
+    """
+    Merge deterministic and AI-extracted projects to ensure NO project is missed.
+    Deduplicates by fuzzy lowercase project name and merges technology tags.
+    """
+    merged = []
+    seen_names = set()
+
+    def norm_name(name):
+        return re.sub(r'[^a-zA-Z0-9]', '', (name or '').lower())
+
+    for proj in (ai_projects or []):
+        if not isinstance(proj, dict):
+            continue
+        name = (proj.get("name") or "").strip()
+        if not name:
+            continue
+        key = norm_name(name)
+        seen_names.add(key)
+        merged.append({
+            "name": name,
+            "description": (proj.get("description") or "").strip(),
+            "technologies": [t.strip() for t in proj.get("technologies", []) if isinstance(t, str) and t.strip()],
+        })
+
+    for proj in (basic_projects or []):
+        if not isinstance(proj, dict):
+            continue
+        name = (proj.get("name") or "").strip()
+        if not name:
+            continue
+        key = norm_name(name)
+        already_seen = any(key in s or s in key for s in seen_names if len(
+            key) > 3 and len(s) > 3) or (key in seen_names)
+        if not already_seen:
+            seen_names.add(key)
+            merged.append({
+                "name": name,
+                "description": (proj.get("description") or "").strip(),
+                "technologies": [t.strip() for t in proj.get("technologies", []) if isinstance(t, str) and t.strip()],
+            })
+        else:
+            for existing in merged:
+                if norm_name(existing["name"]) == key or (len(key) > 3 and key in norm_name(existing["name"])):
+                    existing_techs = set(t.lower()
+                                         for t in existing["technologies"])
+                    for t in proj.get("technologies", []):
+                        if isinstance(t, str) and t.strip() and t.strip().lower() not in existing_techs:
+                            existing["technologies"].append(t.strip())
+                            existing_techs.add(t.strip().lower())
+                    if not existing.get("description") and proj.get("description"):
+                        existing["description"] = proj.get(
+                            "description", "").strip()
+
+    return merged
+
 
 def analyze_cv_intelligently(cv_text, basic_analysis):
     """
     Merge deterministic CV analysis with AI analysis.
     Always returns a valid dict — falls back to basic_analysis if AI fails.
-
-    Phase 6 Task 6.1 — Added experience_years to merge result.
     """
     ai_result = analyze_cv_with_ai(cv_text)
 
     if ai_result is None:
-        logger.info("Using deterministic CV analysis only (AI unavailable or failed).")
+        logger.info(
+            "Using deterministic CV analysis only (AI unavailable or failed).")
         return basic_analysis
 
     ai_result = normalize_ai_result(ai_result)
 
     if ai_result is None:
-        logger.warning("AI result failed normalisation — falling back to deterministic.")
+        logger.warning(
+            "AI result failed normalisation — falling back to deterministic.")
         return basic_analysis
 
     merged_skills = normalize_skills(
         merge_skills(basic_analysis.get("skills", []), ai_result["skills"])
     )
 
+    merged_projects = merge_projects(
+        basic_analysis.get("projects", []),
+        ai_result.get("projects", []),
+    )
+
     logger.info(
         f"AI + deterministic merge complete — "
-        f"{len(merged_skills)} total skills "
-        f"(AI: {len(ai_result['skills'])}, "
-        f"basic: {len(basic_analysis.get('skills', []))})."
+        f"{len(merged_skills)} total skills, {len(merged_projects)} total projects "
+        f"(AI proj: {len(ai_result.get('projects', []))}, basic proj: {len(basic_analysis.get('projects', []))})."
     )
 
     return {
         "skills":         merged_skills,
-        "education":      ai_result["education"]      or basic_analysis.get("education",      []),
-        "experience":     ai_result["experience"]     or basic_analysis.get("experience",     []),
-        "projects":       ai_result["projects"]       or basic_analysis.get("projects",       []),
+        "education":      ai_result["education"] or basic_analysis.get("education",      []),
+        "experience":     ai_result["experience"] or basic_analysis.get("experience",     []),
+        "projects":       merged_projects,
         "certifications": ai_result["certifications"] or basic_analysis.get("certifications", []),
+        "languages":      ai_result["languages"] or basic_analysis.get("languages",      []),
         "experience_years": ai_result.get("experience_years", 0.0) or basic_analysis.get("experience_years", 0.0),
     }

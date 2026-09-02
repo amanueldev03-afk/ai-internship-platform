@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 
 from .models import (
@@ -86,6 +87,7 @@ def _get_cv_data(profile) -> dict:
             "extracted_experience":    getattr(cv, "extracted_experience",    []) or [],
             "extracted_projects":      getattr(cv, "extracted_projects",      []) or [],
             "extracted_certifications": getattr(cv, "extracted_certifications", []) or [],
+            "extracted_languages":     getattr(cv, "extracted_languages",     []) or [],
             "uploaded_at": (
                 uploaded_at.isoformat() if uploaded_at else None
             ),
@@ -107,6 +109,14 @@ class StudentProfileSerializer(serializers.ModelSerializer):
 
     user = serializers.PrimaryKeyRelatedField(read_only=True)
 
+    # File fields with absolute URLs for cross-origin access
+    cv = serializers.SerializerMethodField(
+        help_text="Absolute URL to the CV file."
+    )
+    resume = serializers.SerializerMethodField(
+        help_text="Absolute URL to the resume file."
+    )
+
     # Read-only computed field — not stored on the model
     cv_data = serializers.SerializerMethodField(
         help_text=(
@@ -123,6 +133,16 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "powering the dashboard completion widget."
         )
     )
+
+    def get_cv(self, obj) -> str | None:
+        if obj.cv:
+            return f"{settings.SITE_BASE_URL}{obj.cv.url}"
+        return None
+
+    def get_resume(self, obj) -> str | None:
+        if obj.resume:
+            return f"{settings.SITE_BASE_URL}{obj.resume.url}"
+        return None
 
     def get_cv_data(self, obj) -> dict:
         return _get_cv_data(obj)
@@ -181,6 +201,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "internship_duration_max_weeks",
             "availability_start",
             "availability_end",
+            "availability_immediately",
 
             # CV file (raw upload path)
             "cv",
@@ -203,7 +224,6 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "user",
             "skills",        # managed via POST /api/students/skills/add/ only
             "interests",     # managed via /api/students/me/interests/ only
-            "resume",        # managed via /api/students/me/resume/ only
             "cv_data",
             "completion",
             "created_at",
@@ -418,6 +438,11 @@ class StudentPreferencesSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="Latest date available for an internship (YYYY-MM-DD).",
     )
+    availability_immediately = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="True if the student is available for an internship immediately.",
+    )
 
     class Meta:
         model = StudentProfile
@@ -428,11 +453,18 @@ class StudentPreferencesSerializer(serializers.ModelSerializer):
             "internship_type",
             "availability_start",
             "availability_end",
+            "availability_immediately",
         ]
 
     def validate(self, attrs):
         start = attrs.get("availability_start")
         end = attrs.get("availability_end")
+        immediately = attrs.get("availability_immediately")
+
+        # If 'immediately' is true, dates are optional/ignored
+        if immediately:
+            return attrs
+
         if start is not None and end is not None and end < start:
             raise serializers.ValidationError({
                 "availability_end": (

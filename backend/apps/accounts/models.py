@@ -88,6 +88,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         default=False,
     )
 
+    profile_photo = models.ImageField(
+        upload_to="profile_photos/",
+        blank=True,
+        null=True,
+        verbose_name="Profile Photo",
+    )
+
     date_joined = models.DateTimeField(
         default=timezone.now,
     )

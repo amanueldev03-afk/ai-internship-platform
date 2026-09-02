@@ -1,0 +1,44 @@
+import api from './api'
+import type { Internship } from '@/types'
+import type { InternshipFilters } from '@/types/filters'
+
+/**
+ * Get details for a specific internship by ID.
+ * @param id - The internship ID
+ */
+export async function getInternshipDetail(id: number): Promise<Internship> {
+  const response = await api.get<Internship>(`/internships/${id}/`)
+  return response.data
+}
+
+/**
+ * Search and filter internships.
+ * @param filters - Filter parameters
+ */
+export async function searchInternships(filters: InternshipFilters = {}): Promise<{
+  results: Internship[]
+  count: number
+  next: string | null
+  previous: string | null
+}> {
+  const params: Record<string, string | number> = {}
+  
+  // Build query parameters from filters
+  if (filters.search) params.search = filters.search
+  if (filters.country) params.country = filters.country
+  if (filters.city) params.city = filters.city
+  if (filters.location) params.location = filters.location
+  if (filters.category) params.category = filters.category
+  if (filters.internship_type) params.internship_type = filters.internship_type
+  if (filters.work_mode) params.work_mode = filters.work_mode
+  if (filters.work_type) params.work_type = filters.work_type
+  if (filters.compensation_type) params.compensation_type = filters.compensation_type
+  if (filters.minimum_compensation) params.minimum_compensation = filters.minimum_compensation
+  if (filters.maximum_compensation) params.maximum_compensation = filters.maximum_compensation
+  if (filters.duration_min_weeks) params.duration_min_weeks = filters.duration_min_weeks
+  if (filters.duration_max_weeks) params.duration_max_weeks = filters.duration_max_weeks
+  if (filters.skill) params.skill = filters.skill
+  
+  const response = await api.get('/internships/', { params })
+  return response.data
+}

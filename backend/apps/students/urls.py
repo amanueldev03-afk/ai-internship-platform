@@ -11,6 +11,8 @@ from .views import (
     StudentCVUploadView,
     CVStatusView,
     CVStatusLatestView,
+    StudentSkillCatalogueView,
+    StudentInterestCatalogueView,
 )
 
 urlpatterns = [
@@ -69,6 +71,21 @@ urlpatterns = [
         "",
         StudentProfileView.as_view(),
         name="student-profile",
+    ),
+
+    # ----------------------------------------------------------------
+    # Phase 7 Task 7.2 — /api/students/skills/choices/ & interests/choices/
+    # Read-only Task 1.3 catalogues for the student profile editor pickers.
+    # ----------------------------------------------------------------
+    path(
+        "skills/choices/",
+        StudentSkillCatalogueView.as_view(),
+        name="student-skill-catalogue",
+    ),
+    path(
+        "interests/choices/",
+        StudentInterestCatalogueView.as_view(),
+        name="student-interest-catalogue",
     ),
 
     # ----------------------------------------------------------------
