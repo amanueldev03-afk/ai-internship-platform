@@ -21,6 +21,8 @@ export default function Navbar() {
   const navLinks = [
     { path: '/dashboard', label: 'Dashboard' },
     { path: '/recommendations', label: 'AI Matches' },
+    { path: '/recommendations/history', label: 'Recommendation History' },
+    { path: '/applications/history', label: 'Application History' },
     { path: '/internships', label: 'Browse Internships' },
     { path: '/saved', label: 'Saved' },
     { path: '/profile', label: 'Profile & Resume' },

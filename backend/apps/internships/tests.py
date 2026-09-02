@@ -1682,7 +1682,44 @@ class RecommendationFeedbackAPITest(TestCase):
         self.client.force_authenticate(user=self.student)
         response = self.client.get('/api/recommendations/history/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(response.data, list)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_recommendation_history_isolated_and_ordered(self):
+        other_student = User.objects.create_user(
+            email='other@example.com', username='other', password='testpass123', role='student'
+        )
+        older_internship = Internship.objects.create(
+            title='Older Internship', organization_name='Older Company', description='Older role',
+            application_url='https://example.com/older', source=self.source, internship_type='remote',
+            work_type='full_time', compensation_type='paid', minimum_compensation=1000,
+            maximum_compensation=2000, external_id='older-history-internship',
+        )
+        older = Recommendation.objects.create(
+            student=self.student, internship=older_internship, overall_score=70.00
+        )
+        older.recommendation_date = timezone.now() - timezone.timedelta(days=1)
+        Recommendation.objects.filter(pk=older.pk).update(
+            recommendation_date=older.recommendation_date)
+        other_internship = Internship.objects.create(
+            title='Other Internship', organization_name='Other Company', description='Other role',
+            application_url='https://example.com/other', source=self.source, internship_type='remote',
+            work_type='full_time', compensation_type='paid', minimum_compensation=1000,
+            maximum_compensation=2000, external_id='other-history-internship',
+        )
+        Recommendation.objects.create(
+            student=other_student, internship=other_internship, overall_score=99.00
+        )
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get('/api/recommendations/history/?page_size=1')
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(response.data['results']
+                         [0]['id'], self.recommendation.id)
+        self.assertIsNotNone(response.data['next'])
+
+    def test_recommendation_history_requires_authentication(self):
+        response = self.client.get('/api/recommendations/history/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_recommendation_feedback_view(self):
         """Test marking recommendation as viewed"""

@@ -49,19 +49,33 @@ class InternshipCollector:
                 ).first()
 
                 if existing:
+                    meaningful_update = any(
+                        getattr(existing, field) != normalized_data[field]
+                        for field in (
+                            "title", "organization_name", "description",
+                            "application_url", "application_deadline",
+                        )
+                    )
                     # Update data but preserve publication status.
                     existing.title = normalized_data["title"]
                     existing.description = normalized_data["description"]
                     existing.application_url = normalized_data["application_url"]
                     existing.save()
                     created_or_updated_ids.append(existing.id)
+                    if meaningful_update:
+                        from apps.notifications.tasks import send_saved_internship_update_notifications
+                        transaction.on_commit(
+                            lambda internship_id=existing.id: send_saved_internship_update_notifications.delay(
+                                internship_id
+                            )
+                        )
                     updated_count += 1
                 else:
-                    Internship.objects.create(
+                    created_internship = Internship.objects.create(
                         source=self.source,
-                        external_id=normalized_data["external_id"],
                         **normalized_data,
                     )
+                    created_or_updated_ids.append(created_internship.id)
                     created_count += 1
 
             except Exception as exc:

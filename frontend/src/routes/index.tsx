@@ -15,6 +15,8 @@ import InternshipDetail from '@/pages/student/InternshipDetail'
 import InternshipSearch from '@/pages/student/InternshipSearch'
 import SavedInternshipsPage from '@/pages/student/SavedInternshipsPage'
 import ProfilePage from '@/pages/student/ProfilePage'
+import RecommendationHistoryPage from '@/pages/student/RecommendationHistoryPage'
+import ApplicationHistoryPage from '@/pages/student/ApplicationHistoryPage'
 import Navbar from '@/components/layout/Navbar'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { logoutUser } from '@/features/auth/authSlice'
@@ -103,6 +105,8 @@ export default function AppRoutes() {
             </RoleRoute>
           }
         />
+        <Route path="/recommendations/history" element={<RoleRoute allowedRoles={['student']}><RecommendationHistoryPage /></RoleRoute>} />
+        <Route path="/applications/history" element={<RoleRoute allowedRoles={['student']}><ApplicationHistoryPage /></RoleRoute>} />
         <Route
           path="/internships/:id"
           element={

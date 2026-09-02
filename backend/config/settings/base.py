@@ -17,7 +17,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
 
-DEBUG = str(config("DEBUG", default="False")).lower() in ("true", "1", "yes", "t", "on", "debug")
+DEBUG = str(config("DEBUG", default="False")).lower() in (
+    "true", "1", "yes", "t", "on", "debug")
 
 # Skip database checks if database is unavailable (for development)
 if DEBUG:
@@ -40,6 +41,12 @@ SITE_BASE_URL = config(
     "SITE_BASE_URL",
     default="http://localhost:8000",
 ).rstrip("/")
+
+# Recommendation score is expressed on a 0-100 scale. Override this business
+# threshold per environment without changing notification task code.
+NOTIFICATION_HIGH_SCORE_THRESHOLD = config(
+    "NOTIFICATION_HIGH_SCORE_THRESHOLD", default=80, cast=int
+)
 
 # --------------------------------------------------
 # Trusted company career sites (Task 5.5, Section 3.10.4)

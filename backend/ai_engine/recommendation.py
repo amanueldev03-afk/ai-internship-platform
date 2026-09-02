@@ -71,23 +71,23 @@ def generate_recommendations(
 ) -> list[RecommendationResult]:
     """
     Phase 6 Task 6.7 — Django-integrated orchestration entrypoint.
-    
+
     Loads student profile + skills + interests, queries active internships,
     scores each using Tasks 6.4-6.6 functions, sorts descending by overall_score,
     returns top N, and persists to Recommendation model.
-    
+
     Args:
         student: Django User object
         limit: Maximum number of results to return (default 50)
         save_to_db: Whether to persist results to Recommendation model
-    
+
     Returns:
         List of RecommendationResult objects sorted by score descending
     """
     from apps.students.models import StudentProfile
     from apps.internships.models import Internship
     from apps.recommendations.models import Recommendation
-    
+
     # Load student profile with related data
     try:
         from apps.students.models import Student
@@ -100,24 +100,25 @@ def generate_recommendations(
         )
     except Student.DoesNotExist:
         return []
-    
+
     # Query active internships
     internships = Internship.objects.filter(status="active")
-    
+
     # Extract student data
     student_skills = list(student_record.skills.values_list("name", flat=True))
-    student_interests = list(student_record.interests.values_list("name", flat=True))
-    
+    student_interests = list(
+        student_record.interests.values_list("name", flat=True))
+
     # Get student CV text for semantic matching
     student_text = _build_student_text(student_record)
-    
+
     results = []
-    
+
     for internship in internships:
         # Hard filter check
         if not _passes_hard_filters(internship, student_record):
             continue
-        
+
         # Calculate component scores using Task 6.4 functions
         skill = blended_skill_score(
             student_skills,
@@ -127,26 +128,26 @@ def generate_recommendations(
             exact_weight=0.6,
             semantic_weight=0.4
         )
-        
+
         edu = education_score(
             student_record.field_of_study or "",
             student_record.education_level or "",
             internship.category,
             None  # internship education level not specified
         )
-        
+
         interest = interest_score(
             student_interests,
             internship.category,
             use_semantic=True
         )
-        
+
         exp = experience_score(
             "intermediate",  # Default student level
             "intermediate",  # Default internship requirement
             getattr(student_record, "extracted_experience_years", 0.0) or 0.0
         )
-        
+
         loc = location_score(
             getattr(student_record, "country", "") or "",
             getattr(student_record, "city", "") or "",
@@ -156,12 +157,12 @@ def generate_recommendations(
             getattr(student_record, "willing_to_relocate", False) or False,
             list(getattr(student_record, "preferred_locations", []) or [])
         )
-        
+
         work = work_mode_score(
             getattr(student_record, "work_mode", "either") or "either",
             internship.work_type or "onsite"
         )
-        
+
         # Calculate overall score using Task 6.5 weighted scoring
         component_scores = ComponentScores(
             skill_score=skill,
@@ -171,15 +172,15 @@ def generate_recommendations(
             location_score=loc,
             work_mode_score=work,
         )
-        
+
         overall_score = calculate_overall_score(component_scores)
-        
+
         # Generate explanation using Task 6.6
         matched = get_matched_skills(
             student_skills,
             list(internship.required_skills.values_list("name", flat=True))
         )
-        
+
         explanation = build_explanation(
             skill_score=skill,
             education_score=edu,
@@ -191,7 +192,7 @@ def generate_recommendations(
             field_of_study=student_record.field_of_study,
             internship_title=internship.title
         )
-        
+
         # Build score breakdown
         score_breakdown = {
             "skill_score": round(skill * 100, 2),
@@ -202,17 +203,17 @@ def generate_recommendations(
             "work_mode_score": round(work * 100, 2),
             "overall_score": overall_score,
         }
-        
+
         results.append(RecommendationResult(
             internship=internship,
             score=overall_score,
             explanation=explanation,
             score_breakdown=score_breakdown,
         ))
-        
+
         # Persist to Recommendation model if requested
         if save_to_db:
-            Recommendation.objects.update_or_create(
+            recommendation, created = Recommendation.objects.update_or_create(
                 student=student,
                 internship=internship,
                 defaults={
@@ -225,10 +226,19 @@ def generate_recommendations(
                     "work_mode_score": round(work * 100, 2),
                 }
             )
-    
+            from django.conf import settings
+            if created and overall_score >= settings.NOTIFICATION_HIGH_SCORE_THRESHOLD:
+                from django.db import transaction
+                from apps.notifications.tasks import send_high_score_recommendation_notification
+                transaction.on_commit(
+                    lambda recommendation_id=recommendation.id: send_high_score_recommendation_notification.delay(
+                        recommendation_id
+                    )
+                )
+
     # Sort descending by overall_score
     results.sort(key=lambda r: r.score, reverse=True)
-    
+
     # Apply limit
     return results[:limit]
 
@@ -236,14 +246,14 @@ def generate_recommendations(
 def _build_student_text(student) -> str:
     """Build text representation of student for semantic matching."""
     parts = []
-    
+
     if student.skills.exists():
         skills = list(student.skills.values_list("name", flat=True))
         parts.append("Skills: " + ", ".join(skills))
-    
+
     if student.field_of_study:
         parts.append("Field of Study: " + student.field_of_study)
-    
+
     return "\n".join(parts)
 
 
@@ -252,14 +262,14 @@ def _passes_hard_filters(internship, student) -> bool:
     # Skip inactive internships
     if internship.status != "active":
         return False
-    
+
     # Internship type filter - skip if student has preference and it doesn't match
     pref_type = getattr(student, "internship_type", None) or "either"
     if pref_type != "either" and pref_type != "any":
         intern_type = getattr(internship, "internship_type", None) or "onsite"
         if intern_type != pref_type:
             return False
-    
+
     # Compensation filter - skip if student has preference and it doesn't match
     comp_pref = getattr(student, "compensation_preference", None) or "either"
     if comp_pref != "either":
@@ -268,7 +278,7 @@ def _passes_hard_filters(internship, student) -> bool:
             return False
         if comp_pref == "unpaid" and comp_type == "paid":
             return False
-    
+
     return True
 
 

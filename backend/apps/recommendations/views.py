@@ -87,20 +87,20 @@ class StudentRecommendationView(APIView):
                             "properties": {
                                 "internship":  {"type": "object"},
                                 "match_score": {"type": "number",
-                                               "description": "Final weighted score 0–100"},
+                                                "description": "Final weighted score 0–100"},
                                 "score_breakdown": {
                                     "type": "object",
                                     "properties": {
                                         "semantic_score":   {"type": "number",
-                                                            "description": "0–100 (weight 40%)"},
+                                                             "description": "0–100 (weight 40%)"},
                                         "skill_score":      {"type": "number",
-                                                            "description": "0–100 (weight 25%)"},
+                                                             "description": "0–100 (weight 25%)"},
                                         "preference_score": {"type": "number",
-                                                            "description": "0–100 (weight 20%)"},
+                                                             "description": "0–100 (weight 20%)"},
                                         "location_score":   {"type": "number",
-                                                            "description": "0–100 (weight 10%)"},
+                                                             "description": "0–100 (weight 10%)"},
                                         "salary_score":     {"type": "number",
-                                                            "description": "0–100 (weight 5%)"},
+                                                             "description": "0–100 (weight 5%)"},
                                         "weights":          {"type": "object"},
                                     },
                                 },
@@ -120,10 +120,12 @@ class StudentRecommendationView(APIView):
     )
     def get(self, request):
         if request.user.role != "student":
-            raise PermissionDenied("Only students can receive recommendations.")
+            raise PermissionDenied(
+                "Only students can receive recommendations.")
 
-        cache_key      = get_recommendation_cache_key(request.user.id)
-        force_refresh  = request.query_params.get("refresh", "false").lower() == "true"
+        cache_key = get_recommendation_cache_key(request.user.id)
+        force_refresh = request.query_params.get(
+            "refresh", "false").lower() == "true"
 
         # ----------------------------------------------------------
         # Always bust if ?refresh=true
@@ -142,14 +144,15 @@ class StudentRecommendationView(APIView):
                 .get(user=request.user)
             )
         except StudentProfile.DoesNotExist:
-            profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+            profile, _ = StudentProfile.objects.get_or_create(
+                user=request.user)
             profile = (
                 StudentProfile.objects
                 .prefetch_related("skills")
                 .get(pk=profile.pk)
             )
 
-        cv_data      = _build_cv_data(request.user)
+        cv_data = _build_cv_data(request.user)
         prof_summary = _build_profile_summary(profile)
 
         # ----------------------------------------------------------
@@ -162,7 +165,9 @@ class StudentRecommendationView(APIView):
             from_cache = True
         else:
             # Phase 6 engine queries active internships internally
-            raw_results = generate_recommendations(request.user, limit=50, save_to_db=False)
+            raw_results = generate_recommendations(
+                request.user, limit=50, save_to_db=True
+            )
 
             # Serialise to plain dicts (ORM objects are not cacheable)
             recommendations = [
@@ -175,26 +180,27 @@ class StudentRecommendationView(APIView):
                 for item in raw_results
             ]
 
-            cache.set(cache_key, recommendations, timeout=RECOMMENDATION_CACHE_TTL)
+            cache.set(cache_key, recommendations,
+                      timeout=RECOMMENDATION_CACHE_TTL)
             from_cache = False
 
         # ----------------------------------------------------------
         # Paginate
         # ----------------------------------------------------------
         paginator = RecommendationPagination()
-        page      = paginator.paginate_queryset(recommendations, request)
+        page = paginator.paginate_queryset(recommendations, request)
 
         results = []
         for item in page:
             if isinstance(item, dict):
-                internship     = item["internship"]
-                score          = item["score"]
-                explanation    = item["explanation"]
+                internship = item["internship"]
+                score = item["score"]
+                explanation = item["explanation"]
                 score_breakdown = item.get("score_breakdown", {})
             else:
-                internship     = item.internship
-                score          = item.score
-                explanation    = item.explanation
+                internship = item.internship
+                score = item.score
+                explanation = item.explanation
                 score_breakdown = getattr(item, "score_breakdown", {})
 
             results.append({
@@ -207,8 +213,8 @@ class StudentRecommendationView(APIView):
         response_data = paginator.get_paginated_response(results)
 
         # Attach extra context
-        response_data.data["cv_analysis"]      = cv_data
-        response_data.data["profile_summary"]  = prof_summary
+        response_data.data["cv_analysis"] = cv_data
+        response_data.data["profile_summary"] = prof_summary
         response_data.data["scoring_metadata"] = {
             "from_cache":  from_cache,
             "cache_ttl_seconds": RECOMMENDATION_CACHE_TTL,
@@ -229,8 +235,9 @@ class RecommendationHistoryListView(ListAPIView):
     List persisted recommendation history for the authenticated student.
     """
 
-    serializer_class   = RecommendationSerializer
+    serializer_class = RecommendationSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = RecommendationPagination
 
     @extend_schema(
         tags=["Recommendations"],
@@ -263,7 +270,7 @@ class RecommendationFeedbackView(GenericAPIView):
     """
 
     permission_classes = [IsAuthenticated]
-    serializer_class   = RecommendationFeedbackSerializer
+    serializer_class = RecommendationFeedbackSerializer
 
     @extend_schema(
         tags=["Recommendations"],
@@ -276,7 +283,8 @@ class RecommendationFeedbackView(GenericAPIView):
     )
     def post(self, request, internship_id):
         if request.user.role != "student":
-            raise PermissionDenied("Only students can provide recommendation feedback.")
+            raise PermissionDenied(
+                "Only students can provide recommendation feedback.")
 
         try:
             recommendation = Recommendation.objects.get(

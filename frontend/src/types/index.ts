@@ -116,6 +116,35 @@ export interface RecommendationResponse {
   }
 }
 
+export interface RecommendationHistoryEntry {
+  id: number
+  internship: Internship
+  internship_title: string
+  organization_name: string
+  status: string
+  recommendation_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ApplicationHistoryEntry {
+  id: number
+  internship: number
+  internship_title: string
+  organization_name: string
+  clicked_apply: boolean
+  applied_date: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PaginatedHistory<T> {
+  count: number
+  next: string | null
+  previous: string | null
+  results: T[]
+}
+
 export interface Application {
   id: number
   internship: Internship

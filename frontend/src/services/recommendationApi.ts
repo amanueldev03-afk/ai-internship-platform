@@ -1,5 +1,5 @@
 import api from './api'
-import type { RecommendationResponse, Recommendation } from '@/types'
+import type { PaginatedHistory, RecommendationHistoryEntry, RecommendationResponse } from '@/types'
 
 /**
  * Get AI-powered recommendations for the authenticated student.
@@ -14,8 +14,10 @@ export async function getRecommendations(refresh = false): Promise<Recommendatio
 /**
  * Get recommendation history for the authenticated student.
  */
-export async function getRecommendationHistory(): Promise<Recommendation[]> {
-  const response = await api.get<Recommendation[]>('/recommendations/history/')
+export async function getRecommendationHistory(page = 1): Promise<PaginatedHistory<RecommendationHistoryEntry>> {
+  const response = await api.get<PaginatedHistory<RecommendationHistoryEntry>>('/recommendations/history/', {
+    params: { page },
+  })
   return response.data
 }
 

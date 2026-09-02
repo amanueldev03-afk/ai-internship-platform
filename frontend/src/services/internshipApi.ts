@@ -1,5 +1,5 @@
 import api from './api'
-import type { Internship } from '@/types'
+import type { ApplicationHistoryEntry, Internship, PaginatedHistory } from '@/types'
 import type { InternshipFilters } from '@/types/filters'
 
 /**
@@ -48,6 +48,14 @@ export async function searchInternships(filters: InternshipFilters = {}): Promis
  */
 export async function getSavedInternships(): Promise<import('@/types').SavedInternship[]> {
   const response = await api.get<import('@/types').SavedInternship[]>('/internships/saved/')
+  return response.data
+}
+
+/** Get the authenticated student's Apply history. */
+export async function getApplicationHistory(page = 1): Promise<PaginatedHistory<ApplicationHistoryEntry>> {
+  const response = await api.get<PaginatedHistory<ApplicationHistoryEntry>>('/applications/history/', {
+    params: { page },
+  })
   return response.data
 }
 

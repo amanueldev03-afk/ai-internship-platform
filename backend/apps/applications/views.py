@@ -4,10 +4,32 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 from apps.internships.models import Internship, InternshipApplication
 from .models import ApplicationHistory
+from .serializers import ApplicationHistorySerializer
+from apps.recommendations.pagination import RecommendationPagination
+
+
+class ApplicationHistoryListView(ListAPIView):
+    """List the authenticated student's application-click history."""
+
+    serializer_class = ApplicationHistorySerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = RecommendationPagination
+
+    def get_queryset(self):
+        if self.request.user.role != "student":
+            return ApplicationHistory.objects.none()
+
+        return (
+            ApplicationHistory.objects
+            .filter(student=self.request.user, clicked_apply=True)
+            .select_related("internship")
+            .order_by("-applied_date", "-id")
+        )
 
 
 class TrackApplicationView(APIView):

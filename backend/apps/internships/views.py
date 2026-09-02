@@ -373,7 +373,22 @@ class AdminInternshipDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().delete(request, *args, **kwargs)
 
     def perform_update(self, serializer):
+        previous_values = {
+            field: getattr(serializer.instance, field)
+            for field in (
+                "title", "organization_name", "description",
+                "application_url", "application_deadline",
+            )
+        }
         internship = serializer.save()
+
+        if any(getattr(internship, field) != value for field, value in previous_values.items()):
+            from apps.notifications.tasks import send_saved_internship_update_notifications
+            transaction.on_commit(
+                lambda internship_id=internship.id: send_saved_internship_update_notifications.delay(
+                    internship_id
+                )
+            )
 
         # Queue embedding regeneration after transaction commits
         # This ensures embeddings stay in sync with internship data

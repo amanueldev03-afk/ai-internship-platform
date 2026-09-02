@@ -201,3 +201,52 @@ class TrackApplicationAPITest(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 404)
+
+
+class ApplicationHistoryAPITest(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email="history_student@example.com", password="TestPassword123!", role=User.Role.STUDENT
+        )
+        self.other_student = User.objects.create_user(
+            email="history_other@example.com", password="TestPassword123!", role=User.Role.STUDENT
+        )
+        self.internship = Internship.objects.create(
+            title="History Internship", organization_name="Tech Corp", description="Details",
+            application_url="https://example.com/apply", internship_type="remote",
+            status=Internship.STATUS_ACTIVE,
+        )
+
+    def test_history_is_paginated_ordered_and_isolated(self):
+        older_internship = Internship.objects.create(
+            title="Older Internship", organization_name="Older Corp", description="Details",
+            application_url="https://example.com/older", internship_type="remote",
+            status=Internship.STATUS_ACTIVE,
+        )
+        older = ApplicationHistory.objects.create(
+            student=self.student, internship=older_internship)
+        newest = ApplicationHistory.objects.create(
+            student=self.student, internship=self.internship)
+        ApplicationHistory.objects.create(
+            student=self.other_student, internship=older_internship)
+        ApplicationHistory.objects.filter(pk=older.pk).update(
+            applied_date=timezone.now() - timezone.timedelta(days=1)
+        )
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get("/api/applications/history/?page_size=1")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(response.data["results"][0]["id"], newest.id)
+        self.assertTrue(response.data["results"][0]["clicked_apply"])
+        self.assertIsNotNone(response.data["next"])
+
+    def test_history_requires_authentication_and_empty_is_paginated(self):
+        response = self.client.get("/api/applications/history/")
+        self.assertEqual(response.status_code, 401)
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get("/api/applications/history/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
