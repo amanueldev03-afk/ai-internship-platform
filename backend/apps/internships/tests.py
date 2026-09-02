@@ -822,6 +822,80 @@ class InternshipAPITest(TestCase):
         response = self.client.get('/api/internships/saved/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    # Phase 8 Task 8.1 Tests
+    def test_post_save_internship_endpoint(self):
+        """Test POST /api/internships/<id>/save/ saves for authenticated student"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            f'/api/internships/{self.internship.id}/save/')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data.get('saved'))
+        self.assertTrue(SavedInternship.objects.filter(
+            student=self.user, internship=self.internship).exists())
+
+    def test_post_save_duplicate_prevention(self):
+        """Test duplicate save via POST /api/internships/<id>/save/ prevents duplicate DB records"""
+        SavedInternship.objects.create(
+            student=self.user, internship=self.internship)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            f'/api/internships/{self.internship.id}/save/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data.get('saved'))
+        self.assertEqual(SavedInternship.objects.filter(
+            student=self.user, internship=self.internship).count(), 1)
+
+    def test_delete_unsave_internship_endpoint(self):
+        """Test DELETE /api/internships/<id>/save/ unsaves for authenticated student"""
+        SavedInternship.objects.create(
+            student=self.user, internship=self.internship)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(
+            f'/api/internships/{self.internship.id}/save/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data.get('saved'))
+        self.assertFalse(SavedInternship.objects.filter(
+            student=self.user, internship=self.internship).exists())
+
+    def test_unsave_user_isolation(self):
+        """Test User A cannot delete User B's saved internship"""
+        other_user = User.objects.create_user(
+            email='other_student@example.com',
+            password='password123',
+            role='student',
+            is_email_verified=True,
+        )
+        SavedInternship.objects.create(
+            student=other_user, internship=self.internship)
+
+        # Authenticate as self.user (who has NOT saved the internship)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(
+            f'/api/internships/{self.internship.id}/save/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Confirm other_user's saved internship remains in DB
+        self.assertTrue(SavedInternship.objects.filter(
+            student=other_user, internship=self.internship).exists())
+
+    def test_save_nonexistent_internship(self):
+        """Test saving nonexistent internship returns 404"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/internships/99999/save/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unsave_nonexistent_internship(self):
+        """Test unsaving nonexistent internship returns 404"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete('/api/internships/99999/save/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_save_unauthenticated(self):
+        """Test unauthenticated save returns 401"""
+        response = self.client.post(
+            f'/api/internships/{self.internship.id}/save/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_create_application(self):
         """Test creating an application"""
         self.client.force_authenticate(user=self.user)

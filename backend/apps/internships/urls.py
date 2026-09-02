@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     InternshipListView,
     InternshipDetailView,
+    InternshipSaveUnsaveView,
     AdminInternshipListCreateView,
     AdminInternshipDetailView,
     LatestInternshipListView,
@@ -35,6 +36,12 @@ urlpatterns = [
         "<int:pk>/",
         InternshipDetailView.as_view(),
         name="internship-detail",
+    ),
+
+    path(
+        "<int:pk>/save/",
+        InternshipSaveUnsaveView.as_view(),
+        name="internship-save-unsave",
     ),
 
     path(

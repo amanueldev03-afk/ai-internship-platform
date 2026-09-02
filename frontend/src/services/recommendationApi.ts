@@ -57,8 +57,8 @@ export async function applyToInternship(
  */
 export async function saveInternship(
   internshipId: number
-): Promise<{ id: number; internship: number; student: number; created_at: string }> {
-  const response = await api.post('/internships/saved/add/', { internship: internshipId })
+): Promise<{ message?: string; saved?: boolean; id?: number; internship?: number }> {
+  const response = await api.post(`/internships/${internshipId}/save/`)
   return response.data
 }
 
@@ -67,5 +67,5 @@ export async function saveInternship(
  * @param internshipId - The ID of the internship
  */
 export async function unsaveInternship(internshipId: number): Promise<void> {
-  await api.delete(`/internships/saved/${internshipId}/`)
+  await api.delete(`/internships/${internshipId}/save/`)
 }

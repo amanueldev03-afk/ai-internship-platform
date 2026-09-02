@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAppSelector } from '@/store/hooks'
-import { getInternshipDetail } from '@/services/internshipApi'
+import { getInternshipDetail, getSavedInternships } from '@/services/internshipApi'
 import { saveInternship, unsaveInternship } from '@/services/recommendationApi'
 import type { Internship } from '@/types'
 
@@ -29,8 +29,14 @@ export default function InternshipDetail() {
       setSaveError(null)
 
       try {
-        const data = await getInternshipDetail(Number(id))
+        const [data, savedData] = await Promise.all([
+          getInternshipDetail(Number(id)),
+          getSavedInternships().catch(() => []),
+        ])
         setInternship(data)
+        if (Array.isArray(savedData)) {
+          setIsSaved(savedData.some((s) => s.internship === Number(id)))
+        }
       } catch (err: any) {
         if (err.response?.status === 404) {
           setError('Internship not found')

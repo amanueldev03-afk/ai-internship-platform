@@ -13,6 +13,7 @@ import StudentDashboard from '@/pages/student/StudentDashboard'
 import StudentRecommendations from '@/pages/student/StudentRecommendations'
 import InternshipDetail from '@/pages/student/InternshipDetail'
 import InternshipSearch from '@/pages/student/InternshipSearch'
+import SavedInternshipsPage from '@/pages/student/SavedInternshipsPage'
 import ProfilePage from '@/pages/student/ProfilePage'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { logoutUser } from '@/features/auth/authSlice'
@@ -112,6 +113,22 @@ export default function AppRoutes() {
         element={
           <RoleRoute allowedRoles={['student']}>
             <InternshipSearch />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/saved"
+        element={
+          <RoleRoute allowedRoles={['student']}>
+            <SavedInternshipsPage />
+          </RoleRoute>
+        }
+      />
+      <Route
+        path="/saved-internships"
+        element={
+          <RoleRoute allowedRoles={['student']}>
+            <SavedInternshipsPage />
           </RoleRoute>
         }
       />

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse
 from drf_spectacular.types import OpenApiTypes
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
@@ -634,6 +634,108 @@ class AdminSourceCollectView(GenericAPIView):
         )
 
 
+class InternshipSaveUnsaveView(APIView):
+    """
+    POST /api/internships/<id>/save/  -> Save an internship for the authenticated student.
+    DELETE /api/internships/<id>/save/ -> Remove the saved internship.
+    """
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    @extend_schema(
+        tags=["Internships"],
+        summary="Save Internship",
+        description="Save an internship to the authenticated student profile",
+        responses={
+            201: SavedInternshipSerializer,
+            200: OpenApiResponse(description="Already saved"),
+            400: OpenApiResponse(description="Bad request"),
+            403: OpenApiResponse(description="Permission denied"),
+            404: OpenApiResponse(description="Internship not found"),
+        },
+    )
+    def post(self, request, pk=None):
+        if request.user.role != "student":
+            raise PermissionDenied("Only students can save internships.")
+
+        try:
+            internship = Internship.objects.get(pk=pk)
+        except Internship.DoesNotExist:
+            return Response(
+                {"detail": "Internship not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if internship.status != Internship.STATUS_ACTIVE:
+            return Response(
+                {"detail": "This internship is not currently available."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        saved_item, created = SavedInternship.objects.get_or_create(
+            student=request.user,
+            internship=internship,
+        )
+
+        try:
+            from apps.recommendations.models import Recommendation
+            rec = Recommendation.objects.filter(
+                student=request.user,
+                internship=internship,
+            ).first()
+            if rec:
+                rec.mark_saved()
+        except Exception:
+            pass
+
+        serializer = SavedInternshipSerializer(saved_item)
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(
+            {
+                "message": "Internship saved successfully.",
+                "saved": True,
+                "data": serializer.data,
+            },
+            status=status_code,
+        )
+
+    @extend_schema(
+        tags=["Internships"],
+        summary="Unsave Internship",
+        description="Remove a saved internship from the student profile",
+        responses={
+            200: OpenApiResponse(description="Internship unsaved successfully"),
+            403: OpenApiResponse(description="Permission denied"),
+            404: OpenApiResponse(description="Internship not found"),
+        },
+    )
+    def delete(self, request, pk=None):
+        if request.user.role != "student":
+            raise PermissionDenied(
+                "Only students can save or unsave internships.")
+
+        if not Internship.objects.filter(pk=pk).exists():
+            return Response(
+                {"detail": "Internship not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        SavedInternship.objects.filter(
+            student=request.user,
+            internship_id=pk,
+        ).delete()
+
+        return Response(
+            {
+                "message": "Internship removed from saved internships.",
+                "saved": False,
+                "internship_id": pk,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class StudentSaveInternshipView(
     generics.CreateAPIView
 ):
@@ -746,6 +848,7 @@ class StudentUnsaveInternshipView(
         IsAuthenticated,
     ]
 
+    lookup_field = "internship_id"
     lookup_url_kwarg = "internship_id"
 
     @extend_schema(
@@ -1277,7 +1380,8 @@ class AdminDashboardView(GenericAPIView):
             status=Internship.STATUS_EXPIRED
         ).count()
 
-        applications = InternshipApplication.objects.select_related('internship').all()
+        applications = InternshipApplication.objects.select_related(
+            'internship').all()
 
         total_applications = applications.count()
 

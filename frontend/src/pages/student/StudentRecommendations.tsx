@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAppSelector } from '@/store/hooks'
 import { getRecommendations } from '@/services/recommendationApi'
-import type { Recommendation, RecommendationResponse } from '@/types'
+import { getSavedInternships } from '@/services/internshipApi'
+import type { Recommendation } from '@/types'
 import RecommendationCard from '@/components/recommendations/RecommendationCard'
 import RecommendationSkeleton from '@/components/recommendations/RecommendationSkeleton'
 import RecommendationEmptyState from '@/components/recommendations/RecommendationEmptyState'
@@ -27,11 +28,15 @@ export default function StudentRecommendations() {
     setIsLoading(true)
     setError(null)
     try {
-      const response: RecommendationResponse = await getRecommendations()
+      const [response, savedData] = await Promise.all([
+        getRecommendations(),
+        getSavedInternships().catch(() => []),
+      ])
       
-      // Backend returns results sorted by match_score descending
-      // No frontend sorting needed - backend handles it
       setRecommendations(response.results)
+      if (Array.isArray(savedData)) {
+        setSavedInternships(new Set(savedData.map((s) => s.internship)))
+      }
       setPagination({
         count: response.count,
         next: response.next,

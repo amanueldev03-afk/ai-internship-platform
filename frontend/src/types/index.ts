@@ -122,7 +122,19 @@ export interface Application {
   applied_at: string
 }
 
+export interface SavedInternship {
+  id: number
+  internship: number
+  internship_title: string
+  organization_name: string
+  application_url?: string
+  source_url?: string
+  internship_details?: Internship
+  created_at: string
+}
+
 export interface ApiError {
   detail?: string
   [key: string]: unknown
 }
+

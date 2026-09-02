@@ -634,14 +634,16 @@ export default function StudentDashboard() {
             presentMessage="Internships matched for you"
           />
 
-          <CountCard
-            label="Saved"
-            value={data?.dashboardError ? null : savedCount}
-            error={data?.dashboardError ?? false}
-            onRetry={loadData}
-            emptyMessage="No saved internships yet"
-            presentMessage="Internships saved for later"
-          />
+          <Link to="/saved" className="block focus:outline-none">
+            <CountCard
+              label="Saved"
+              value={data?.dashboardError ? null : savedCount}
+              error={data?.dashboardError ?? false}
+              onRetry={loadData}
+              emptyMessage="No saved internships yet"
+              presentMessage="Internships saved for later"
+            />
+          </Link>
 
           <CountCard
             label="Applications"
@@ -812,6 +814,21 @@ export default function StudentDashboard() {
               <div>
                 <span className="text-sm font-medium text-gray-900">View Recommendations</span>
                 <span className="block text-xs text-gray-500">AI-powered internship matches</span>
+              </div>
+            </Link>
+
+            <Link
+              to="/saved"
+              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
+                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              </div>
+              <div>
+                <span className="text-sm font-medium text-gray-900">Saved Internships</span>
+                <span className="block text-xs text-gray-500">View bookmarked internships</span>
               </div>
             </Link>
           </div>

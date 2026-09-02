@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAppSelector } from '@/store/hooks'
-import { searchInternships } from '@/services/internshipApi'
+import { searchInternships, getSavedInternships } from '@/services/internshipApi'
 import type { InternshipFilters } from '@/types/filters'
 import type { Internship } from '@/types'
 import SearchFilterBar from '@/components/search/SearchFilterBar'
@@ -19,6 +19,7 @@ export default function InternshipSearch() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
+  const [savedInternships, setSavedInternships] = useState<Set<number>>(new Set())
 
   useEffect(() => {
     if (!isAuthenticated || role !== 'student') {
@@ -26,6 +27,23 @@ export default function InternshipSearch() {
       return
     }
   }, [isAuthenticated, role, navigate])
+
+  const loadSavedState = useCallback(async () => {
+    try {
+      const savedData = await getSavedInternships()
+      if (Array.isArray(savedData)) {
+        setSavedInternships(new Set(savedData.map((s) => s.internship)))
+      }
+    } catch {
+      // Non-critical, ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAuthenticated && role === 'student') {
+      loadSavedState()
+    }
+  }, [isAuthenticated, role, loadSavedState])
 
   const loadInternships = useCallback(async () => {
     setIsLoading(true)
@@ -50,19 +68,20 @@ export default function InternshipSearch() {
   }, [loadInternships, isAuthenticated, role])
 
   const handleApply = async (internshipId: number) => {
-    // Apply functionality - can be integrated with recommendationApi
-    console.log('Apply to internship:', internshipId)
+    console.log('Applied to internship:', internshipId)
   }
 
-  const handleSave = async (internshipId: number) => {
-    // Save functionality - can be integrated with recommendationApi
-    console.log('Save internship:', internshipId)
-  }
+  const handleSave = useCallback((internshipId: number) => {
+    setSavedInternships((prev) => new Set([...prev, internshipId]))
+  }, [])
 
-  const handleUnsave = async (internshipId: number) => {
-    // Unsave functionality - can be integrated with recommendationApi
-    console.log('Unsave internship:', internshipId)
-  }
+  const handleUnsave = useCallback((internshipId: number) => {
+    setSavedInternships((prev) => {
+      const next = new Set(prev)
+      next.delete(internshipId)
+      return next
+    })
+  }, [])
 
   // Convert Internship to Recommendation format for card component
   const internshipToRecommendation = (internship: Internship) => ({
@@ -128,7 +147,7 @@ export default function InternshipSearch() {
                 <RecommendationCard
                   key={internship.id}
                   recommendation={internshipToRecommendation(internship)}
-                  isSaved={false}
+                  isSaved={savedInternships.has(internship.id)}
                   isApplied={false}
                   onApply={handleApply}
                   onSave={handleSave}

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { Recommendation } from '@/types'
-import { applyToInternship, saveInternship, unsaveInternship } from '@/services/recommendationApi'
+import { saveInternship, unsaveInternship } from '@/services/internshipApi'
+import { applyToInternship } from '@/services/recommendationApi'
 
 interface RecommendationCardProps {
   recommendation: Recommendation
@@ -26,6 +27,14 @@ export default function RecommendationCard({
   const [localSaved, setLocalSaved] = useState(isSaved)
   const [localApplied, setLocalApplied] = useState(isApplied)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLocalSaved(isSaved)
+  }, [isSaved])
+
+  useEffect(() => {
+    setLocalApplied(isApplied)
+  }, [isApplied])
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'No deadline'

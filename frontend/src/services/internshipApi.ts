@@ -42,3 +42,34 @@ export async function searchInternships(filters: InternshipFilters = {}): Promis
   const response = await api.get('/internships/', { params })
   return response.data
 }
+
+/**
+ * Get all saved internships for the authenticated student.
+ */
+export async function getSavedInternships(): Promise<import('@/types').SavedInternship[]> {
+  const response = await api.get<import('@/types').SavedInternship[]>('/internships/saved/')
+  return response.data
+}
+
+/**
+ * Save an internship to the student's saved list.
+ * @param internshipId - The ID of the internship
+ */
+export async function saveInternship(
+  internshipId: number
+): Promise<{ message?: string; saved?: boolean; id?: number; internship?: number }> {
+  const response = await api.post(`/internships/${internshipId}/save/`)
+  return response.data
+}
+
+/**
+ * Remove an internship from the student's saved list.
+ * @param internshipId - The ID of the internship
+ */
+export async function unsaveInternship(
+  internshipId: number
+): Promise<{ message?: string; saved?: boolean; internship_id?: number }> {
+  const response = await api.delete(`/internships/${internshipId}/save/`)
+  return response.data
+}
+

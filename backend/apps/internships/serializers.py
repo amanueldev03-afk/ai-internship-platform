@@ -245,8 +245,6 @@ class InternshipSerializer(serializers.ModelSerializer):
         return obj.is_expired()
 
 
-
-
 class InternshipCollectionLogSerializer(
     serializers.ModelSerializer
 ):
@@ -290,7 +288,6 @@ class InternshipCollectionLogSerializer(
         ]
 
 
-
 class SavedInternshipSerializer(
     serializers.ModelSerializer
 ):
@@ -318,6 +315,10 @@ class SavedInternshipSerializer(
         read_only=True,
     )
 
+    internship_details = serializers.SerializerMethodField(
+        read_only=True,
+    )
+
     class Meta:
         model = SavedInternship
 
@@ -328,6 +329,7 @@ class SavedInternshipSerializer(
             "organization_name",
             "application_url",
             "source_url",
+            "internship_details",
             "created_at",
         ]
 
@@ -337,12 +339,19 @@ class SavedInternshipSerializer(
             "organization_name",
             "application_url",
             "source_url",
+            "internship_details",
             "created_at",
         ]
+
+    def get_internship_details(self, obj):
+        if obj.internship:
+            return InternshipSerializer(obj.internship).data
+        return None
 
     def validate_internship(self, internship):
         validate_internship_is_available(internship)
         return internship
+
 
 class InternshipApplicationSerializer(
     serializers.ModelSerializer
@@ -395,7 +404,6 @@ class InternshipApplicationSerializer(
         if internship is not None:
             validate_internship_is_available(internship)
         return attrs
-
 
 
 class InternshipVerificationSerializer(
@@ -476,7 +484,6 @@ class AdminInternshipSerializer(
             "updated_at",
         ]
 
-
     def validate_application_deadline(self, value):
 
         if value is not None and value <= timezone.now():
@@ -485,8 +492,6 @@ class AdminInternshipSerializer(
             )
 
         return value
-
-
 
 
 class StudentDashboardSerializer(
@@ -594,7 +599,6 @@ class AdminDashboardSerializer(serializers.Serializer):
             many=True
         )
     )
-
 
 
 class SkillSerializer(
