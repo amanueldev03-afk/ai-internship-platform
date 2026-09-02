@@ -15,6 +15,7 @@ import InternshipDetail from '@/pages/student/InternshipDetail'
 import InternshipSearch from '@/pages/student/InternshipSearch'
 import SavedInternshipsPage from '@/pages/student/SavedInternshipsPage'
 import ProfilePage from '@/pages/student/ProfilePage'
+import Navbar from '@/components/layout/Navbar'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { logoutUser } from '@/features/auth/authSlice'
 
@@ -52,102 +53,113 @@ const AdminDashboard = () => {
 
 export default function AppRoutes() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<HomePage />} />
+    <>
+      <Navbar />
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<HomePage />} />
 
-      {/* Auth routes - public but redirect authenticated users */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <RegisterPage />
-          </PublicRoute>
-        }
-      />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/verify-email/:uid/:token" element={<VerifyEmailPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
+        {/* Auth routes - public but redirect authenticated users */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <RegisterPage />
+            </PublicRoute>
+          }
+        />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/verify-email/:uid/:token" element={<VerifyEmailPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
 
-      {/* Social Auth OAuth callback routes */}
-      <Route path="/auth/callback" element={<OAuthCallbackPage />} />
-      <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+        {/* Social Auth OAuth callback routes */}
+        <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
-      {/* Protected student routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <StudentDashboard />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/recommendations"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <StudentRecommendations />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/internships/:id"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <InternshipDetail />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/search"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <InternshipSearch />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/saved"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <SavedInternshipsPage />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/saved-internships"
-        element={
-          <RoleRoute allowedRoles={['student']}>
-            <SavedInternshipsPage />
-          </RoleRoute>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <ProfilePage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin/dashboard"
-        element={
-          <RoleRoute allowedRoles={['admin']}>
-            <AdminDashboard />
-          </RoleRoute>
-        }
-      />
-    </Routes>
+        {/* Protected student routes */}
+        <Route
+          path="/dashboard"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <StudentDashboard />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/recommendations"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <StudentRecommendations />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/internships/:id"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <InternshipDetail />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/internships"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <InternshipSearch />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/search"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <InternshipSearch />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/saved"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <SavedInternshipsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/saved-internships"
+          element={
+            <RoleRoute allowedRoles={['student']}>
+              <SavedInternshipsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <AdminDashboard />
+            </RoleRoute>
+          }
+        />
+      </Routes>
+    </>
   )
 }

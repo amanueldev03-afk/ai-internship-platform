@@ -22,18 +22,16 @@ export default function LoginPage() {
   useEffect(() => {
     if (isInitialized && isAuthenticated) {
       const currentRole = role || user?.role
-      const from = (location.state as { from?: { pathname?: string } })?.from?.pathname
+      const fromState = (location.state as { from?: { pathname?: string; search?: string } })?.from
+      const from = fromState?.pathname
+        ? `${fromState.pathname}${fromState.search || ''}`
+        : null
 
-      console.log('Login redirect check:', { isInitialized, isAuthenticated, currentRole, from })
-
-      if (from && from !== '/login' && from !== '/register') {
-        console.log('Redirecting to:', from)
+      if (from && !from.startsWith('/login') && !from.startsWith('/register')) {
         navigate(from, { replace: true })
       } else if (currentRole === 'admin') {
-        console.log('Redirecting to admin dashboard')
         navigate('/admin/dashboard', { replace: true })
       } else {
-        console.log('Redirecting to student dashboard')
         navigate('/dashboard', { replace: true })
       }
     }

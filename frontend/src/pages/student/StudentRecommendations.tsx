@@ -135,29 +135,30 @@ export default function StudentRecommendations() {
         {/* Header */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <Link
-              to="/profile"
-              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Profile
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900">Your Recommendations</h1>
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+              <Link to="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
+              <span>/</span>
+              <span className="text-gray-900 font-medium">AI Matches</span>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900">Your AI Recommendations</h1>
             <p className="text-gray-600 mt-2">
-              AI-powered internship matches based on your profile • {pagination.count} recommendations found
+              Personalized matches ranked by skill and profile fit • {pagination.count} recommendation{pagination.count !== 1 ? 's' : ''} available
             </p>
           </div>
-          <Link
-            to="/search"
-            className="inline-flex items-center px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 hover:shadow-sm transition-all self-start"
-          >
-            <svg className="w-5 h-5 text-indigo-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            Search All Internships
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/internships"
+              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm transition-all"
+            >
+              Browse All Listings
+            </Link>
+            <Link
+              to="/saved"
+              className="inline-flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all"
+            >
+              Saved ({savedInternships.size})
+            </Link>
+          </div>
         </div>
 
         {/* Recommendations Grid */}

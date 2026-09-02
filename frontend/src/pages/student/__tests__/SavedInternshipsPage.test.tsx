@@ -151,11 +151,9 @@ describe('SavedInternshipsPage', () => {
     const unsaveButtons = screen.getAllByRole('button', { name: /Unsave/i })
     fireEvent.click(unsaveButtons[0])
 
-    // Should remain in the list and display error
     await waitFor(() => {
       expect(screen.getByText('Frontend Engineer Intern')).toBeInTheDocument()
       expect(screen.getByText('Failed to unsave internship')).toBeInTheDocument()
     })
   })
 })
-

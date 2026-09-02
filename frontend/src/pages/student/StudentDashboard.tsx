@@ -608,33 +608,39 @@ export default function StudentDashboard() {
         </div>
 
         {/* Summary Count Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <ProfileCompletionCard
-            percent={completionPct}
-            sections={sections}
-            error={data?.profileError ?? false}
-            onRetry={loadData}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <Link to="/profile" className="block focus:outline-none hover:scale-[1.01] transition-transform">
+            <ProfileCompletionCard
+              percent={completionPct}
+              sections={sections}
+              error={data?.profileError ?? false}
+              onRetry={loadData}
+            />
+          </Link>
 
-          <ResumeStatusCard
-            hasResume={hasResume}
-            statusLabel={resumeStatusLabel}
-            statusColor={resumeStatusColor}
-            skillsDetected={cvSkillsDetected}
-            error={data?.resumeError ?? false}
-            onRetry={loadData}
-          />
+          <Link to="/profile" className="block focus:outline-none hover:scale-[1.01] transition-transform">
+            <ResumeStatusCard
+              hasResume={hasResume}
+              statusLabel={resumeStatusLabel}
+              statusColor={resumeStatusColor}
+              skillsDetected={cvSkillsDetected}
+              error={data?.resumeError ?? false}
+              onRetry={loadData}
+            />
+          </Link>
 
-          <CountCard
-            label="Recommendations"
-            value={data?.recommendationsError ? null : recommendationsCount}
-            error={data?.recommendationsError ?? false}
-            onRetry={loadData}
-            emptyMessage="Complete your profile for matches"
-            presentMessage="Internships matched for you"
-          />
+          <Link to="/recommendations" className="block focus:outline-none hover:scale-[1.01] transition-transform">
+            <CountCard
+              label="Recommendations"
+              value={data?.recommendationsError ? null : recommendationsCount}
+              error={data?.recommendationsError ?? false}
+              onRetry={loadData}
+              emptyMessage="Complete your profile for matches"
+              presentMessage="Internships matched for you"
+            />
+          </Link>
 
-          <Link to="/saved" className="block focus:outline-none">
+          <Link to="/saved" className="block focus:outline-none hover:scale-[1.01] transition-transform">
             <CountCard
               label="Saved"
               value={data?.dashboardError ? null : savedCount}
@@ -645,14 +651,16 @@ export default function StudentDashboard() {
             />
           </Link>
 
-          <CountCard
-            label="Applications"
-            value={data?.dashboardError ? null : applicationsCount}
-            error={data?.dashboardError ?? false}
-            onRetry={loadData}
-            emptyMessage="No applications yet"
-            presentMessage="Internships applied to"
-          />
+          <Link to="/internships" className="block focus:outline-none hover:scale-[1.01] transition-transform">
+            <CountCard
+              label="Applications"
+              value={data?.dashboardError ? null : applicationsCount}
+              error={data?.dashboardError ?? false}
+              onRetry={loadData}
+              emptyMessage="No applications yet"
+              presentMessage="Internships applied to"
+            />
+          </Link>
         </div>
 
         {/* Skills & Interests Card */}
@@ -723,15 +731,15 @@ export default function StudentDashboard() {
               </div>
             </Link>
 
-            <Link to="/search" className="inline-flex items-center px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
+            <Link to="/internships" className="inline-flex items-center px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
               <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
                 <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900">Search Internships</p>
-                <p className="text-xs text-gray-500">Browse all listings</p>
+                <p className="text-sm font-medium text-gray-900">Browse Internships</p>
+                <p className="text-xs text-gray-500">Explore all active opportunities</p>
               </div>
             </Link>
 

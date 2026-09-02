@@ -177,6 +177,7 @@ npm run preview
 - **Frontend Toggle & Real-Time Sync**:
   - Save / Unsave toggle button (`♥ Saved` vs `♡ Save`) on recommendation cards, search cards, and internship detail view.
   - Toggling immediately updates local UI state without page reloads.
+
 ### Task 8.2 — Application Redirect + Application Tracking (Section 5.13 / Figure 5.3)
 
 - **Backend Tracking Endpoint**:

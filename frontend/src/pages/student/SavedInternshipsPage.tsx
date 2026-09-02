@@ -107,10 +107,10 @@ export default function SavedInternshipsPage() {
               View Recommendations
             </Link>
             <Link
-              to="/search"
+              to="/internships"
               className="inline-flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:border-gray-300 hover:shadow-sm transition-all"
             >
-              Search All
+              Browse All
             </Link>
           </div>
         </div>

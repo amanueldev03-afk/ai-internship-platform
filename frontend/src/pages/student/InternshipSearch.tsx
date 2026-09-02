@@ -95,24 +95,35 @@ export default function InternshipSearch() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
+        {/* Header with Navigation */}
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <Link
-              to="/profile"
-              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-2"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Profile
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Search Internships</h1>
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+              <Link to="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
+              <span>/</span>
+              <span className="text-gray-900 font-medium">Browse Internships</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Browse & Search Internships</h1>
             <p className="text-gray-600 mt-1">
               {totalCount === 0 && !isLoading
                 ? 'No internships found'
-                : `${totalCount} internship${totalCount !== 1 ? 's' : ''} found`}
+                : `${totalCount} active internship${totalCount !== 1 ? 's' : ''} available`}
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link
+              to="/recommendations"
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+            >
+              ✨ AI Matches
+            </Link>
+            <Link
+              to="/saved"
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              ♥ Saved ({savedInternships.size})
+            </Link>
           </div>
         </div>
 
