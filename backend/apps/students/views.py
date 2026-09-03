@@ -11,6 +11,7 @@ from drf_spectacular.utils import extend_schema
 
 from apps.internships.models import Skill
 from apps.internships.permissions import IsStudent
+from apps.administration.services import log_student_activity
 from .models import StudentProfile, CareerInterest, CV
 from .serializers import (
     StudentProfileSerializer,
@@ -252,6 +253,13 @@ class StudentProfileView(GenericAPIView):
         _queue_embedding(profile)
         bust_recommendation_cache(request.user.id)
 
+        # Phase 9 — record a lightweight profile update in the activity log.
+        log_student_activity(
+            student=request.user,
+            action="profile_update",
+            description="Student updated their profile.",
+        )
+
         # --- Build response ----------------------------------------------
         response_data = StudentProfileSerializer(profile).data
         if cv_info:
@@ -337,6 +345,13 @@ class StudentMeView(GenericAPIView):
         # Keep the AI matching inputs (Section 3.11.1) in sync.
         _queue_embedding(profile)
         bust_recommendation_cache(request.user.id)
+
+        # Phase 9 — record a lightweight profile update in the activity log.
+        log_student_activity(
+            student=request.user,
+            action="profile_update",
+            description="Student updated personal/education information.",
+        )
 
         return Response(
             StudentMeSerializer(profile).data,
@@ -511,6 +526,13 @@ class StudentResumeView(GenericAPIView):
 
         _queue_embedding(profile)
         bust_recommendation_cache(request.user.id)
+
+        # Phase 9 — record a lightweight resume upload in the activity log.
+        log_student_activity(
+            student=request.user,
+            action="resume_upload",
+            description="Student uploaded a new resume.",
+        )
 
         return Response(resume_info, status=status.HTTP_201_CREATED)
 

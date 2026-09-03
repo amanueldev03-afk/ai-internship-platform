@@ -110,6 +110,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.analytics",
     "apps.data_sources",
+    "apps.administration",
     "apps.common",
 ]
 

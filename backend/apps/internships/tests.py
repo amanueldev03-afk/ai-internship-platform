@@ -4,7 +4,7 @@ from django.db.models import Q
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Skill, InternshipSource, Internship, SavedInternship, InternshipApplication
+from .models import Skill, InternshipSource, Internship, InternshipCollectionLog, InternshipDuplicateFlag, SavedInternship, InternshipApplication
 from unittest.mock import patch, MagicMock
 from .tasks import expire_internships, validate_listing_urls_task
 from apps.data_sources.services.urlcheck import validate_url, validate_listing_urls
@@ -1848,3 +1848,833 @@ class InternshipSkillModelTest(TestCase):
         with self.assertRaises(IntegrityError):
             InternshipSkill.objects.create(
                 internship=self.internship, skill=self.skill1)
+
+
+# ======================================================================
+# Phase 9 Task 9.2 — Internship & Data-Source Monitoring Tests
+# ======================================================================
+
+
+class AdminInternshipReviewQueueTest(TestCase):
+    """Test 1 — Admin can list internships in review queue."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.student = User.objects.create_user(
+            email="student@example.com",
+            username="student",
+            password="studentpass123",
+        )
+        self.student.role = "student"
+        self.student.is_active = True
+        self.student.is_email_verified = True
+        self.student.save()
+        self.source = InternshipSource.objects.create(
+            name="Test Source", source_type="api",
+        )
+        self.flagged = Internship.objects.create(
+            title="Flagged Internship",
+            organization_name="Flag Corp",
+            description="Needs review.",
+            application_url="https://example.com/apply/flagged",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+            external_id="review-flagged-1",
+        )
+        self.active = Internship.objects.create(
+            title="Active Internship",
+            organization_name="Active Corp",
+            description="No issues.",
+            application_url="https://example.com/apply/active",
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+            needs_review=False,
+            external_id="review-active-1",
+        )
+
+    def test_admin_can_list_review_queue(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        ids = [i["id"] for i in response.data["results"]]
+        self.assertIn(self.flagged.id, ids)
+        self.assertNotIn(self.active.id, ids)
+
+    def test_review_queue_shows_needs_review_details(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item = response.data["results"][0]
+        self.assertTrue(item["needs_review"])
+        self.assertIn("duplicate_flags", item)
+        self.assertIn("invalid_urls", item)
+        self.assertIn("low_confidence_skills", item)
+
+
+class AdminReviewNeedsReviewSurfacedTest(TestCase):
+    """Test 2 — needs_review internships are surfaced to admin."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+
+    def test_broken_link_flagged_internship_appears_in_queue(self):
+        internship = Internship.objects.create(
+            title="Broken Link",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/broken",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+            url_validation={
+                "application_url": {"valid": False, "status_code": 404},
+            },
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        ids = [i["id"] for i in response.data["results"]]
+        self.assertIn(internship.id, ids)
+
+    def test_approved_internship_not_in_queue(self):
+        Internship.objects.create(
+            title="Approved",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/approved",
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            needs_review=False,
+            is_verified=True,
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertEqual(response.data["count"], 0)
+
+
+class AdminReviewNearDuplicateTest(TestCase):
+    """Test 3 — Near-duplicate flagged internship appears in review queue."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+
+    def test_near_duplicate_appears_in_review_queue(self):
+        existing = Internship.objects.create(
+            title="Python Backend Intern",
+            organization_name="Example Corp",
+            description="desc",
+            application_url="https://example.com/apply/1",
+            source=self.source,
+            status=Internship.STATUS_ACTIVE,
+            is_verified=True,
+            needs_review=True,
+        )
+        from .models import InternshipDuplicateFlag
+        InternshipDuplicateFlag.objects.create(
+            internship=existing,
+            title="Python Backend Internship",
+            organization_name="Example Corp",
+            application_url="https://example.com/apply/2",
+            content_hash="abc123",
+            similarity_score=92.0,
+            review_status="pending",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        ids = [i["id"] for i in response.data["results"]]
+        self.assertIn(existing.id, ids)
+        item = next(i for i in response.data["results"] if i["id"] == existing.id)
+        self.assertEqual(item["pending_duplicate_count"], 1)
+        self.assertGreaterEqual(item["duplicate_flags"][0]["similarity_score"], 80)
+
+
+class AdminReviewBrokenLinkTest(TestCase):
+    """Test 4 — Broken-link flagged internship appears in review queue."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+
+    def test_broken_link_internship_in_queue(self):
+        internship = Internship.objects.create(
+            title="Broken Link Intern",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/dead",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+            url_validation={
+                "application_url": {"valid": False, "status_code": 404, "error": "Not Found"},
+                "source_url": {"valid": True, "status_code": 200},
+            },
+            validated_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        item = response.data["results"][0]
+        self.assertIn("application_url", item["invalid_urls"])
+
+
+class AdminInternshipApproveTest(TestCase):
+    """Test 5 — Admin can approve a flagged internship."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Flagged for Approval",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/approve-me",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+        )
+
+    def test_admin_can_approve_flagged_internship(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/approve/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.internship.refresh_from_db()
+        self.assertEqual(self.internship.status, Internship.STATUS_ACTIVE)
+        self.assertTrue(self.internship.is_verified)
+        self.assertFalse(self.internship.needs_review)
+        self.assertIsNotNone(self.internship.verified_at)
+        self.assertEqual(self.internship.verified_by, self.admin)
+
+    def test_approve_clears_duplicate_flags(self):
+        from .models import InternshipDuplicateFlag
+        InternshipDuplicateFlag.objects.create(
+            internship=self.internship,
+            title="Near dup",
+            organization_name="Corp",
+            application_url="https://example.com/apply/dup",
+            content_hash="dup123",
+            similarity_score=90.0,
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(f"/api/internships/admin/{self.internship.id}/approve/")
+        flag = InternshipDuplicateFlag.objects.get(
+            internship=self.internship
+        )
+        self.assertEqual(flag.review_status, "resolved")
+
+    def test_approve_non_flagged_returns_400(self):
+        self.internship.needs_review = False
+        self.internship.save(update_fields=["needs_review"])
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/approve/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_approve_nonexistent_returns_404(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post("/api/internships/admin/99999/approve/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class AdminInternshipRejectTest(TestCase):
+    """Test 6 — Admin can reject a flagged internship."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Flagged for Rejection",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/reject-me",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+        )
+
+    def test_admin_can_reject_flagged_internship(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject", "rejection_reason": "Broken link"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.internship.refresh_from_db()
+        self.assertEqual(self.internship.status, Internship.STATUS_REJECTED)
+        self.assertFalse(self.internship.needs_review)
+        self.assertEqual(self.internship.rejection_reason, "Broken link")
+
+    def test_reject_clears_duplicate_flags(self):
+        from .models import InternshipDuplicateFlag
+        InternshipDuplicateFlag.objects.create(
+            internship=self.internship,
+            title="Near dup",
+            organization_name="Corp",
+            application_url="https://example.com/apply/dup",
+            content_hash="dup456",
+            similarity_score=88.0,
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject", "rejection_reason": "Duplicate content"},
+            format="json",
+        )
+        flag = InternshipDuplicateFlag.objects.get(
+            internship=self.internship
+        )
+        self.assertEqual(flag.review_status, "resolved")
+
+    def test_reject_requires_reason(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reject_non_flagged_returns_400(self):
+        self.internship.needs_review = False
+        self.internship.save(update_fields=["needs_review"])
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject", "rejection_reason": "spam"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AdminInternshipRemoveTest(TestCase):
+    """Test 7 — Admin can remove a flagged internship."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Flagged for Removal",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/remove-me",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+        )
+
+    def test_admin_can_remove_flagged_internship(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/remove/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.internship.refresh_from_db()
+        self.assertEqual(self.internship.status, Internship.STATUS_REMOVED)
+        self.assertFalse(self.internship.needs_review)
+
+    def test_remove_clears_duplicate_flags(self):
+        from .models import InternshipDuplicateFlag
+        InternshipDuplicateFlag.objects.create(
+            internship=self.internship,
+            title="Near dup",
+            organization_name="Corp",
+            application_url="https://example.com/apply/dup",
+            content_hash="dup789",
+            similarity_score=85.0,
+        )
+        self.client.force_authenticate(user=self.admin)
+        self.client.post(f"/api/internships/admin/{self.internship.id}/remove/")
+        flag = InternshipDuplicateFlag.objects.get(
+            internship=self.internship
+        )
+        self.assertEqual(flag.review_status, "resolved")
+
+    def test_remove_non_flagged_returns_400(self):
+        self.internship.needs_review = False
+        self.internship.save(update_fields=["needs_review"])
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/remove/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AdminStudentReviewAuthorizationTest(TestCase):
+    """Test 8 — Student cannot access admin review queue."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            email="student@example.com",
+            username="student",
+            password="studentpass123",
+        )
+        self.student.role = "student"
+        self.student.is_active = True
+        self.student.is_email_verified = True
+        self.student.save()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Flagged",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/flag",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+        )
+
+    def test_student_cannot_access_review_queue(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_student_cannot_approve(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/approve/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_student_cannot_reject(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject", "rejection_reason": "no"},
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_student_cannot_remove(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/remove/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+
+class UnauthenticatedReviewAuthorizationTest(TestCase):
+    """Test 10 — Unauthenticated user cannot access admin endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.source = InternshipSource.objects.create(
+            name="Source", source_type="api",
+        )
+        self.internship = Internship.objects.create(
+            title="Flagged",
+            organization_name="Corp",
+            description="desc",
+            application_url="https://example.com/apply/flag",
+            source=self.source,
+            status=Internship.STATUS_DRAFT,
+            needs_review=True,
+        )
+
+    def test_unauthenticated_cannot_access_review_queue(self):
+        response = self.client.get("/api/internships/admin/review/")
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_unauthenticated_cannot_approve(self):
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/approve/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_unauthenticated_cannot_reject(self):
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/reject/",
+            {"action": "reject", "rejection_reason": "no"},
+            format="json",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_unauthenticated_cannot_remove(self):
+        response = self.client.post(
+            f"/api/internships/admin/{self.internship.id}/remove/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+
+class DataSourceHealthAPITest(TestCase):
+    """Test 11 — Data-source health endpoint exposes run info."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        from apps.data_sources.models import DataSource
+        self.data_source = DataSource.objects.create(
+            name="Health DataSource",
+            type=DataSource.Type.API,
+            is_active=True,
+            base_url="https://health.example.com",
+        )
+        # Also create an InternshipSource + CollectionLog for the
+        # internships-level health endpoint
+        self.source = InternshipSource.objects.create(
+            name="Health Source",
+            source_type="api",
+            is_active=True,
+        )
+        InternshipCollectionLog.objects.create(
+            source=self.source,
+            status="success",
+            records_found=10,
+            records_created=8,
+            records_updated=2,
+            records_failed=0,
+            completed_at=timezone.now(),
+        )
+
+    def test_admin_can_view_data_source_health(self):
+        self.client.force_authenticate(user=self.admin)
+        # Test the new-pipeline DataSource health endpoint
+        response = self.client.get(
+            "/api/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        entry = next(
+            (e for e in response.data if e["id"] == self.data_source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertTrue(entry["is_active"])
+
+    def test_student_cannot_view_data_source_health(self):
+        student = User.objects.create_user(
+            email="s@example.com",
+            username="s",
+            password="pass12345",
+        )
+        student.role = "student"
+        student.is_active = True
+        student.is_email_verified = True
+        student.save()
+        self.client.force_authenticate(user=student)
+        response = self.client.get(
+            "/api/admin/data-sources/health/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_unauthenticated_cannot_view_data_source_health(self):
+        response = self.client.get(
+            "/api/admin/data-sources/health/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+
+class DataSourceHealthFailedRunTest(TestCase):
+    """Test 12 — Failed data-source run exposes error info."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        from apps.data_sources.models import DataSource
+        self.data_source = DataSource.objects.create(
+            name="Failing DataSource",
+            type=DataSource.Type.RSS,
+            is_active=True,
+        )
+        # InternshipSource + CollectionLog for run-level data
+        self.source = InternshipSource.objects.create(
+            name="Failing Source",
+            source_type="rss",
+            is_active=True,
+        )
+
+    def test_failed_run_exposes_error(self):
+        InternshipCollectionLog.objects.create(
+            source=self.source,
+            status="failed",
+            error_message="Connection timeout after 30s",
+            records_found=0,
+            records_created=0,
+            records_failed=0,
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            "/api/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # DataSource-level health shows is_active and last_synced_at
+        entry = next(
+            (e for e in response.data if e["id"] == self.data_source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertTrue(entry["is_active"])
+
+    def test_no_runs_returns_null_health_fields(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            "/api/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = next(
+            (e for e in response.data if e["id"] == self.data_source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        # DataSource has no last_synced_at since no sync has run
+        self.assertIsNone(entry["last_synced_at"])
+
+
+class InternshipSourceHealthAPITest(TestCase):
+    """Test — InternshipSource health endpoint exposes run status/errors."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_superuser(
+            email="admin@example.com",
+            username="admin",
+            password="adminpass123",
+        )
+        self.source = InternshipSource.objects.create(
+            name="Source Health",
+            source_type="api",
+            is_active=True,
+        )
+        self.student = User.objects.create_user(
+            email="sh@example.com",
+            username="sh",
+            password="pass12345",
+        )
+        self.student.role = "student"
+        self.student.is_active = True
+        self.student.is_email_verified = True
+        self.student.save()
+
+    def test_admin_can_view_source_health_success_run(self):
+        InternshipCollectionLog.objects.create(
+            source=self.source,
+            status="success",
+            started_at=timezone.now(),
+            records_found=20,
+            records_created=15,
+            records_failed=0,
+            completed_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            "/api/internships/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = next(
+            (e for e in response.data if e["id"] == self.source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["last_run_status"], "success")
+        self.assertEqual(entry["last_records_found"], 20)
+
+    def test_admin_can_view_source_health_failed_run(self):
+        InternshipCollectionLog.objects.create(
+            source=self.source,
+            status="failed",
+            error_message="Connection timeout",
+            records_found=0,
+            records_failed=5,
+            completed_at=timezone.now(),
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            "/api/internships/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = next(
+            (e for e in response.data if e["id"] == self.source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["last_run_status"], "failed")
+        self.assertEqual(entry["last_error"], "Connection timeout")
+
+    def test_admin_can_view_source_health_no_runs(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            "/api/internships/admin/data-sources/health/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = next(
+            (e for e in response.data if e["id"] == self.source.id),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertIsNone(entry["last_run_status"])
+
+    def test_student_cannot_view_source_health(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.get(
+            "/api/internships/admin/data-sources/health/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+    def test_unauthenticated_cannot_view_source_health(self):
+        response = self.client.get(
+            "/api/internships/admin/data-sources/health/",
+        )
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN],
+        )
+
+
+class NearDuplicateSetsNeedsReviewTest(TestCase):
+    """Verify that near-duplicate detection sets needs_review=True."""
+
+    def setUp(self):
+        from apps.data_sources.models import DataSource
+        self.data_source = DataSource.objects.create(
+            name="Dedupe DataSource",
+            type=DataSource.Type.API,
+        )
+
+    def test_near_duplicate_sets_needs_review_on_matched(self):
+        from apps.data_sources.services.dedupe import store_listing
+        from apps.data_sources.services.normalization import normalize_listing
+
+        raw1 = {
+            "external_id": "nd-001",
+            "title": "Python Backend Intern",
+            "organization_name": "Example Corp",
+            "description": "Backend internship.",
+            "category": "Software",
+            "country": "Ethiopia",
+            "city": "Addis Ababa",
+            "location_text": "Addis Ababa",
+            "internship_type": "remote",
+            "work_type": "full_time",
+            "compensation_type": "paid",
+            "minimum_compensation": 300,
+            "maximum_compensation": 600,
+            "compensation_currency": "USD",
+            "compensation_period": "monthly",
+            "required_skills": [],
+            "preferred_skills": [],
+            "duration_min_weeks": 8,
+            "duration_max_weeks": 16,
+            "application_url": "https://example.com/apply/nd1",
+            "source_url": "https://example.com/nd1",
+            "posted_at": "2026-08-01T10:00:00Z",
+            "application_deadline": "2026-09-30T23:59:59Z",
+        }
+        listing1 = normalize_listing(raw1, source_type="api")
+        result1 = store_listing(listing1, data_source=self.data_source)
+        self.assertEqual(result1.action, "created")
+        original = result1.internship
+        self.assertFalse(original.needs_review)
+
+        raw2 = dict(raw1)
+        raw2["external_id"] = "nd-002"
+        raw2["title"] = "Python Backend Internship"
+        raw2["application_url"] = "https://example.com/apply/nd2"
+        raw2["source_url"] = "https://example.com/nd2"
+        listing2 = normalize_listing(raw2, source_type="api")
+        result2 = store_listing(listing2, data_source=self.data_source)
+
+        self.assertEqual(result2.action, "near_duplicate")
+        original.refresh_from_db()
+        self.assertTrue(original.needs_review)

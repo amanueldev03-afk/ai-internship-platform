@@ -1,6 +1,6 @@
 from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count, OuterRef, Subquery
 from django.utils import timezone
 from rest_framework import generics, status, serializers
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -30,6 +30,7 @@ from .models import (
     Internship,
     InternshipSource,
     InternshipCollectionLog,
+    InternshipDuplicateFlag,
     SavedInternship,
     InternshipApplication,
     Skill,
@@ -44,10 +45,13 @@ from .serializers import (
     SkillSerializer,
     AdminRecentInternshipSerializer,
     AdminCollectionLogSerializer,
+    AdminInternshipReviewSerializer,
+    DataSourceHealthSerializer,
 )
 from .filters import InternshipFilter
 from .permissions import IsAdminRole, IsStudent
 from .services.collector import collect_source
+from apps.administration.services import log_student_activity
 
 
 User = get_user_model()
@@ -704,6 +708,15 @@ class InternshipSaveUnsaveView(APIView):
         except Exception:
             pass
 
+        # Phase 9 — record a lightweight save in the activity log.
+        if created and request.user.role == "student":
+            log_student_activity(
+                student=request.user,
+                action="internship_save",
+                description=f"Saved internship '{internship.title}'.",
+                metadata={"internship_id": internship.id},
+            )
+
         serializer = SavedInternshipSerializer(saved_item)
         status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(
@@ -956,6 +969,17 @@ class StudentApplicationCreateView(
                 }
             )
 
+        # Phase 9 — record a lightweight application in the activity log.
+        log_student_activity(
+            student=self.request.user,
+            action="internship_apply",
+            description=(
+                f"Applied for internship "
+                f"'{internship.title}'."
+            ),
+            metadata={"internship_id": internship.id},
+        )
+
 
 class StudentApplicationListView(
     generics.ListAPIView
@@ -1181,6 +1205,409 @@ class AdminInternshipVerificationView(
             },
             status=status.HTTP_200_OK,
         )
+
+
+# ───────────────────────────────────────────────────────────────────
+# Phase 9 Task 9.2 — Internship Review Queue & Data-Source Health
+# ───────────────────────────────────────────────────────────────────
+
+
+class AdminInternshipReviewListView(generics.ListAPIView):
+    """
+    List internships flagged for admin review.
+
+    ``GET /api/internships/admin/review/``
+
+    Returns paginated internships where ``needs_review=True``, ordered by
+    most recently created.  Includes duplicate-flag details, URL
+    validation results, and low-confidence skill matches so
+    administrators can make informed approve / reject / remove decisions.
+    """
+
+    serializer_class = AdminInternshipReviewSerializer
+    permission_classes = [IsAdminRole]
+    pagination_class = InternshipPagination
+
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+        OrderingFilter,
+    ]
+
+    search_fields = [
+        "title",
+        "organization_name",
+    ]
+
+    ordering_fields = [
+        "created_at",
+        "updated_at",
+        "last_seen_at",
+    ]
+
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        qs = (
+            Internship.objects
+            .filter(needs_review=True)
+            .select_related("source", "data_source")
+            .prefetch_related("duplicate_flags")
+        )
+
+        # Optional filter by review reason
+        reason = self.request.query_params.get("reason")
+        if reason == "broken_link":
+            qs = qs.filter(
+                url_validation__isnull=False,
+            ).extra(
+                where=[
+                    "internship.url_validation::text LIKE %s"
+                ],
+                params=['%"valid": false%'],
+            )
+        elif reason == "near_duplicate":
+            from django.db.models import Count
+            qs = qs.annotate(
+                pending_flags=Count(
+                    "duplicate_flags",
+                    filter=Q(
+                        duplicate_flags__review_status=(
+                            InternshipDuplicateFlag.REVIEW_PENDING
+                        )
+                    ),
+                ),
+            ).filter(pending_flags__gt=0)
+
+        return qs
+
+
+def _resolve_internship(request, pk):
+    """Fetch an internship by pk or return None + 404 Response."""
+    try:
+        internship = Internship.objects.get(pk=pk)
+    except Internship.DoesNotExist:
+        return None, Response(
+            {"detail": "Internship not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return internship, None
+
+
+def _resolve_pending_duplicate_flags(internship):
+    """Return all pending ``InternshipDuplicateFlag`` for an internship."""
+    return InternshipDuplicateFlag.objects.filter(
+        internship=internship,
+        review_status=InternshipDuplicateFlag.REVIEW_PENDING,
+    )
+
+
+class AdminInternshipApproveView(APIView):
+    """
+    Approve a flagged internship for the review queue.
+
+    ``POST /api/internships/admin/<id>/approve/``
+
+    Sets status to ``active``, clears ``needs_review``, marks as verified,
+    and resolves any pending near-duplicate flags.
+    """
+
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Approve flagged internship",
+        description="Approve a flagged internship: set active, verify, and clear review state.",
+        request=None,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "internship_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "needs_review": {"type": "boolean"},
+                },
+            }
+        },
+    )
+    def post(self, request, pk):
+        internship, err = _resolve_internship(request, pk)
+        if err is not None:
+            return err
+
+        if not internship.needs_review:
+            return Response(
+                {
+                    "detail": (
+                        "Internship is not flagged for review."
+                    ),
+                    "internship_id": internship.id,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        internship.status = Internship.STATUS_ACTIVE
+        internship.is_verified = True
+        internship.needs_review = False
+        internship.verified_at = timezone.now()
+        internship.verified_by = request.user
+        internship.rejection_reason = ""
+        internship.save(
+            update_fields=[
+                "status",
+                "is_verified",
+                "needs_review",
+                "verified_at",
+                "verified_by",
+                "rejection_reason",
+                "updated_at",
+            ]
+        )
+
+        # Resolve pending duplicate flags
+        _resolve_pending_duplicate_flags(internship).update(
+            review_status=InternshipDuplicateFlag.REVIEW_RESOLVED,
+        )
+
+        return Response(
+            {
+                "message": "Internship approved successfully.",
+                "internship_id": internship.id,
+                "status": internship.status,
+                "needs_review": internship.needs_review,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminInternshipRejectView(APIView):
+    """
+    Reject a flagged internship.
+
+    ``POST /api/internships/admin/<id>/reject/``
+
+    Sets status to ``rejected``, clears ``needs_review``, stores the
+    rejection reason, and resolves pending near-duplicate flags.
+    """
+
+    permission_classes = [IsAdminRole]
+    serializer_class = InternshipVerificationSerializer
+
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Reject flagged internship",
+        description="Reject a flagged internship: set rejected, store reason, clear review state.",
+        request=InternshipVerificationSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "internship_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "needs_review": {"type": "boolean"},
+                },
+            }
+        },
+    )
+    def post(self, request, pk):
+        internship, err = _resolve_internship(request, pk)
+        if err is not None:
+            return err
+
+        if not internship.needs_review:
+            return Response(
+                {
+                    "detail": (
+                        "Internship is not flagged for review."
+                    ),
+                    "internship_id": internship.id,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = InternshipVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        rejection_reason = serializer.validated_data.get(
+            "rejection_reason", ""
+        )
+
+        internship.status = Internship.STATUS_REJECTED
+        internship.needs_review = False
+        internship.rejection_reason = rejection_reason
+        internship.verified_at = None
+        internship.verified_by = None
+        internship.save(
+            update_fields=[
+                "status",
+                "needs_review",
+                "rejection_reason",
+                "verified_at",
+                "verified_by",
+                "updated_at",
+            ]
+        )
+
+        _resolve_pending_duplicate_flags(internship).update(
+            review_status=InternshipDuplicateFlag.REVIEW_RESOLVED,
+        )
+
+        return Response(
+            {
+                "message": "Internship rejected.",
+                "internship_id": internship.id,
+                "status": internship.status,
+                "needs_review": internship.needs_review,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AdminInternshipRemoveView(APIView):
+    """
+    Remove a flagged internship.
+
+    ``POST /api/internships/admin/<id>/remove/``
+
+    Soft-removes the internship by setting status to ``removed`` and
+    clearing ``needs_review``.  Also resolves pending near-duplicate flags.
+    """
+
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin Internships"],
+        summary="Remove flagged internship",
+        description="Soft-remove a flagged internship: set status removed and clear review state.",
+        request=None,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "internship_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "needs_review": {"type": "boolean"},
+                },
+            }
+        },
+    )
+    def post(self, request, pk):
+        internship, err = _resolve_internship(request, pk)
+        if err is not None:
+            return err
+
+        if not internship.needs_review:
+            return Response(
+                {
+                    "detail": (
+                        "Internship is not flagged for review."
+                    ),
+                    "internship_id": internship.id,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        internship.status = Internship.STATUS_REMOVED
+        internship.needs_review = False
+        internship.save(
+            update_fields=[
+                "status",
+                "needs_review",
+                "updated_at",
+            ]
+        )
+
+        _resolve_pending_duplicate_flags(internship).update(
+            review_status=InternshipDuplicateFlag.REVIEW_RESOLVED,
+        )
+
+        return Response(
+            {
+                "message": "Internship removed successfully.",
+                "internship_id": internship.id,
+                "status": internship.status,
+                "needs_review": internship.needs_review,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class DataSourceHealthView(generics.ListAPIView):
+    """
+    Data-source health monitoring for administrators.
+
+    ``GET /api/admin/data-sources/health/``
+
+    Returns one entry per ``InternshipSource`` with the most recent
+    ``InternshipCollectionLog`` data: run status, timestamps, error
+    information, and record counts.
+    """
+
+    serializer_class = DataSourceHealthSerializer
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin Data Sources"],
+        summary="Data source health monitoring",
+        description=(
+            "Returns health information for each internship source, "
+            "including last run status, timestamps, and error details."
+        ),
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    def get_queryset(self):
+        from django.db.models import OuterRef, Subquery
+
+        latest_log = (
+            InternshipCollectionLog.objects
+            .filter(source=OuterRef("pk"))
+            .order_by("-started_at")
+        )
+
+        return (
+            InternshipSource.objects
+            .annotate(
+                total_runs=Count("collection_logs"),
+                last_run_status=Subquery(
+                    latest_log.values("status")[:1]
+                ),
+                last_run_started_at=Subquery(
+                    latest_log.values("started_at")[:1]
+                ),
+                last_run_completed_at=Subquery(
+                    latest_log.values("completed_at")[:1]
+                ),
+                last_error=Subquery(
+                    latest_log.values("error_message")[:1]
+                ),
+                last_records_found=Subquery(
+                    latest_log.values("records_found")[:1]
+                ),
+                last_records_created=Subquery(
+                    latest_log.values("records_created")[:1]
+                ),
+                last_records_failed=Subquery(
+                    latest_log.values("records_failed")[:1]
+                ),
+            )
+            .order_by("name")
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class StudentDashboardView(GenericAPIView):

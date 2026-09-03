@@ -168,7 +168,11 @@ def _resolve_skill_ids(normalized):
 def _flag_near_duplicate(
     matched, normalized, *, similarity_score, content_hash, now=None
 ):
-    """Create/refresh the admin-review flag for a near-duplicate."""
+    """Create/refresh the admin-review flag for a near-duplicate.
+
+    Also marks the *existing* (matched) internship ``needs_review=True``
+    so it surfaces in the admin review queue (Phase 9 Task 9.2).
+    """
     now = now or timezone.now()
 
     existing_flag = (
@@ -186,17 +190,23 @@ def _flag_near_duplicate(
         existing_flag.save(
             update_fields=["similarity_score", "last_seen_at", "updated_at"]
         )
-        return existing_flag
+    else:
+        existing_flag = InternshipDuplicateFlag.objects.create(
+            internship=matched,
+            title=normalized.get("title") or "",
+            organization_name=normalized.get("organization_name") or "",
+            application_url=normalized.get("application_url") or "",
+            content_hash=normalized.get("content_hash") or content_hash,
+            similarity_score=similarity_score,
+            last_seen_at=now,
+        )
 
-    return InternshipDuplicateFlag.objects.create(
-        internship=matched,
-        title=normalized.get("title") or "",
-        organization_name=normalized.get("organization_name") or "",
-        application_url=normalized.get("application_url") or "",
-        content_hash=normalized.get("content_hash") or content_hash,
-        similarity_score=similarity_score,
-        last_seen_at=now,
-    )
+    # Ensure the matched internship is surfaced in the admin review queue.
+    if not matched.needs_review:
+        matched.needs_review = True
+        matched.save(update_fields=["needs_review", "updated_at"])
+
+    return existing_flag
 
 
 def dispatch_url_validation(internship_id):

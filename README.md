@@ -24,6 +24,39 @@ The remaining student lifecycle tasks are implemented and validated end-to-end:
 
 Verified coverage includes the remaining Table 6.1 tasks around save, apply, notify, and review-history behavior, with the Django and Vitest suites both passing in their project environments.
 
+### Phase 9: Admin Dashboard & Monitoring System (Complete)
+
+Phase 9 delivers the complete admin dashboard, analytics, and monitoring system for platform administrators:
+
+**Backend Features (Django REST Framework):**
+
+- **Student Management** (`/api/admin/students/`): List all students with search/filter/ordering, activate/deactivate functionality, view student activity logs with aggregated action counts
+- **Analytics** (`/api/admin/analytics/`): System-wide statistics (user counts, internship counts, needs_review count, most-requested skills, recommendation stats)
+- **AI Monitoring** (`/api/admin/analytics/ai/`): Per-day recommendation tracking and score distribution analysis (bucketed by match quality)
+- **Internship Review Queue** (`/api/internships/admin/review/`): List internships flagged for review (broken_link or near_duplicate), with approve/reject/remove actions
+- **Data Source Health** (`/api/internships/admin/data-sources/health/`): Collection monitoring (status, run count, error tracking, record statistics)
+
+**Frontend Features (React + Vite):**
+
+- **Admin Dashboard** (`/admin/dashboard`): KPI cards (total users, internships, review queue size), skill demand widget, recommendation metrics
+- **Student Management** (`/admin/students`): Searchable student list, activate/deactivate controls, modal activity log viewer
+- **Internship Review Queue** (`/admin/internships/review`): Paginated review list with filter/search, invalid URL display, skill confidence badges, action buttons
+- **Data Source Health** (`/admin/data-sources`): Health status per ingestion source, run statistics, error monitoring
+- **AI Monitoring** (`/admin/ai-monitoring`): Recommendation volume trend chart, score distribution histogram, average match score display
+
+**Authorization & Security:**
+
+- Role-based access control: all admin endpoints guarded by `IsAdminRole` permission
+- Frontend route protection: RoleRoute component enforces admin role before rendering
+- JWT token embeds role claim for immediate frontend routing decisions
+
+**Test Coverage:**
+
+- Backend: 33 admin tests (StudentActivityLog, analytics aggregations, auth) ✅
+- Backend: 127 internship tests (review queue, health monitoring) ✅
+- Frontend: 118 component tests across 21 test files ✅
+- **Total: 278 tests passing**
+
 ---
 
 ## Quick Start

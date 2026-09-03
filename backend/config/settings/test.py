@@ -4,8 +4,19 @@ DEBUG = True
 
 # Disable throttling during automated tests so anonymous/anonymous-heavy test
 # suites do not trip the AnonRateThrottle (100/day) budget mid-run.
+#
+# DEFAULT_THROTTLE_CLASSES is cleared so the global default never throttles.
+# We keep DEFAULT_THROTTLE_RATES populated (effectively unlimited) because
+# several views (e.g. LoginView) explicitly set ``AnonRateThrottle`` in their
+# ``throttle_classes``; an AnonRateThrottle with no configured rate raises
+# ImproperlyConfigured at request time.
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
-REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {}
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
+    "anon": "1000000/day",
+    "user": "1000000/day",
+    "burst": "1000000/min",
+    "sustained": "1000000/hour",
+}
 
 # Capture emails in-memory (django.core.mail.outbox) for round-trip tests.
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"

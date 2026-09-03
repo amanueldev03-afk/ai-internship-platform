@@ -1,4 +1,4 @@
-import { Routes, Route, useNavigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import HomePage from '@/pages/HomePage'
 import ProtectedRoute from './ProtectedRoute'
 import PublicRoute from './PublicRoute'
@@ -17,41 +17,12 @@ import SavedInternshipsPage from '@/pages/student/SavedInternshipsPage'
 import ProfilePage from '@/pages/student/ProfilePage'
 import RecommendationHistoryPage from '@/pages/student/RecommendationHistoryPage'
 import ApplicationHistoryPage from '@/pages/student/ApplicationHistoryPage'
+import AdminDashboard from '@/pages/admin/AdminDashboard'
+import AdminStudentManagement from '@/pages/admin/AdminStudentManagement'
+import AdminInternshipReview from '@/pages/admin/AdminInternshipReview'
+import AdminDataSourceHealth from '@/pages/admin/AdminDataSourceHealth'
+import AdminAIMonitoring from '@/pages/admin/AdminAIMonitoring'
 import Navbar from '@/components/layout/Navbar'
-import { useAppDispatch, useAppSelector } from '@/hooks/redux'
-import { logoutUser } from '@/features/auth/authSlice'
-
-const AdminDashboard = () => {
-  const dispatch = useAppDispatch()
-  const navigate = useNavigate()
-  const user = useAppSelector((state) => state.auth.user)
-  const { isLoading } = useAppSelector((state) => state.auth)
-
-  const handleLogout = async () => {
-    const refreshToken = localStorage.getItem('refresh_token')
-    await dispatch(logoutUser(refreshToken))
-    navigate('/login')
-  }
-
-  return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-gray-600">Welcome, {user?.email}</span>
-          <button
-            onClick={handleLogout}
-            disabled={isLoading}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoading ? 'Logging out...' : 'Logout'}
-          </button>
-        </div>
-      </div>
-      <p>Admin dashboard content will be implemented in later tasks.</p>
-    </div>
-  )
-}
 
 export default function AppRoutes() {
   return (
@@ -160,6 +131,38 @@ export default function AppRoutes() {
           element={
             <RoleRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/admin/students"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <AdminStudentManagement />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/admin/internships/review"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <AdminInternshipReview />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/admin/data-sources"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <AdminDataSourceHealth />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/admin/ai-monitoring"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <AdminAIMonitoring />
             </RoleRoute>
           }
         />

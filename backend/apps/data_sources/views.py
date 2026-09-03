@@ -1,4 +1,4 @@
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
@@ -91,3 +91,52 @@ class DataSourceSyncNowView(APIView):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+
+class DataSourceHealthView(generics.ListAPIView):
+    """
+    Data-source health monitoring for the new pipeline.
+
+    ``GET /api/admin/data-sources/health/``
+
+    Returns one entry per ``DataSource`` showing the ``is_active`` flag,
+    ``last_synced_at`` timestamp, and total internship count sourced from
+    that data source.
+    """
+
+    permission_classes = [IsAdminRole]
+
+    @extend_schema(
+        tags=["Admin Data Sources"],
+        summary="Data source health (new pipeline)",
+        description=(
+            "Returns health information for each DataSource in the "
+            "new collection pipeline: active state, last sync time, "
+            "and internship count."
+        ),
+    )
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return DataSource.objects.order_by("name")
+
+    def list(self, request, *args, **kwargs):
+        sources = self.get_queryset()
+
+        data = []
+        for source in sources:
+            internship_count = source.internships.count()
+            data.append({
+                "id": source.id,
+                "name": source.name,
+                "type": source.type,
+                "is_active": source.is_active,
+                "base_url": source.base_url,
+                "last_synced_at": source.last_synced_at,
+                "internship_count": internship_count,
+                "created_at": source.created_at,
+                "updated_at": source.updated_at,
+            })
+
+        return Response(data)

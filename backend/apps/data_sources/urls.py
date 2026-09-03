@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import DataSourceSyncNowView
+from .views import DataSourceSyncNowView, DataSourceHealthView
 
 app_name = "data_sources"
 
@@ -10,5 +10,11 @@ urlpatterns = [
         "<int:pk>/sync-now/",
         DataSourceSyncNowView.as_view(),
         name="data-source-sync-now",
+    ),
+    # Phase 9 Task 9.2 — Data-source health monitoring
+    path(
+        "health/",
+        DataSourceHealthView.as_view(),
+        name="data-source-health",
     ),
 ]

@@ -6,6 +6,7 @@ from .models import (
     Internship,
     InternshipSource,
     InternshipCollectionLog,
+    InternshipDuplicateFlag,
     SavedInternship,
     InternshipApplication,
     Skill,
@@ -637,3 +638,153 @@ class SkillSerializer(
             "created_at",
             "updated_at",
         ]
+
+
+class AdminInternshipDuplicateFlagSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Read-only serializer for duplicate flags attached to an internship.
+    """
+
+    class Meta:
+        model = InternshipDuplicateFlag
+        fields = [
+            "id",
+            "title",
+            "organization_name",
+            "application_url",
+            "similarity_score",
+            "review_status",
+            "last_seen_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class AdminInternshipReviewSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Read-only serializer for the admin internship review queue.
+
+    Exposes internship details together with ``needs_review``, review
+    reasons (url_validation, skills_review), and any pending near-duplicate
+    flags so administrators can make informed approve / reject / remove
+    decisions.
+    """
+
+    source_name = serializers.CharField(
+        source="source.name",
+        read_only=True,
+        default=None,
+    )
+    data_source_name = serializers.CharField(
+        source="data_source.name",
+        read_only=True,
+        default=None,
+    )
+    duplicate_flags = AdminInternshipDuplicateFlagSerializer(
+        many=True,
+        read_only=True,
+    )
+    pending_duplicate_count = serializers.SerializerMethodField()
+    invalid_urls = serializers.SerializerMethodField()
+    low_confidence_skills = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Internship
+        fields = [
+            "id",
+            "title",
+            "organization_name",
+            "application_url",
+            "source_url",
+            "country",
+            "city",
+            "location_text",
+            "internship_type",
+            "status",
+            "is_verified",
+            "needs_review",
+            "url_validation",
+            "validated_at",
+            "skills_review",
+            "invalid_urls",
+            "low_confidence_skills",
+            "duplicate_flags",
+            "pending_duplicate_count",
+            "source_name",
+            "source",
+            "data_source_name",
+            "data_source",
+            "rejection_reason",
+            "verified_at",
+            "created_at",
+            "updated_at",
+            "last_seen_at",
+        ]
+        read_only_fields = fields
+
+    def get_pending_duplicate_count(self, obj):
+        return obj.duplicate_flags.filter(
+            review_status=InternshipDuplicateFlag.REVIEW_PENDING,
+        ).count()
+
+    def get_invalid_urls(self, obj):
+        checks = obj.url_validation or {}
+        return [
+            url for url, info in checks.items()
+            if isinstance(info, dict) and not info.get("valid", True)
+        ]
+
+    def get_low_confidence_skills(self, obj):
+        return [
+            entry for entry in (obj.skills_review or [])
+            if isinstance(entry, dict) and entry.get("low_confidence")
+        ]
+
+
+class DataSourceHealthSerializer(serializers.Serializer):
+    """
+    Read-only serializer for data-source health monitoring.
+
+    Aggregates the most recent ``InternshipCollectionLog`` for each
+    ``InternshipSource`` and surfaces last-sync status, errors, and
+    timestamps.
+    """
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    source_type = serializers.CharField()
+    is_active = serializers.BooleanField()
+    website_url = serializers.URLField(
+        required=False, allow_blank=True, default="",
+    )
+    last_synced_at = serializers.DateTimeField(
+        allow_null=True, required=False,
+    )
+    last_run_status = serializers.CharField(
+        allow_null=True, required=False, default=None,
+    )
+    last_run_started_at = serializers.DateTimeField(
+        allow_null=True, required=False, default=None,
+    )
+    last_run_completed_at = serializers.DateTimeField(
+        allow_null=True, required=False, default=None,
+    )
+    last_error = serializers.CharField(
+        allow_null=True, required=False, default=None,
+    )
+    last_records_found = serializers.IntegerField(
+        required=False, default=0,
+    )
+    last_records_created = serializers.IntegerField(
+        required=False, default=0,
+    )
+    last_records_failed = serializers.IntegerField(
+        required=False, default=0,
+    )
+    total_runs = serializers.IntegerField(
+        required=False, default=0,
+    )

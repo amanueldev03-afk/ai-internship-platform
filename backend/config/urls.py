@@ -13,6 +13,10 @@ from apps.accounts.views import (
     PasswordResetConfirmView,
     AuthTokenRefreshView,
 )
+from apps.administration.views import (
+    AdminAnalyticsView,
+    AdminRecommendationAnalyticsView,
+)
 
 
 def health_check(request):
@@ -111,6 +115,22 @@ urlpatterns = [
     path(
         "api/admin/data-sources/",
         include("apps.data_sources.urls"),
+    ),
+    # Phase 9 Task 9.1 — Administrator User Management.
+    # GET /api/admin/students/ and related activate/deactivate/activity actions.
+    path(
+        "api/admin/students/",
+        include("apps.administration.urls"),
+    ),
+    path(
+        "api/admin/analytics/",
+        AdminAnalyticsView.as_view(),
+        name="admin-analytics",
+    ),
+    path(
+        "api/admin/analytics/ai/",
+        AdminRecommendationAnalyticsView.as_view(),
+        name="admin-recommendation-analytics",
     ),
 ]
 
