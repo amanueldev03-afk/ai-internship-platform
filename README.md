@@ -59,8 +59,7 @@ ai-internship-platform/
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── Dockerfile
-│   ├── nginx.conf
-│   └── README.md
+│   └── nginx.conf
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── README.md
@@ -107,6 +106,29 @@ npm run dev
 
 The frontend runs at http://localhost:5173 and the backend at http://localhost:8000.
 
+### Frontend development
+
+The frontend uses React 18, TypeScript, Vite, Redux Toolkit, React Router, Axios,
+Tailwind CSS, and Vitest. Axios attaches JWT access tokens, retries once after a
+token refresh, and logs the user out when refresh fails.
+
+The frontend development server proxies `/api` and `/media` to the backend at
+`http://127.0.0.1:8000`. The frontend environment variables are:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_BACKEND_URL=http://localhost:8000
+```
+
+Run frontend quality checks from `frontend/`:
+
+```bash
+npm run lint
+npm test -- --run
+npm run build
+npm run preview
+```
+
 ## Environment variables
 
 Use secure values in your deployment environment. Essential examples include:
@@ -130,6 +152,41 @@ Use secure values in your deployment environment. Essential examples include:
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 VITE_BACKEND_URL=http://localhost:8000
+```
+
+Do not commit `.env`, API keys, JWT secrets, or production passwords.
+
+## Application workflows
+
+### Authentication and profiles
+
+- Registration, email verification, login, password reset, and Google OAuth
+- Protected, public, and role-based routes
+- Student profile, education, skills, interests, and internship preferences
+- PDF/DOCX CV upload with validation, background parsing, and extracted profile data
+
+### Recommendations and applications
+
+- Semantic and skill-based internship ranking with match explanations
+- Search with debounced keywords and location, type, work mode, and skill filters
+- Save/unsave internships with immediate UI synchronization
+- Validated external application redirects with non-blocking application tracking
+
+### Administration
+
+- Student activation, activity logs, and role-protected administration routes
+- Internship review queue for invalid links and duplicate listings
+- Data-source health monitoring and recommendation analytics
+
+## Frontend application flow
+
+```text
+Register or log in
+    -> Build profile and upload CV
+    -> CV parsing and skill extraction
+    -> AI-ranked recommendations
+    -> Search, save, or apply
+    -> Application tracking and admin analytics
 ```
 
 ## Production deployment
