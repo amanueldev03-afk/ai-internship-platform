@@ -21,6 +21,17 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
 # Capture emails in-memory (django.core.mail.outbox) for round-trip tests.
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
+# Tests must not contact an external object-storage service just to exercise
+# upload and profile business logic.
+STORAGE_BACKEND = "filesystem"
+STORAGES["default"] = {
+    "BACKEND": "django.core.files.storage.FileSystemStorage",
+    "OPTIONS": {
+        "location": BASE_DIR / "media",
+        "base_url": "/media/",
+    },
+}
+
 # Phase 3 Task 3.5 — run Celery tasks synchronously during tests so the
 # resume-parsing pipeline can be verified without a live broker/Redis.
 CELERY_TASK_ALWAYS_EAGER = True

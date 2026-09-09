@@ -15,7 +15,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from .jwt import LoginSerializer
-from .serializers import ( 
+from .serializers import (
     EmailVerificationSerializer,
     StudentRegistrationSerializer,
     LogoutSerializer,
@@ -205,7 +205,6 @@ class CurrentUserView(GenericAPIView):
         return Response(serializer.data)
 
 
-
 class LoginView(APIView):
     """
     Unified login (Task 2.3 / Figure 5.1).
@@ -311,7 +310,6 @@ class LoginView(APIView):
         )
 
 
-
 class EmailVerificationLinkView(GenericAPIView):
     """
     Verify a student's email address via a GET link (Task 2.2).
@@ -368,6 +366,19 @@ class EmailVerificationLinkView(GenericAPIView):
                 "message": "Email verified successfully. "
                            "Your account is now active."
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class LegacyEmailVerificationView(EmailVerificationLinkView):
+    """Compatibility endpoint for the original POST verification contract."""
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {"message": "Email verified successfully. Your account is now active."},
             status=status.HTTP_200_OK,
         )
 

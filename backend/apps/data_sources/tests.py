@@ -158,7 +158,7 @@ class FakeAdapter(BaseAdapter):
         },
     ]
 
-    def __init__(self, source):
+    def __init__(self, source=None):
         self.source = source
 
     def fetch(self):
@@ -1807,7 +1807,8 @@ class BeatScheduleTest(TestCase):
     def test_api_collection_runs_every_2_hours(self):
         entry = self.schedule["collect-api-data-sources"]
         crontab = entry["schedule"]
-        self.assertEqual(crontab.hour, {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22})
+        self.assertEqual(
+            crontab.hour, {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22})
         self.assertEqual(crontab.minute, {0})
 
     def test_rss_collection_runs_every_6_hours(self):

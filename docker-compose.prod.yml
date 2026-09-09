@@ -1,7 +1,6 @@
 version: "3.9"
 
 services:
-
   # -------------------------------------------------------------------------
   # PostgreSQL 15 + pgvector
   # -------------------------------------------------------------------------
@@ -18,7 +17,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-ai_user} -d $${POSTGRES_DB:-ai_internship}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-ai_user} -d $${POSTGRES_DB:-ai_internship}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -64,7 +67,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -125,7 +128,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -175,7 +178,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
       REDIS_URL: redis://redis:6379/1
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -222,7 +225,15 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1/",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

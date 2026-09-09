@@ -64,9 +64,12 @@ def send_verification_email(user):
         user
     )
 
-    # Point to frontend verify email page instead of backend API
+    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-    verification_url = (
+    api_verification_url = (
+        f"{site_url}/api/auth/verify-email/{uid}/{token}/"
+    )
+    frontend_verification_url = (
         f"{frontend_url}"
         f"/verify-email?uid={uid}&token={token}"
     )
@@ -79,8 +82,9 @@ def send_verification_email(user):
                 f"Hello {user.username},\n\n"
                 f"Thank you for registering.\n\n"
                 f"Please verify your email address "
-                f"using the link below:\n\n"
-                f"{verification_url}\n\n"
+                f"using one of the links below:\n\n"
+                f"{frontend_verification_url}\n"
+                f"{api_verification_url}\n\n"
                 f"If you did not create this account, "
                 f"please ignore this email."
             ),
@@ -110,9 +114,12 @@ def send_password_reset_email(user):
         user
     )
 
-    # Point to frontend reset password page instead of backend API
+    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
     frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-    reset_url = (
+    api_reset_url = (
+        f"{site_url}/api/auth/password-reset-confirm/{uid}/{token}/"
+    )
+    frontend_reset_url = (
         f"{frontend_url}"
         f"/reset-password?uid={uid}&token={token}"
     )
@@ -124,8 +131,9 @@ def send_password_reset_email(user):
             f"Hello {user.username},\n\n"
             f"We received a request to reset "
             f"your password.\n\n"
-            f"Reset your password using this link:\n\n"
-            f"{reset_url}\n\n"
+                f"Reset your password using one of these links:\n\n"
+                f"{frontend_reset_url}\n"
+                f"{api_reset_url}\n\n"
             f"If you did not request a password reset, "
             f"you can safely ignore this email."
         ),
