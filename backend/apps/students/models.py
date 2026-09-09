@@ -21,6 +21,48 @@ class StudentProfile(TimeStampedModel):
         ("other", "Other"),
     ]
 
+    # Fixed choice lists (Section 5.3 / 3.11.1): the AI matching engine
+    # (semantic_matching.build_student_text) consumes these fields directly,
+    # so we restrict them to canonical codes to avoid free-text noise.
+    FIELD_OF_STUDY_CHOICES = [
+        ("computer_science", "Computer Science"),
+        ("software_engineering", "Software Engineering"),
+        ("data_science", "Data Science"),
+        ("artificial_intelligence", "Artificial Intelligence"),
+        ("information_technology", "Information Technology"),
+        ("information_systems", "Information Systems"),
+        ("computer_engineering", "Computer Engineering"),
+        ("electrical_engineering", "Electrical Engineering"),
+        ("mechanical_engineering", "Mechanical Engineering"),
+        ("civil_engineering", "Civil Engineering"),
+        ("mathematics", "Mathematics"),
+        ("statistics", "Statistics"),
+        ("physics", "Physics"),
+        ("business_administration", "Business Administration"),
+        ("economics", "Economics"),
+        ("finance", "Finance"),
+        ("accounting", "Accounting"),
+        ("marketing", "Marketing"),
+        ("management", "Management"),
+        ("health_sciences", "Health Sciences"),
+        ("biology", "Biology"),
+        ("chemistry", "Chemistry"),
+        ("law", "Law"),
+        ("design", "Design"),
+        ("communications", "Communications"),
+        ("other", "Other"),
+    ]
+
+    CURRENT_YEAR_CHOICES = [
+        ("first_year", "First Year"),
+        ("second_year", "Second Year"),
+        ("third_year", "Third Year"),
+        ("fourth_year", "Fourth Year"),
+        ("final_year", "Final Year"),
+        ("graduate", "Graduate"),
+        ("other", "Other"),
+    ]
+
     INTERNSHIP_TYPE_CHOICES = [
         ("remote", "Remote"),
         ("onsite", "On-site"),
@@ -94,9 +136,20 @@ class StudentProfile(TimeStampedModel):
         blank=True,
     )
 
+    current_year = models.CharField(
+        max_length=20,
+        choices=CURRENT_YEAR_CHOICES,
+        blank=True,
+        help_text="Current academic year or status (fixed choice list).",
+    )
+
     field_of_study = models.CharField(
         max_length=150,
         blank=True,
+        help_text=(
+            "Field of study code. The API validates against "
+            "FIELD_OF_STUDY_CHOICES so the AI engine only sees canonical values."
+        ),
     )
 
     university = models.CharField(
@@ -114,9 +167,13 @@ class StudentProfile(TimeStampedModel):
         related_name="student_profiles",
     )
 
-    interests = models.JSONField(
-        default=list,
+    # Phase 3 Task 3.2 — interests are validated against the CareerInterest
+    # catalogue (Task 1.3), never free-typed. This keeps Phase 6 skill/interest
+    # matching on canonical values instead of fuzzy string noise.
+    interests = models.ManyToManyField(
+        "CareerInterest",
         blank=True,
+        related_name="student_profiles",
     )
 
     experience = models.TextField(
@@ -196,7 +253,7 @@ class StudentProfile(TimeStampedModel):
     )
 
     # ==========================================================
-    # INTERNSHIP DURATION
+    # INTERNSHIP DURATION / AVAILABILITY
     # ==========================================================
 
     internship_duration_min_weeks = models.PositiveIntegerField(
@@ -209,19 +266,67 @@ class StudentProfile(TimeStampedModel):
         blank=True,
     )
 
-    available_from = models.DateField(
+    # Phase 3 Task 3.3 — availability window for internship preferences.
+    # `availability_start` was previously named `available_from`.
+    availability_start = models.DateField(
         null=True,
         blank=True,
+        help_text="Earliest date the student is available for an internship.",
+    )
+
+    availability_end = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Latest date the student is available for an internship.",
+    )
+
+    # Phase 7 — 'Immediately' availability shortcut. When true the student is
+    # available immediately and the date window is optional.
+    availability_immediately = models.BooleanField(
+        default=False,
+        help_text="True if the student is available for an internship immediately.",
     )
 
     # ==========================================================
-    # CV
+    # CV / RESUME
     # ==========================================================
 
     cv = models.FileField(
         upload_to="student_cvs/",
         null=True,
         blank=True,
+    )
+
+    # Phase 3 Task 3.4 — resume pointer (Section 5.3.6 / Figure 5.2).
+    # Set exclusively via POST /api/students/me/resume/ (content-sniffed:
+    # real PDF/DOCX only, never a disguised executable). The stored object is
+    # the same file referenced by the latest ``CV`` record, which the resume
+    # parsing pipeline (Task 3.5) consumes.
+    resume = models.FileField(
+        upload_to="student_resumes/",
+        null=True,
+        blank=True,
+        help_text=(
+            "Canonical resume file. Uploaded via POST /api/students/me/resume/; "
+            "referenced by the latest CV record for async parsing."
+        ),
+    )
+
+    # Phase 3 Task 3.5 — resume parsing flag (Section 5.3.6, Figure 5.2).
+    # Set to True by the ``parse_resume`` Celery task once the latest resume
+    # has been parsed successfully (async; see Task 3.5).
+    resume_parsed = models.BooleanField(
+        default=False,
+        help_text=(
+            "True once the resume has been parsed by the async parse_resume "
+            "Celery task."
+        ),
+    )
+
+    resume_parsed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the resume was last parsed by the async parse_resume task.",
     )
 
     # ==========================================================
@@ -267,6 +372,17 @@ class StudentProfile(TimeStampedModel):
             errors["internship_duration_max_weeks"] = (
                 "Maximum duration must be greater "
                 "than or equal to minimum duration."
+            )
+
+        # Availability window invariant (Task 3.3)
+        if (
+            self.availability_start is not None
+            and self.availability_end is not None
+            and self.availability_end < self.availability_start
+        ):
+            errors["availability_end"] = (
+                "Availability end date must be on or after the availability "
+                "start date."
             )
 
         if errors:
@@ -388,6 +504,24 @@ class CV(TimeStampedModel):
 
     extracted_certifications = models.JSONField(
         default=list,
+        blank=True,
+    )
+
+    # Phase 7 — Languages are extracted as a separate section from
+    # certifications. Each entry is ``{"name": str, "proficiency": str|None}``.
+    extracted_languages = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Spoken languages extracted from the CV as a list of "
+            "{name, proficiency} objects. Populated by the CV analysis pipeline."
+        ),
+    )
+
+    # Phase 6 Task 6.1 — Total years of professional experience calculated from
+    # parsed experience entries (e.g., "3 years" + "2 years" = 5.0 years)
+    extracted_experience_years = models.FloatField(
+        default=0.0,
         blank=True,
     )
 
@@ -578,12 +712,18 @@ class StudentSkill(TimeStampedModel):
     """
     Through table linking Student and Skill with proficiency level (Task 1.3).
     Enforces uniqueness on (student, skill) to prevent duplicate score inflation.
-    """
 
+    Phase 6 Task 6.1 — Added source field to track whether a skill was added
+    manually by the student or extracted from their resume via the resume parser.
+    """
     class Proficiency(models.TextChoices):
         BEGINNER = "beginner", "Beginner"
         INTERMEDIATE = "intermediate", "Intermediate"
         ADVANCED = "advanced", "Advanced"
+
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Manual"
+        RESUME = "resume", "Resume"
 
     student = models.ForeignKey(
         Student,
@@ -603,6 +743,13 @@ class StudentSkill(TimeStampedModel):
         default=Proficiency.BEGINNER,
     )
 
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.MANUAL,
+        help_text="Source of this skill: manually added by student or extracted from resume.",
+    )
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Student Skill"
@@ -616,7 +763,7 @@ class StudentSkill(TimeStampedModel):
         ]
 
     def __str__(self):
-        return f"{self.student.user.email} - {self.skill.name} ({self.get_proficiency_display()})"
+        return f"{self.student.user.email} - {self.skill.name} ({self.get_proficiency_display()}, {self.get_source_display()})"
 
 
 class StudentInterest(TimeStampedModel):

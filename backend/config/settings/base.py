@@ -17,7 +17,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY")
 
-DEBUG = str(config("DEBUG", default="False")).lower() in ("true", "1", "yes", "t", "on", "debug")
+DEBUG = str(config("DEBUG", default="False")).lower() in (
+    "true", "1", "yes", "t", "on", "debug")
 
 # Skip database checks if database is unavailable (for development)
 if DEBUG:
@@ -33,6 +34,39 @@ ALLOWED_HOSTS = config(
 if DEBUG:
     ALLOWED_HOSTS = list(ALLOWED_HOSTS) + \
         ["testserver", "localhost", "127.0.0.1"]
+
+# Base URL of the backend used to build absolute verification/reset links
+# (e.g. http://localhost:8000 in local dev). Override in deployment.
+SITE_BASE_URL = config(
+    "SITE_BASE_URL",
+    default="http://localhost:8000",
+).rstrip("/")
+
+# Recommendation score is expressed on a 0-100 scale. Override this business
+# threshold per environment without changing notification task code.
+NOTIFICATION_HIGH_SCORE_THRESHOLD = config(
+    "NOTIFICATION_HIGH_SCORE_THRESHOLD", default=80, cast=int
+)
+
+# --------------------------------------------------
+# Trusted company career sites (Task 5.5, Section 3.10.4)
+# --------------------------------------------------
+# The career-site collector only scrapes hostnames listed here —
+# "trusted company websites only". Open/generic scraping is disabled.
+# Each allow-listed company also carries its own CSS-selector config,
+# which a per-DataSource ``config`` JSON may override.
+ALLOWED_CAREER_SITES = {
+    # "careers.example.com": {
+    #     "container_selector": "li.job",
+    #     "field_selectors": {
+    #         "title": ".job-title",
+    #         "link": "a",
+    #         "description": ".description",
+    #         "deadline": ".deadline",
+    #         "location": ".location",
+    #     },
+    # },
+}
 
 # --------------------------------------------------
 # Applications
@@ -62,6 +96,8 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount.providers.google",
     "django.contrib.sites",
     "django_extensions",
+    # Django storage backends (Section 7.7.2): filesystem in dev, S3 in prod
+    "storages",
 ]
 
 LOCAL_APPS = [
@@ -74,6 +110,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.analytics",
     "apps.data_sources",
+    "apps.administration",
     "apps.common",
 ]
 
@@ -97,6 +134,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "config.middleware.AllowMediaFrameEmbedding",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
 ]
@@ -223,8 +261,48 @@ STATICFILES_DIRS = [
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # --------------------------------------------------
-# Media Files
+# Media Files / Storage (Section 7.7.2)
+#
+# Django 6 uses the ``STORAGES`` setting. ``default`` (user uploads: resumes,
+# CVs) lives on the local filesystem in development and swaps to an
+# S3-compatible bucket in production purely via environment variables.
 # --------------------------------------------------
+STORAGE_BACKEND = config("STORAGE_BACKEND", default="filesystem")
+
+_STORAGES_DEFAULT = {
+    "BACKEND": "django.core.files.storage.FileSystemStorage",
+    "OPTIONS": {
+        "location": BASE_DIR / "media",
+        "base_url": "/media/",
+    },
+}
+
+if STORAGE_BACKEND == "s3":
+    # S3-compatible object storage (Section 7.7.2 — django-storages/s3boto3).
+    AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+    AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+    AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
+    AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="")
+    AWS_S3_CUSTOM_DOMAIN = config("AWS_S3_CUSTOM_DOMAIN", default="")
+    AWS_S3_ENDPOINT_URL = config("AWS_S3_ENDPOINT_URL", default="")
+    # Resumes are private: URLs are signed unless a public CDN domain is given.
+    AWS_QUERYSTRING_AUTH = config(
+        "AWS_QUERYSTRING_AUTH", default=True, cast=bool
+    )
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",
+    }
+    _STORAGES_DEFAULT = {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {},
+    }
+
+STORAGES = {
+    "default": _STORAGES_DEFAULT,
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 MEDIA_URL = "/media/"
 
@@ -253,7 +331,9 @@ REST_FRAMEWORK = {
     ),
 
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",
+        # Authenticated by default (Task 2.4); public endpoints opt out with
+        # an explicit AllowAny override (e.g. auth / verification / schema).
+        "rest_framework.permissions.IsAuthenticated",
     ),
 
     "DEFAULT_RENDERER_CLASSES": (
@@ -292,27 +372,39 @@ SPECTACULAR_SETTINGS = {
     "TAGS": [
         {
             "name": "Authentication",
-            "description": "User registration, login, and authentication endpoints"
+            "description": "Registration, login, token refresh, email verification, and password management"
+        },
+        {
+            "name": "Student Profile (Phase 3)",
+            "description": "Student onboarding and profile sub-resources (me, preferences, resume, skills, interests)"
         },
         {
             "name": "Student Profiles",
-            "description": "Student profile management and CV upload"
+            "description": "Full student profile, skill management, and CV upload/status"
         },
         {
             "name": "Internships",
-            "description": "Internship listing, search, and details"
-        },
-        {
-            "name": "Admin Internships",
-            "description": "Admin-only internship management endpoints"
-        },
-        {
-            "name": "Recommendations",
-            "description": "AI-powered internship recommendations"
+            "description": "Internship listing, search, details, saved internships, and student dashboard"
         },
         {
             "name": "Applications",
-            "description": "Internship application tracking"
+            "description": "Student internship applications"
+        },
+        {
+            "name": "Recommendations",
+            "description": "AI-powered internship recommendations, history, and feedback"
+        },
+        {
+            "name": "Admin Internships",
+            "description": "Admin-only internship management, data sources, collection logs, skills, and dashboard"
+        },
+        {
+            "name": "Companies",
+            "description": "Admin-only company management endpoints (Phase 4 Task 4.1)"
+        },
+        {
+            "name": "Admin Data Sources",
+            "description": "Admin-only data source management and manual sync (Task 5.10)"
         }
     ],
     "ENUM_NAME_OVERRIDES": {},
@@ -389,6 +481,28 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
+# --------------------------------------------------
+# Allauth (email + Google OAuth social login)
+# --------------------------------------------------
+SOCIALACCOUNT_ADAPTER = "apps.accounts.adapter.CustomSocialAccountAdapter"
+ACCOUNT_ADAPTER = "apps.accounts.adapter.CustomAccountAdapter"
+
+# After a successful allauth (social) login, redirect to the SPA callback
+# route carrying the minted JWT tokens. This reuses our custom adapter.
+LOGIN_REDIRECT_URL = "http://localhost:5173/auth/callback"
+
+# URL the frontend considers the OAuth callback (with query params appended).
+FRONTEND_OAUTH_CALLBACK_URL = "http://localhost:5173/auth/callback"
+
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Google has already verified the email at consent time, so skip the
+# intermediate "confirm your email" step for social logins.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_LOGIN_ON_GET = True
 
 SOCIALACCOUNT_PROVIDERS = {
     "google": {
@@ -416,9 +530,17 @@ CELERY_BEAT_SCHEDULER = (
 
 # Import Celery Beat schedule
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+# Redis URLs are env-driven so docker-compose (6380) and local native
+# services (6379) can both work without code changes (Phase 0 Task 0.2/0.3).
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default="redis://127.0.0.1:6379/0",
+)
 
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/1"
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND",
+    default="redis://127.0.0.1:6379/1",
+)
 
 CELERY_ACCEPT_CONTENT = [
     "json",
@@ -436,13 +558,29 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 
+# Phase 3 Task 3.5 — run Celery tasks synchronously (no broker). Used in dev
+# and tests via ``CELERY_TASK_ALWAYS_EAGER=True`` (env-driven); the full broker
+# wiring lands in Phase 5.
+CELERY_TASK_ALWAYS_EAGER = config(
+    "CELERY_TASK_ALWAYS_EAGER",
+    default=False,
+    cast=bool,
+)
+
+# Propagate task exceptions in eager mode so failures surface in tests/dev.
+CELERY_TASK_EAGER_PROPAGATES = config(
+    "CELERY_TASK_EAGER_PROPAGATES",
+    default=True,
+    cast=bool,
+)
+
 CACHES = {
     "default": {
         "BACKEND": (
             "django.core.cache.backends.redis."
             "RedisCache"
         ),
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": config("REDIS_URL", default="redis://127.0.0.1:6379/1"),
     }
 }
 

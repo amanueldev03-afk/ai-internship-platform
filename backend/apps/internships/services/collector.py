@@ -33,6 +33,8 @@ class InternshipCollector:
         updated_count = 0
         failed_count = 0
 
+        created_or_updated_ids = []
+
         log.records_found = len(records)
         log.save(update_fields=["records_found"])
 
@@ -47,20 +49,33 @@ class InternshipCollector:
                 ).first()
 
                 if existing:
+                    meaningful_update = any(
+                        getattr(existing, field) != normalized_data[field]
+                        for field in (
+                            "title", "organization_name", "description",
+                            "application_url", "application_deadline",
+                        )
+                    )
                     # Update data but preserve publication status.
                     existing.title = normalized_data["title"]
                     existing.description = normalized_data["description"]
                     existing.application_url = normalized_data["application_url"]
                     existing.save()
+                    created_or_updated_ids.append(existing.id)
+                    if meaningful_update:
+                        from apps.notifications.tasks import send_saved_internship_update_notifications
+                        transaction.on_commit(
+                            lambda internship_id=existing.id: send_saved_internship_update_notifications.delay(
+                                internship_id
+                            )
+                        )
                     updated_count += 1
                 else:
-                    # New internship requires Admin review.
-                    Internship.objects.create(
+                    created_internship = Internship.objects.create(
                         source=self.source,
-                        external_id=normalized_data["external_id"],
                         **normalized_data,
-                        status=Internship.STATUS_DRAFT,
                     )
+                    created_or_updated_ids.append(created_internship.id)
                     created_count += 1
 
             except Exception as exc:
@@ -70,6 +85,18 @@ class InternshipCollector:
                     f"{data.get('external_id', 'unknown')}: "
                     f"{str(exc)}\n"
                 )
+
+        # Queue URL validation for new/updated listings (Task 5.9)
+        try:
+            from apps.internships.tasks import validate_listing_urls_task
+            transaction.on_commit(
+                lambda: [
+                    validate_listing_urls_task.delay(iid)
+                    for iid in created_or_updated_ids
+                ]
+            )
+        except Exception:
+            pass
 
         log.records_created = created_count
         log.records_updated = updated_count
@@ -165,11 +192,6 @@ class InternshipCollector:
             "compensation_period": data.get(
                 "compensation_period",
                 "",
-            ),
-
-            "required_skills": data.get(
-                "required_skills",
-                [],
             ),
 
             "preferred_skills": data.get(

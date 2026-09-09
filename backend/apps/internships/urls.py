@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     InternshipListView,
     InternshipDetailView,
+    InternshipSaveUnsaveView,
     AdminInternshipListCreateView,
     AdminInternshipDetailView,
     LatestInternshipListView,
@@ -17,6 +18,11 @@ from .views import (
     StudentApplicationListView,
     StudentApplicationDetailView,
     AdminInternshipVerificationView,
+    AdminInternshipReviewListView,
+    AdminInternshipApproveView,
+    AdminInternshipRejectView,
+    AdminInternshipRemoveView,
+    DataSourceHealthView,
     StudentDashboardView,
     AdminDashboardView,
     AdminSkillListCreateView,
@@ -35,6 +41,12 @@ urlpatterns = [
         "<int:pk>/",
         InternshipDetailView.as_view(),
         name="internship-detail",
+    ),
+
+    path(
+        "<int:pk>/save/",
+        InternshipSaveUnsaveView.as_view(),
+        name="internship-save-unsave",
     ),
 
     path(
@@ -137,6 +149,35 @@ urlpatterns = [
         "admin/internships/<int:pk>/verify/",
         AdminInternshipVerificationView.as_view(),
         name="admin-internship-verify",
+    ),
+
+    # Phase 9 Task 9.2 — Internship Review Queue
+    path(
+        "admin/review/",
+        AdminInternshipReviewListView.as_view(),
+        name="admin-internship-review-list",
+    ),
+    path(
+        "admin/<int:pk>/approve/",
+        AdminInternshipApproveView.as_view(),
+        name="admin-internship-approve",
+    ),
+    path(
+        "admin/<int:pk>/reject/",
+        AdminInternshipRejectView.as_view(),
+        name="admin-internship-reject",
+    ),
+    path(
+        "admin/<int:pk>/remove/",
+        AdminInternshipRemoveView.as_view(),
+        name="admin-internship-remove",
+    ),
+
+    # Phase 9 Task 9.2 — Data-Source Health (InternshipSource + collection logs)
+    path(
+        "admin/data-sources/health/",
+        DataSourceHealthView.as_view(),
+        name="admin-internship-data-source-health",
     ),
 
     path(

@@ -14,10 +14,10 @@ CELERY_BEAT_SCHEDULE = {
     # ==========================================================
     
     # Expire internships whose deadline has passed
-    # Runs every hour
-    'expire-internships-hourly': {
+    # Runs daily at midnight UTC (Section 3.10.7 / Task 5.8)
+    'expire-internships-daily': {
         'task': 'apps.internships.tasks.expire_internships',
-        'schedule': crontab(minute=0),  # Every hour at minute 0
+        'schedule': crontab(hour=0, minute=0),  # Daily at 00:00 UTC
     },
     
     # ==========================================================
@@ -50,13 +50,27 @@ CELERY_BEAT_SCHEDULE = {
     # },
     
     # ==========================================================
-    # DATA COLLECTION
+    # DATA COLLECTION (DataSource pipeline — Task 5.10, Figure 3.8)
     # ==========================================================
-    
-    # Schedule active internship source collections
-    # Runs every 6 hours
-    'schedule-internship-collections': {
-        'task': 'apps.internships.tasks.schedule_active_source_collections',
+
+    # Collect from public internship APIs every 2 hours
+    'collect-api-data-sources': {
+        'task': 'apps.data_sources.tasks.schedule_data_source_collections',
+        'schedule': crontab(minute=0, hour='*/2'),  # Every 2 hours
+        'args': ('api',),
+    },
+
+    # Collect from RSS feeds every 6 hours
+    'collect-rss-data-sources': {
+        'task': 'apps.data_sources.tasks.schedule_data_source_collections',
         'schedule': crontab(minute=0, hour='*/6'),  # Every 6 hours
+        'args': ('rss',),
+    },
+
+    # Collect from company career sites daily at 04:00 UTC
+    'collect-career-site-data-sources': {
+        'task': 'apps.data_sources.tasks.schedule_data_source_collections',
+        'schedule': crontab(hour=4, minute=0),
+        'args': ('career_site',),
     },
 }

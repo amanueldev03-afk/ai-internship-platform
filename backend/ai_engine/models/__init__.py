@@ -90,10 +90,14 @@ class RecommendationOutput:
 class ParsedCV:
     """
     Structured output of the resume parser.
+
+    Phase 6 Task 6.1 — Output contract includes experience_years for
+    calculating total professional experience from parsed experience entries.
     """
     skills: list[str] = field(default_factory=list)
     education: list[dict] = field(default_factory=list)
     experience: list[dict] = field(default_factory=list)
     projects: list[dict] = field(default_factory=list)
     certifications: list[str] = field(default_factory=list)
+    experience_years: float = 0.0
     raw_text: str = ""

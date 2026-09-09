@@ -1,35 +1,166 @@
-import axios from 'axios'
+import axios, { AxiosError } from 'axios'
+import type { InternalAxiosRequestConfig } from 'axios'
+import { store } from '@/store'
+import { refreshAccessToken, logoutUser } from '@/features/auth/authSlice'
 
-// Base Axios instance used by all feature services.
-// During dev, Vite proxy forwards /api/* to Django on :8000.
-// In production, VITE_API_BASE_URL is set in the environment.
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
+const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+
+// Raw Axios instance without 401 retry interceptors (e.g. for refresh token calls)
+export const rawApi = axios.create({
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
   timeout: 10000,
 })
 
+// Base Axios instance used by all feature services.
+const api = axios.create({
+  baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
+})
+
+// Track ongoing refresh to prevent concurrent refresh requests
+let isRefreshing = false
+let refreshSubscribers: Array<{
+  resolve: (token: string) => void
+  reject: (error: unknown) => void
+}> = []
+
+// Add subscriber to be notified when refresh completes
+function subscribeTokenRefresh(
+  resolve: (token: string) => void,
+  reject: (error: unknown) => void
+) {
+  refreshSubscribers.push({ resolve, reject })
+}
+
+// Notify all subscribers and clear the list
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach(({ resolve }) => resolve(token))
+  refreshSubscribers = []
+}
+
+function onRefreshFailed(error: unknown) {
+  refreshSubscribers.forEach(({ reject }) => reject(error))
+  refreshSubscribers = []
+}
+
+// Auth endpoints that should never trigger 401 token refresh
+const PUBLIC_AUTH_PATHS = [
+  '/auth/login/',
+  '/auth/refresh/',
+  '/auth/register/',
+  '/auth/verify-email/',
+  '/auth/password-reset/',
+  '/auth/password-reset-confirm/',
+  '/accounts/resend-verification/',
+]
+
+function isPublicAuthEndpoint(url?: string): boolean {
+  if (!url) return false
+  return PUBLIC_AUTH_PATHS.some((path) => url.includes(path))
+}
+
 // Attach JWT access token to every request if present
-api.interceptors.request.use((config) => {
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('access_token')
-  if (token) {
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type']
   }
   return config
 })
 
-// On 401, clear tokens and redirect to login
+// Handle 401 responses with token refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+  async (error: AxiosError) => {
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined
+
+    if (!originalRequest) {
+      return Promise.reject(error)
     }
-    return Promise.reject(error)
+
+    // If error is not 401 or request is already retried, reject immediately (loop protection)
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error)
+    }
+
+    // Don't attempt refresh for auth endpoints themselves
+    if (isPublicAuthEndpoint(originalRequest.url)) {
+      return Promise.reject(error)
+    }
+
+    // If already refreshing, queue this request
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        subscribeTokenRefresh(
+          (newToken: string) => {
+            originalRequest._retry = true
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`
+            }
+            resolve(api(originalRequest))
+          },
+          (refreshError: unknown) => {
+            reject(refreshError)
+          }
+        )
+      })
+    }
+
+    // Mark as refreshing and attempt refresh
+    isRefreshing = true
+    originalRequest._retry = true
+
+    try {
+      // Dispatch refresh action to update Redux state
+      const result = await store.dispatch(refreshAccessToken())
+
+      if (refreshAccessToken.fulfilled.match(result)) {
+        const newToken = result.payload.access
+        isRefreshing = false
+        onRefreshed(newToken)
+
+        // Retry original request with new token
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+        }
+        return api(originalRequest)
+      } else {
+        // Refresh failed - notify subscribers, logout and redirect
+        isRefreshing = false
+        onRefreshFailed(error)
+
+        const state = store.getState()
+        await store.dispatch(logoutUser(state.auth.refreshToken))
+
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+        return Promise.reject(error)
+      }
+    } catch (refreshError) {
+      // Refresh failed - notify subscribers, logout and redirect
+      isRefreshing = false
+      onRefreshFailed(refreshError)
+
+      const state = store.getState()
+      await store.dispatch(logoutUser(state.auth.refreshToken))
+
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+      return Promise.reject(refreshError)
+    }
   }
 )
 

@@ -1,305 +1,237 @@
 # AI Internship Platform
 
-An AI-powered platform that matches students with internships using semantic embeddings, skill matching, and weighted scoring. Students get ranked, explained recommendations based on their profile and CV.
+An AI-powered platform that matches students with internships using semantic embeddings, skill matching, and weighted scoring. Students receive ranked, explained recommendations based on their profile and CV.
 
----
+## Overview
 
-## Phase 1 — Domain Models & Data Architecture (Complete)
+The project combines a Django REST API backend, an AI recommendation engine, and a React + TypeScript frontend to support internship discovery, student profiling, CV parsing, and admin monitoring.
 
-Phase 1 establishes the relational domain model for the entire AI Internship Platform, implementing all 13 core entities, cascade delete behaviors, uniqueness constraints, and the AI matching score breakdown.
+### Core capabilities
 
-### What Phase 1 delivers
+- Student registration, login, profile building, and CV upload
+- AI-powered internship recommendation engine
+- Saved internships and application tracking
+- Admin dashboard with analytics, review queue, and data source health monitoring
+- Production-ready Docker setup for backend, frontend, Postgres, Redis, and Celery
 
-- **All 13 Section 3.6 Domain Entities** fully implemented and registered in Django ORM:
-  1. `User` (`accounts`): Custom user with `AbstractBaseUser` + `PermissionsMixin` and email authentication.
-  2. `Student` (`students`): Profile model composed with `User` (`OneToOneField`, cascade on user delete).
-  3. `Skill` (`internships`): Shared skill catalogue with categorization.
-  4. `StudentSkill` (`students`): Student-to-Skill M2M with proficiency ratings and duplicate prevention constraints.
-  5. `CareerInterest` (`students`): Career interest catalogue.
-  6. `StudentInterest` (`students`): Student-to-Interest M2M with duplicate prevention constraints.
-  7. `Company` (`companies`): Organization entity with industry and website metadata.
-  8. `DataSource` (`data_sources`): Ingestion origin entity (`api`, `rss`, `career_site`) with JSON configs.
-  9. `Internship` (`internships`): Internship opportunities with company/data_source links, work mode, salary, and SHA-256 deduplication hashes.
-  10. `InternshipSkill` (`internships`): Internship-to-Skill requirement links with unique constraints.
-  11. `Recommendation` (`recommendations`): Score breakdown (`overall_score`, `skill_score`, `education_score`, `interest_score`, `experience_score`, `location_score`, `work_mode_score`), JSON explanations, and "latest wins" upsert pattern.
-  12. `SavedInternship` (`internships`): Student-to-Internship bookmarks.
-  13. `ApplicationHistory` (`applications`): External application click tracking with timestamps.
-- **Unified `apps.students` architecture**: Consolidates all student profile, CV analysis, skills, and interest logic under `backend/apps/students/`.
-- **Entity Relationship Model (Figure 3.1)** validated via `django-extensions` `graph_models`.
-- **Clean Migration History**: Full migration sequence runs cleanly from scratch (`0001` to latest) on an empty PostgreSQL database with pgvector.
+## Architecture
 
----
+### Backend
 
-## Entity Relationship Diagram (Figure 3.1)
+- Django 6 + Django REST Framework
+- JWT authentication and role-based access control
+- Celery + Redis for async CV parsing and notifications
+- PostgreSQL database
+- AI engine with embeddings, semantic matching, and recommendation scoring
 
-```mermaid
-erDiagram
-    Student }|..|{ User : "user"
-    StudentSkill }|..|{ Student : "student"
-    StudentSkill }|..|{ Skill : "skill"
-    StudentInterest }|..|{ Student : "student"
-    StudentInterest }|..|{ CareerInterest : "interest"
-    Internship }|..|{ Company : "company"
-    Internship }|..|{ DataSource : "data_source"
-    Internship }|..|{ InternshipSource : "source"
-    Internship }|..|{ User : "verified_by"
-    InternshipSkill }|..|{ Internship : "internship"
-    InternshipSkill }|..|{ Skill : "skill"
-    Recommendation }|..|{ User : "student"
-    Recommendation }|..|{ Internship : "internship"
-    SavedInternship }|..|{ User : "student"
-    SavedInternship }|..|{ Internship : "internship"
-    ApplicationHistory }|..|{ User : "student"
-    ApplicationHistory }|..|{ Internship : "internship"
-```
+### Frontend
 
----
+- React + TypeScript + Vite
+- Tailwind CSS and component-based UI
+- Protected and role-based routing for student and admin access
+- API integration with JWT refresh flow and application tracking
 
-## Project Structure
+### Infrastructure
 
-```
+- `docker-compose.yml` for local development
+- `docker-compose.prod.yml` for production deployment
+- `backend/Dockerfile` and `frontend/Dockerfile`
+- Nginx serving the frontend and proxying API requests in production
+
+## Repository structure
+
+```text
 ai-internship-platform/
-├── backend/                        # Django REST Framework + AI engine
+├── backend/
+│   ├── ai_engine/
 │   ├── apps/
-│   │   ├── accounts/               # User auth, JWT, email verification
-│   │   ├── students/               # Student profile, CV upload, skills, interests, embeddings
-│   │   ├── internships/            # Internship listings, skills, sources
-│   │   ├── recommendations/        # Recommendation scoring and history
-│   │   ├── applications/           # Application tracking & click history
-│   │   ├── companies/              # Company entities & admin management
-│   │   ├── data_sources/           # Ingestion sources & configs
-│   │   ├── notifications/          # Notifications
-│   │   ├── analytics/              # Analytics
-│   │   └── common/                 # Shared TimeStampedModel & utilities
-│   ├── ai_engine/                  # Standalone AI package (not a Django app)
-│   │   ├── models/                 # Dataclasses: StudentInput, InternshipInput, etc.
-│   │   ├── embeddings/             # Text → 384-dim vector (sentence-transformers)
-│   │   ├── resume_parser/          # CV extraction + spaCy NER + OpenAI parsing
-│   │   ├── skill_matching/         # Exact skill intersection scoring
-│   │   ├── semantic_matching/      # Cosine similarity over embeddings
-│   │   ├── ranking/                # Weighted score aggregation
-│   │   ├── recommendation.py       # Top-level orchestrator
-│   │   └── explanation.py          # Human-readable match explanation
-│   ├── config/                     # Django settings (base / development / production)
-│   ├── docker/postgres/init.sql    # pgvector extension setup for Docker
-│   ├── scripts/                    # Phase verification test scripts
-│   │   ├── verify_phase1_definition_of_done.py  # Master Phase 1 DoD validator
-│   │   ├── verify_clean_db_migration.py         # Scratch DB migration validator
-│   │   ├── verify_task1_erd.py                  # ERD graph checker
-│   │   ├── verify_user_student.py               # Task 1.2 test suite
-│   │   ├── verify_skills_interests.py           # Task 1.3 test suite
-│   │   ├── verify_company_datasource.py         # Task 1.4 test suite
-│   │   ├── verify_internship_skills.py          # Task 1.5 test suite
-│   │   ├── verify_recommendations_applications.py # Task 1.6 test suite
-│   │   └── verify_ai_engine.py                  # AI engine validator
-│   ├── Dockerfile                  # Django container
+│   ├── config/
+│   ├── media/
+│   ├── scripts/
+│   ├── requirements/
 │   ├── manage.py
-│   └── requirements/
-│       └── base.txt
-├── frontend/                       # Vite + React + TypeScript
-│   └── src/
-│       ├── components/             # Reusable UI components
-│       ├── pages/                  # Route-level pages
-│       │   └── HomePage.tsx        # Health check page
-│       ├── features/               # Redux slices per domain
-│       │   └── auth/authSlice.ts
-│       ├── services/api.ts         # Axios instance with JWT interceptors
-│       ├── store/                  # Redux store
-│       ├── routes/                 # React Router configuration
-│       ├── hooks/                  # Typed useAppDispatch / useAppSelector
-│       └── types/                  # TypeScript interfaces matching Django models
-├── docker-compose.yml              # postgres:15 + redis:7 + backend
-├── .gitignore
-└── README.md
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── README.md
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── README.md
+├── COMPONENT_AUDIT_REPORT.md
+├── DESIGN_SYSTEM.md
+├── FRONTEND_MODERNIZATION_PROGRESS.md
+├── FRONTEND_UI_AUDIT_REPORT.md
+├── PHASE_11_VERIFICATION_REPORT.md
+├── TASK_11.6_BACKUP_RECOVERY_REPORT.md
+└── ...
 ```
 
----
-
-## Quick Start
+## Local development setup
 
 ### Prerequisites
 
 - Python 3.12+
 - Node.js 20+
-- PostgreSQL (native install or Docker)
-- Redis (native install or Docker)
+- PostgreSQL
+- Redis
 
-### 1. Backend
+### 1) Backend
 
 ```bash
 cd backend
 
-# Create and activate virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
 
-# Download spaCy model (one-time)
-python -m spacy download en_core_web_sm
-
-# Configure environment
-cp .env.example .env
-# Edit .env — set DATABASE_URL and other values
-
-# Set up database (PostgreSQL must be running)
-sudo -u postgres psql -d ai_internship -c "CREATE EXTENSION IF NOT EXISTS vector;"
 python manage.py migrate
-
-# Run backend
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 ```
 
-Backend available at `http://localhost:8000`
-
-### 2. Frontend
+### 2) Frontend
 
 ```bash
 cd frontend
+
 npm install
 npm run dev
 ```
 
-Frontend available at `http://localhost:5173`
+The frontend runs at http://localhost:5173 and the backend at http://localhost:8000.
 
-Open `http://localhost:5173` — the page shows **Backend /api/health/: OK** in green when the frontend and backend are connected.
+## Environment variables
 
-### 3. Infrastructure via Docker (alternative to native)
+Use secure values in your deployment environment. Essential examples include:
 
-```bash
-# Start PostgreSQL and Redis in Docker
-docker-compose up -d db redis
+### Backend
 
-# Then run backend natively as above
-cd backend && python manage.py runserver
-```
+- `SECRET_KEY`
+- `DEBUG`
+- `ALLOWED_HOSTS`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `CELERY_BROKER_URL`
+- `CELERY_RESULT_BACKEND`
+- `SITE_BASE_URL`
+- `EMAIL_BACKEND`
+- `CORS_ALLOWED_ORIGINS`
+- `CSRF_TRUSTED_ORIGINS`
 
----
-
-## Tech Stack
-
-| Layer             | Technology                                          |
-| ----------------- | --------------------------------------------------- |
-| Backend framework | Django 6.0 + Django REST Framework                  |
-| Auth              | JWT (SimpleJWT) + django-allauth (Google OAuth)     |
-| Database          | PostgreSQL 15 + pgvector (vector similarity search) |
-| Task queue        | Celery + Redis                                      |
-| AI / embeddings   | sentence-transformers (all-MiniLM-L6-v2, 384-dim)   |
-| CV parsing        | spaCy (en_core_web_sm) + OpenAI GPT-4o-mini         |
-| Frontend          | Vite + React 18 + TypeScript                        |
-| State management  | Redux Toolkit                                       |
-| Styling           | Tailwind CSS                                        |
-| API docs          | drf-spectacular (Swagger + ReDoc)                   |
-
----
-
-## API Documentation
-
-With the backend running:
-
-- Swagger UI: `http://localhost:8000/api/docs/`
-- ReDoc: `http://localhost:8000/api/redoc/`
-- Health check: `http://localhost:8000/api/health/`
-
----
-
----
-
-## Testing and Verification
-
-### 1. Phase 1 Definition of Done Master Validator
-
-Runs full automated verification of all 13 entities, cascade deletion behaviors, unique constraints, `graph_models` output, and a clean database migration from scratch:
-
-```bash
-cd backend
-source .venv/bin/activate
-python scripts/verify_phase1_definition_of_done.py
-```
-
-### 2. Django Unit Tests
-
-Run unit tests across all applications:
-
-```bash
-cd backend
-source .venv/bin/activate
-python manage.py test --noinput apps.accounts apps.companies apps.data_sources apps.applications apps.recommendations apps.students apps.internships apps.common
-```
-
-### 3. Individual Phase 1 Verification Scripts
-
-```bash
-python scripts/verify_user_student.py               # Task 1.2
-python scripts/verify_skills_interests.py           # Task 1.3
-python scripts/verify_company_datasource.py         # Task 1.4
-python scripts/verify_internship_skills.py          # Task 1.5
-python scripts/verify_recommendations_applications.py # Task 1.6
-python scripts/verify_task1_erd.py                  # ERD graph check
-python scripts/verify_clean_db_migration.py         # Clean DB migration check
-```
-
----
-
-## Verify AI Engine
-
-```bash
-cd backend
-source .venv/bin/activate
-python scripts/verify_ai_engine.py
-```
-
-Expected: `All 15 checks passed.`
-
----
-
-## Branch Strategy
-
-| Branch         | Purpose                          |
-| -------------- | -------------------------------- |
-| `main`         | Stable, phase-complete snapshots |
-| `backend-dev`  | Backend feature work             |
-| `frontend-dev` | Frontend feature work            |
-| `ai-dev`       | AI engine work                   |
-
-Feature branches merge into their integration branch via PR. Integration branches merge into `main` at phase completion.
-
----
-
-## Environment Variables
-
-Copy `backend/.env.example` to `backend/.env` and fill in:
+### Frontend
 
 ```env
-SECRET_KEY=your-secret-key
-DEBUG=True
-ALLOWED_HOSTS=127.0.0.1,localhost
-
-# Local Docker Compose (default)
-DATABASE_URL=postgresql://ai_user:ai_password@localhost:5432/ai_internship
-
-# Redis
-REDIS_URL=redis://localhost:6379/1
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
-
-# Email
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-email@gmail.com
-EMAIL_HOST_PASSWORD=your-app-password
-
-# OpenAI (for CV analysis — optional at Phase 0)
-OPENAI_API_KEY=your-key
-
-# Google OAuth (optional)
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-client-secret
+VITE_API_BASE_URL=http://localhost:8000/api
+VITE_BACKEND_URL=http://localhost:8000
 ```
 
----
+## Production deployment
 
-## Contact
+### Production stack
 
-amanueldev03@gmail.com
+The repository includes a production stack with:
+
+- PostgreSQL database service
+- Redis service
+- Django backend running under Gunicorn
+- Celery worker and scheduler
+- Frontend app served via Nginx
+
+### Deployment steps
+
+1. Create the root Compose environment file from the checked-in template:
+
+```bash
+cp .env.prod.example .env
+```
+
+    Edit `.env` and replace every placeholder, especially `SECRET_KEY`, `POSTGRES_PASSWORD`, `ALLOWED_HOSTS`, `SITE_BASE_URL`, `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, and `CSRF_TRUSTED_ORIGINS`.
+
+2. Build and start the stack:
+
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+3. Run database migrations:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py migrate
+```
+
+4. Create an admin account if needed:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+```
+
+5. Collect static files:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py collectstatic --noinput
+```
+
+6. Verify the health endpoint:
+
+```bash
+curl http://localhost:8000/api/health/
+```
+
+7. Enable HTTPS termination in front of the app and set secure cookies/CORS rules for production.
+
+8. Review application logs:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f backend celery worker
+```
+
+## Verification summary
+
+### Backend
+
+- Django production settings load successfully after installing required runtime packages
+- `python manage.py check --deploy --settings=config.settings.production` runs without fatal errors
+- Remaining issues are warnings for HSTS, secure cookies, schema type hints, and naming collisions, which are production hardening recommendations rather than startup blockers
+
+### Frontend
+
+- Production build passes successfully:
+
+```bash
+cd frontend
+npm run build
+```
+
+- Output is generated in `frontend/dist/` without TypeScript fail or broken bundle generation
+
+## Production readiness verdict
+
+The application is in a strong deployment-ready state for a properly configured production environment. The codebase and deployment structure are in place, the frontend build passes, and the backend production configuration loads successfully once the required runtime packages are installed.
+
+The remaining deployment work is mostly operational: secure the environment variables, ensure HTTPS is terminated correctly, and harden cookie/CSRF settings in the production site configuration.
+
+## Business logic flow
+
+1. User registers and completes a profile
+2. User uploads a CV and extracts skills/education information
+3. Recommendation engine ranks internships based on skill and semantic match score
+4. User saves or applies to internships
+5. Admin reviews flagged or duplicate postings and monitors platform data
+6. Analytics track recommendation quality and system health
+
+## Recommended production checklist
+
+- Set a strong unique `SECRET_KEY`
+- Keep the app behind HTTPS-only ingress
+- Restrict `ALLOWED_HOSTS`
+- Use secure PostgreSQL and Redis credentials
+- Configure email delivery with a real provider
+- Enable Sentry or another error-monitoring system
+- Run a hardened reverse proxy or load balancer in front of the app

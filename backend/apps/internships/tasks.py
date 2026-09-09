@@ -5,6 +5,7 @@ from django.utils import timezone
 from .models import Internship, InternshipSource
 from .services.collector import collect_source
 from .services.embedding_service import regenerate_internship_embedding
+from apps.data_sources.services.urlcheck import validate_listing_urls
 
 
 logger = logging.getLogger(__name__)
@@ -89,18 +90,21 @@ def schedule_active_source_collections():
 @shared_task
 def expire_internships():
     """
-    Automatically expire active internships whose
-    application deadline has passed.
+    Daily task — expire active internships whose deadline is strictly
+    before today (Section 3.10.7, Task 5.8).
+
+    Scheduled by Celery Beat at 00:00 UTC. A listing whose
+    ``deadline`` has already passed is flipped to ``expired`` so it
+    drops out of the Phase 4 active search results.
     """
 
-    now = timezone.now()
+    today = timezone.localdate()
 
     expired_count = (
         Internship.objects
         .filter(
+            deadline__lt=today,
             status=Internship.STATUS_ACTIVE,
-            application_deadline__isnull=False,
-            application_deadline__lte=now,
         )
         .update(
             status=Internship.STATUS_EXPIRED,
@@ -110,6 +114,67 @@ def expire_internships():
     return {
         "status": "success",
         "expired_count": expired_count,
+        "expired_before": today.isoformat(),
+    }
+
+
+@shared_task
+def validate_listing_urls_task(internship_id):
+    """
+    Async URL validation for one collected listing (Section 3.10.8,
+    Task 5.9).
+
+    Sends HEAD (fallback GET) requests to the listing's
+    ``application_url`` and ``source_url``. Listings with any invalid
+    or unreachable link are flagged ``needs_review=True`` and kept off
+    the student-facing feed (status stays ``draft``) for admin review;
+    listings whose links all resolve are auto-published.
+    """
+
+    internship = Internship.objects.get(id=internship_id)
+
+    result = validate_listing_urls(
+        internship.application_url,
+        internship.source_url or "",
+    )
+
+    checks = result["checks"]
+    low_confidence_skills = [
+        entry
+        for entry in internship.skills_review or []
+        if entry.get("low_confidence")
+    ]
+
+    needs_review = bool(result["invalid_urls"]) or bool(
+        low_confidence_skills
+    )
+
+    internship.url_validation = checks
+    internship.validated_at = timezone.now()
+    internship.needs_review = needs_review
+
+    if needs_review:
+        internship.status = Internship.STATUS_DRAFT
+    else:
+        internship.status = Internship.STATUS_ACTIVE
+        internship.is_verified = True
+
+    internship.save(
+        update_fields=[
+            "url_validation",
+            "validated_at",
+            "needs_review",
+            "status",
+            "is_verified",
+            "updated_at",
+        ]
+    )
+
+    return {
+        "internship_id": internship.id,
+        "status": internship.status,
+        "needs_review": needs_review,
+        "invalid_urls": result["invalid_urls"],
     }
 
 

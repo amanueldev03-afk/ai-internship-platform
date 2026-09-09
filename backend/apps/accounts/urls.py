@@ -1,72 +1,45 @@
 from django.urls import path
 
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
-)
 from .views import (
-    AdminLoginView,
-    StudentLoginView,
-    StudentRegistrationView,
     LogoutView,
     CurrentUserView,
-    EmailVerificationView,
     ResendVerificationView,
-    ForgotPasswordView,
-    ResetPasswordView,
     ChangePasswordView,
+    EmailVerificationLinkView,
+    LegacyEmailVerificationView,
+    LoginView,
+    PasswordResetView,
 )
 
 urlpatterns = [
+    # Backward-compatible aliases retained for existing clients.
+    path("student/login/", LoginView.as_view(), name="legacy-student-login"),
     path(
-        "register/",
-        StudentRegistrationView.as_view(),
-        name="student-register",
+        "verify-email/",
+        LegacyEmailVerificationView.as_view(),
+        name="legacy-verify-email",
     ),
+    path("forgot-password/", PasswordResetView.as_view(),
+         name="legacy-forgot-password"),
     path(
-        "admin/login/",
-        AdminLoginView.as_view(),
-        name="admin-login",
+        "verify-email/<str:uid>/<str:token>/",
+        EmailVerificationLinkView.as_view(),
+        name="legacy-verify-email-link",
     ),
-    path(
-        "student/login/",
-        StudentLoginView.as_view(),
-        name="student-login",
-    ),
-
     path(
         "logout/",
         LogoutView.as_view(),
         name="logout",
-),
+    ),
     path(
         "me/",
         CurrentUserView.as_view(),
         name="current-user",
     ),
     path(
-        "token/refresh/",
-        TokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
-    path(
-        "verify-email/",
-        EmailVerificationView.as_view(),
-        name="verify-email",
-    ),
-    path(
         "resend-verification/",
         ResendVerificationView.as_view(),
         name="resend-verification",
-    ),
-    path(
-        "forgot-password/",
-        ForgotPasswordView.as_view(),
-        name="forgot-password",
-    ),
-    path(
-        "reset-password/",
-        ResetPasswordView.as_view(),
-        name="reset-password",
     ),
     path(
         "change-password/",

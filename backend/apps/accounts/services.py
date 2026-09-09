@@ -25,16 +25,24 @@ def validate_email_address(email):
         return False
 
 
-def create_student_user(*, email, username, password):
+def create_student_user(*, email, password, username=None,
+                        first_name="", last_name=""):
     """
-    Create a new student account.
+    Create a new student account (Task 2.1).
+
+    The user starts INACTIVE (``is_active=False``) and unverified until they
+    confirm their email address. The empty ``StudentProfile`` shell is created
+    by the registration flow (see ``StudentRegistrationSerializer``).
     """
 
     user = User.objects.create(
         email=email,
         username=username,
+        first_name=first_name,
+        last_name=last_name,
         role=User.Role.STUDENT,
-        is_active=True,
+        # Account is dormant until the email is verified.
+        is_active=False,
         is_email_verified=False,
     )
 
@@ -56,9 +64,14 @@ def send_verification_email(user):
         user
     )
 
-    verification_url = (
-        f"http://localhost:3000/verify-email/"
-        f"{uid}/{token}/"
+    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    api_verification_url = (
+        f"{site_url}/api/auth/verify-email/{uid}/{token}/"
+    )
+    frontend_verification_url = (
+        f"{frontend_url}"
+        f"/verify-email?uid={uid}&token={token}"
     )
 
     try:
@@ -69,8 +82,9 @@ def send_verification_email(user):
                 f"Hello {user.username},\n\n"
                 f"Thank you for registering.\n\n"
                 f"Please verify your email address "
-                f"using the link below:\n\n"
-                f"{verification_url}\n\n"
+                f"using one of the links below:\n\n"
+                f"{frontend_verification_url}\n"
+                f"{api_verification_url}\n\n"
                 f"If you did not create this account, "
                 f"please ignore this email."
             ),
@@ -100,9 +114,14 @@ def send_password_reset_email(user):
         user
     )
 
-    reset_url = (
-        f"http://localhost:3000/reset-password/"
-        f"{uid}/{token}/"
+    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    api_reset_url = (
+        f"{site_url}/api/auth/password-reset-confirm/{uid}/{token}/"
+    )
+    frontend_reset_url = (
+        f"{frontend_url}"
+        f"/reset-password?uid={uid}&token={token}"
     )
 
     send_mail(
@@ -112,8 +131,9 @@ def send_password_reset_email(user):
             f"Hello {user.username},\n\n"
             f"We received a request to reset "
             f"your password.\n\n"
-            f"Reset your password using this link:\n\n"
-            f"{reset_url}\n\n"
+                f"Reset your password using one of these links:\n\n"
+                f"{frontend_reset_url}\n"
+                f"{api_reset_url}\n\n"
             f"If you did not request a password reset, "
             f"you can safely ignore this email."
         ),
