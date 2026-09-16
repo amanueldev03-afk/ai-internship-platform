@@ -4,23 +4,23 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-bold shadow-soft transition-all duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary-600 text-white shadow hover:bg-primary-700",
+          "border-transparent bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-glow hover:from-primary-600 hover:to-primary-700",
         secondary:
-          "border-transparent bg-neutral-100 text-neutral-900 hover:bg-neutral-200",
+          "border-neutral-200/80 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200/60 dark:hover:bg-neutral-700",
         destructive:
-          "border-transparent bg-error-600 text-white shadow hover:bg-error-700",
-        outline: "text-neutral-900 border-neutral-300",
+          "border-transparent bg-gradient-to-r from-error-500 to-error-600 text-white shadow-soft hover:from-error-600 hover:to-error-700",
+        outline: "text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:border-primary-400 hover:text-primary-600",
         success:
-          "border-transparent bg-success-100 text-success-700 hover:bg-success-200",
+          "border-transparent bg-gradient-to-r from-emerald-500 to-success-600 text-white shadow-soft hover:from-emerald-600 hover:to-success-700",
         warning:
-          "border-transparent bg-warning-100 text-warning-700 hover:bg-warning-200",
-        info:
-          "border-transparent bg-info-100 text-info-700 hover:bg-info-200",
+          "border-transparent bg-gradient-to-r from-amber-500 to-warning-600 text-white shadow-soft hover:from-amber-600 hover:to-warning-700",
+        accent:
+          "border-transparent bg-gradient-to-r from-accent-500 to-primary-600 text-white shadow-glow-secondary hover:from-accent-600 hover:to-primary-700",
       },
     },
     defaultVariants: {

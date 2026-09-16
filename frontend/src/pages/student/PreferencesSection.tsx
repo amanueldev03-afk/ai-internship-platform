@@ -111,7 +111,7 @@ export default function PreferencesSection({
   if (isLoading) {
     return (
       <SectionCard title="Internship Preferences">
-        <p className="text-sm text-gray-500">Loading your preferences...</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading your preferences...</p>
       </SectionCard>
     )
   }
@@ -206,26 +206,26 @@ export default function PreferencesSection({
           type="checkbox"
           checked={form.availability_immediately}
           onChange={handleChange}
-          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+          className="w-4 h-4 text-primary-600 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 dark:bg-neutral-900"
         />
         <label
           htmlFor="pref-availability-immediately"
-          className="text-sm text-gray-700 cursor-pointer"
+          className="text-sm font-medium text-neutral-700 dark:text-neutral-300 cursor-pointer"
         >
           Available immediately
         </label>
       </div>
 
-      <div className="flex items-center gap-3 pt-1">
+      <div className="flex items-center gap-3 pt-2">
         <button
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+          className="btn-primary inline-flex items-center px-5 py-2.5 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save Preferences'}
         </button>
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
           An availability window that ends before it starts is rejected by the API.
         </span>
       </div>

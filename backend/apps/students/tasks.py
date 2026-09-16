@@ -1,5 +1,6 @@
 import logging
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 
 from .models import CV, StudentProfile
@@ -78,16 +79,21 @@ def _complete_cv_processing(cv, text: str) -> dict:
     cv.extracted_certifications = analysis.get("certifications", [])
     cv.extracted_languages      = analysis.get("languages",      [])
     cv.extracted_experience_years = analysis.get("experience_years", 0.0)
-    cv.save(update_fields=[
-        "extracted_text",
-        "extracted_skills",
-        "extracted_education",
-        "extracted_experience",
-        "extracted_projects",
-        "extracted_certifications",
-        "extracted_languages",
-        "extracted_experience_years",
-    ])
+    try:
+        with transaction.atomic():
+            cv.save(update_fields=[
+                "extracted_text",
+                "extracted_skills",
+                "extracted_education",
+                "extracted_experience",
+                "extracted_projects",
+                "extracted_certifications",
+                "extracted_languages",
+                "extracted_experience_years",
+            ])
+    except CV.NotUpdated:
+        logger.info(f"CV {cv.id} was replaced while processing; ignoring stale task")
+        return {"cv_id": cv.id, "status": "superseded"}
     logger.info(f"CV {cv.id} — extracted data saved to DB")
 
     # 7. Sync skills to student profile M2M
@@ -125,7 +131,12 @@ def _complete_cv_processing(cv, text: str) -> dict:
     # 9. Mark COMPLETED
     cv.processing_status = CV.STATUS_COMPLETED
     cv.processed_at      = timezone.now()
-    cv.save(update_fields=["processing_status", "processed_at"])
+    try:
+        with transaction.atomic():
+            cv.save(update_fields=["processing_status", "processed_at"])
+    except CV.NotUpdated:
+        logger.info(f"CV {cv.id} was replaced before completion; ignoring stale task")
+        return {"cv_id": cv.id, "status": "superseded"}
     logger.info(f"CV {cv.id} → COMPLETED at {cv.processed_at}")
 
     # 10. Bust recommendation cache
@@ -281,6 +292,10 @@ def parse_resume(self, student_id: int):
 
     # Run the shared parsing pipeline (analysis, persist, sync, embedding, cache).
     result = _complete_cv_processing(cv, text)
+
+    if result.get("status") == "superseded":
+        result["student_id"] = student_id
+        return result
 
     # Confirm the async parse by setting the resume_parsed flag.
     try:

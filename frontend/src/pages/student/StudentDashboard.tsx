@@ -1,21 +1,40 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAppDispatch, useAppSelector } from '@/hooks/redux'
-import { logoutUser } from '@/features/auth/authSlice'
+import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { 
+  Sparkles, 
+  FileText, 
+  Bookmark, 
+  Send, 
+  ArrowRight, 
+  Upload, 
+  RefreshCw, 
+  UserCheck, 
+  KeyRound, 
+  AlertCircle,
+  Compass,
+  ChevronRight,
+  Lock,
+  MapPin,
+  Briefcase,
+  ExternalLink
+} from 'lucide-react'
+import { useAppSelector } from '@/hooks/redux'
 import * as authApi from '@/services/authApi'
 import * as studentApi from '@/services/studentApi'
 import { fetchDashboardData } from '@/services/dashboardApi'
+import { searchInternships } from '@/services/internshipApi'
 import type { DashboardData } from '@/services/dashboardApi'
-import type { User } from '@/types'
+import type { User, Internship } from '@/types'
 import type { Skill, CareerInterest } from '@/services/studentApi'
+import { Button } from '@/components/ui/button'
 
 function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-red-700">{message}</span>
+    <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-error-50/80 dark:bg-error-950/40 border border-error-200 dark:border-error-800">
+      <span className="text-xs font-semibold text-error-700 dark:text-error-400">{message}</span>
       <button
         onClick={onRetry}
-        className="text-xs font-medium text-indigo-600 hover:text-indigo-500 underline"
+        className="text-xs font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 underline transition-all duration-200"
       >
         Retry
       </button>
@@ -39,23 +58,36 @@ function ResumeStatusCard({
   onRetry: () => void
 }) {
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-3">
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Resume</span>
+    <div className="card-gradient p-6 rounded-3xl space-y-4 hover:shadow-glow transition-all duration-300 transform hover:-translate-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Resume</span>
+        <div className="w-8 h-8 rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+          <FileText className="w-4 h-4" />
+        </div>
+      </div>
       {error ? (
         <SectionError message="Resume status unavailable" onRetry={onRetry} />
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <span aria-label={`Resume status: ${statusLabel}`} className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+            <span aria-label={`Resume status: ${statusLabel}`} className={`px-3 py-1 rounded-full text-xs font-bold ${statusColor}`}>
               {statusLabel}
             </span>
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
             {hasResume
               ? skillsDetected > 0
                 ? `${skillsDetected} skills detected`
-                : 'Uploaded'
+                : 'Uploaded & Verified'
               : 'Upload to unlock AI recommendations'}
+          </div>
+          <div className="pt-1">
+            <Link
+              to="/profile"
+              className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline inline-flex items-center gap-1"
+            >
+              {hasResume ? 'View Resume' : 'Upload Resume'} <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </>
       )}
@@ -70,6 +102,8 @@ function CountCard({
   onRetry,
   emptyMessage,
   presentMessage,
+  icon: Icon,
+  badgeText,
 }: {
   label: string
   value: number | null
@@ -77,18 +111,34 @@ function CountCard({
   onRetry: () => void
   emptyMessage: string
   presentMessage: string
+  icon: any
+  badgeText?: string
 }) {
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-3">
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
+    <div className="card-gradient p-6 rounded-3xl space-y-4 hover:shadow-glow transition-all duration-300 transform hover:-translate-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">{label}</span>
+        <div className="w-8 h-8 rounded-xl bg-secondary-500/10 text-secondary-600 dark:text-secondary-400 flex items-center justify-center">
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
       {error ? (
         <SectionError message={`${label} unavailable`} onRetry={onRetry} />
       ) : (
         <>
-          <div className="text-3xl font-bold text-gray-900" aria-label={`${value} ${label.toLowerCase()}`}>
-            {value}
+          <div className="flex items-baseline justify-between">
+            <div className="text-3xl font-extrabold gradient-text" aria-label={`${value} ${label.toLowerCase()}`}>
+              {value !== null ? value : '—'}
+            </div>
+            {badgeText && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary-500/10 text-primary-600 dark:text-primary-400">
+                {badgeText}
+              </span>
+            )}
           </div>
-          <div className="text-xs text-gray-500">{value === 0 ? emptyMessage : presentMessage}</div>
+          <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+            {value === 0 ? emptyMessage : presentMessage}
+          </div>
         </>
       )}
     </div>
@@ -119,24 +169,30 @@ function ProfileCompletionCard({
   })()
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 space-y-3">
-      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        Profile Completion
-      </span>
+    <div className="card-gradient p-6 rounded-3xl space-y-4 hover:shadow-glow transition-all duration-300 transform hover:-translate-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+          Profile Strength
+        </span>
+        <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+          <UserCheck className="w-4 h-4" />
+        </div>
+      </div>
       {error ? (
         <SectionError message="Profile completion unavailable" onRetry={onRetry} />
       ) : (
         <>
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline justify-between">
             <span
-              className="text-3xl font-bold text-indigo-600"
+              className="text-3xl font-extrabold gradient-text"
               aria-label={percent === null ? 'Profile completion: unknown percent' : `Profile completion: ${clamped} percent`}
             >
               {percent !== null ? `${clamped}%` : '—'}
             </span>
+            <span className="text-xs font-bold text-neutral-600 dark:text-neutral-300">{statusLabel}</span>
           </div>
           <div
-            className="w-full bg-gray-200 rounded-full h-2"
+            className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2.5 overflow-hidden"
             role="progressbar"
             aria-valuenow={clamped}
             aria-valuemin={0}
@@ -144,17 +200,19 @@ function ProfileCompletionCard({
             aria-label="Profile completion progress"
           >
             <div
-              className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+              className="bg-gradient-to-r from-primary-500 via-secondary-500 to-emerald-500 h-2.5 rounded-full transition-all duration-700 ease-out"
               style={{ width: `${clamped}%` }}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500">{statusLabel}</span>
+          <div className="flex items-center justify-between text-xs font-medium text-neutral-400">
             {sections && (
-              <span className="text-xs text-gray-400">
-                {Object.values(sections).filter(Boolean).length}/{Object.keys(sections).length} sections
+              <span>
+                {Object.values(sections).filter(Boolean).length}/{Object.keys(sections).length} sections done
               </span>
             )}
+            <Link to="/profile" className="text-primary-600 dark:text-primary-400 font-semibold hover:underline">
+              Edit Profile →
+            </Link>
           </div>
         </>
       )}
@@ -163,18 +221,15 @@ function ProfileCompletionCard({
 }
 
 export default function StudentDashboard() {
-  const dispatch = useAppDispatch()
-  const navigate = useNavigate()
   const authUser = useAppSelector((state) => state.auth.user)
-  const { isLoading: isAuthLoading } = useAppSelector((state) => state.auth)
 
   const [user, setUser] = useState<User | null>(authUser)
   const [data, setData] = useState<DashboardData | null>(null)
   const [mySkills, setMySkills] = useState<Skill[]>([])
   const [myInterests, setMyInterests] = useState<CareerInterest[]>([])
+  const [featuredInternships, setFeaturedInternships] = useState<Internship[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
@@ -185,42 +240,34 @@ export default function StudentDashboard() {
     setIsLoading(true)
     setError(null)
     try {
-      console.log('Loading dashboard data...')
-      const [userResult, dashData, skillsResult, interestsResult] = await Promise.allSettled([
+      const [userResult, dashData, skillsResult, interestsResult, internshipsResult] = await Promise.allSettled([
         authApi.getCurrentUser(),
         fetchDashboardData(),
         studentApi.getStudentSkills(),
         studentApi.getStudentInterests(),
+        searchInternships({ page_size: 6 }),
       ])
 
-      console.log('User result:', userResult.status)
-      console.log('Dashboard result:', dashData.status)
-      console.log('Skills result:', skillsResult.status)
-      console.log('Interests result:', interestsResult.status)
-
       if (userResult.status === 'fulfilled') {
-        console.log('User data loaded:', userResult.value)
         setUser(userResult.value)
-      } else {
-        console.error('User load failed:', userResult.reason)
       }
       
       if (skillsResult.status === 'fulfilled') setMySkills(skillsResult.value)
       if (interestsResult.status === 'fulfilled') setMyInterests(interestsResult.value)
+      if (internshipsResult.status === 'fulfilled') {
+        setFeaturedInternships(internshipsResult.value.results.slice(0, 6))
+      }
 
       if (dashData.status === 'fulfilled') {
-        console.log('Dashboard data loaded:', dashData.value)
         setData(dashData.value)
         const d = dashData.value
         if (d.profileError && d.dashboardError && d.recommendationsError && d.resumeError) {
           setError('Failed to load dashboard data. Please try again.')
         }
       } else {
-        console.error('Dashboard load failed:', dashData.reason)
         setError('Failed to load dashboard data. Please try again.')
       }
     } catch (err) {
-      console.error('Unexpected error loading dashboard:', err)
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)
@@ -231,29 +278,7 @@ export default function StudentDashboard() {
     loadData()
   }, [loadData])
 
-  // Close settings menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement
-      const settingsButton = target.closest('[aria-label="Settings"]')
-      const settingsMenu = target.closest('.absolute.right-0.mt-2')
-      
-      if (showSettingsMenu && !settingsButton && !settingsMenu) {
-        setShowSettingsMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showSettingsMenu])
-
-  const handleLogout = async () => {
-    const refreshToken = localStorage.getItem('refresh_token')
-    await dispatch(logoutUser(refreshToken))
-    navigate('/login')
-  }
-
   const handleChangePassword = () => {
-    setShowSettingsMenu(false)
     setShowChangePasswordModal(true)
     setPasswordError(null)
     setPasswordSuccess(null)
@@ -281,21 +306,17 @@ export default function StudentDashboard() {
     setPasswordSuccess(null)
 
     try {
-      const response = await authApi.changePassword({
+      await authApi.changePassword({
         old_password: oldPassword,
         new_password: newPassword,
         new_password_confirm: newPasswordConfirm,
       })
-      console.log('Password change response:', response)
       setPasswordSuccess('Password changed successfully')
       setTimeout(() => {
         setShowChangePasswordModal(false)
         setPasswordSuccess(null)
       }, 2000)
     } catch (err: any) {
-      console.error('Password change error:', err)
-      console.error('Error response:', err.response?.data)
-      // Handle different error formats
       if (err.response?.data) {
         const errorData = err.response.data
         if (typeof errorData === 'string') {
@@ -325,13 +346,11 @@ export default function StudentDashboard() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       alert('Please select an image file')
       return
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert('File size must be less than 5MB')
       return
@@ -349,11 +368,7 @@ export default function StudentDashboard() {
   }
 
   const getProfilePhotoUrl = (user: User | null) => {
-    // Use the full URL from backend if available
-    if (user?.profile_photo_url) {
-      return user.profile_photo_url
-    }
-    // Fallback to constructing URL from relative path
+    if (user?.profile_photo_url) return user.profile_photo_url
     if (user?.profile_photo) {
       if (user.profile_photo.startsWith('http://') || user.profile_photo.startsWith('https://')) {
         return user.profile_photo
@@ -365,9 +380,6 @@ export default function StudentDashboard() {
     return null
   }
 
-  // -----------------------------------------------------------------------
-  // Derived values
-  // -----------------------------------------------------------------------
   const fullName =
     user?.first_name || user?.last_name
       ? `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
@@ -378,8 +390,6 @@ export default function StudentDashboard() {
   const clampedPct = completionPct === null ? 0 : Math.min(100, Math.max(0, completionPct))
   const isComplete = clampedPct === 100
 
-  // Resume state — authoritative source is GET /api/students/me/resume/,
-  // with the student profile's cv_data as a fallback.
   const hasResume = data?.resumeStatus?.has_resume ?? data?.profile?.cv_data?.has_cv ?? false
   const resumeProcessingStatus =
     data?.resumeStatus?.processing_status ?? data?.profile?.cv_data?.processing_status ?? null
@@ -399,176 +409,68 @@ export default function StudentDashboard() {
   })()
 
   const resumeStatusColor = (() => {
-    if (!hasResume) return 'bg-amber-100 text-amber-800'
-    if (resumeProcessingStatus === 'FAILED') return 'bg-red-100 text-red-800'
+    if (!hasResume) return 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
+    if (resumeProcessingStatus === 'FAILED') return 'bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300'
     if (resumeProcessingStatus === 'PENDING' || resumeProcessingStatus === 'PROCESSING')
-      return 'bg-blue-100 text-blue-800'
-    return 'bg-green-100 text-green-800'
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300'
+    return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
   })()
 
-  // -----------------------------------------------------------------------
-  // Loading skeleton
-  // -----------------------------------------------------------------------
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50" role="status" aria-label="Loading dashboard">
+      <div className="min-h-screen p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in" role="status" aria-label="Loading dashboard">
         <span className="sr-only">Loading your dashboard data...</span>
-        {/* Navbar skeleton */}
-        <header className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16 items-center">
-              <div className="flex items-center gap-3">
-                <div className="h-6 w-32 bg-gray-200 rounded animate-pulse" />
-                <div className="h-5 w-14 bg-gray-200 rounded-full animate-pulse" />
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="h-5 w-20 bg-gray-200 rounded animate-pulse" />
-                <div className="h-9 w-16 bg-gray-200 rounded-lg animate-pulse" />
-              </div>
+        <div className="card-gradient p-8 rounded-3xl animate-pulse space-y-4">
+          <div className="h-8 w-64 bg-neutral-200 dark:bg-neutral-800 rounded-xl" />
+          <div className="h-4 w-96 bg-neutral-100 dark:bg-neutral-800/60 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="card-gradient p-6 rounded-3xl animate-pulse space-y-4">
+              <div className="h-3 w-20 bg-neutral-200 dark:bg-neutral-800 rounded" />
+              <div className="h-8 w-16 bg-neutral-200 dark:bg-neutral-800 rounded-lg" />
+              <div className="h-3 w-24 bg-neutral-100 dark:bg-neutral-800/60 rounded" />
             </div>
-          </div>
-        </header>
-
-        <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-          {/* Welcome banner skeleton */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sm:p-8 animate-pulse">
-            <div className="h-7 w-64 bg-gray-200 rounded mb-2" />
-            <div className="h-4 w-96 bg-gray-100 rounded" />
-          </div>
-
-          {/* Cards skeleton */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[...Array(4)].map((_, i) => (
-              <div
-                key={i}
-                className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-pulse space-y-3"
-              >
-                <div className="h-3 w-20 bg-gray-200 rounded" />
-                <div className="h-8 w-16 bg-gray-200 rounded" />
-                <div className="h-3 w-24 bg-gray-100 rounded" />
-              </div>
-            ))}
-          </div>
-        </main>
+          ))}
+        </div>
       </div>
     )
   }
 
-  // Show error if user data failed to load but we have auth
   if (!user && authUser) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Failed to load user data</p>
-          <button
-            onClick={loadData}
-            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-          >
-            Retry
-          </button>
+      <div className="min-h-screen flex items-center justify-center animate-fade-in p-6">
+        <div className="card-gradient p-8 rounded-3xl text-center max-w-md shadow-card">
+          <AlertCircle className="w-12 h-12 text-error-500 mx-auto mb-4" />
+          <p className="text-error-600 dark:text-error-400 font-bold mb-4">Failed to load user profile</p>
+          <Button onClick={loadData} className="w-full rounded-2xl shadow-glow">
+            <RefreshCw className="w-4 h-4 mr-2" /> Retry Connection
+          </Button>
         </div>
       </div>
     )
   }
 
-  // -----------------------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------------------
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Top Navbar */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-3">
-              <span className="text-xl font-extrabold text-indigo-600">AI Internship</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold uppercase">
-                Student
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <Link
-                to="/profile"
-                className="text-sm font-medium text-gray-700 hover:text-indigo-600 transition-colors"
-              >
-                My Profile
-              </Link>
-
-              {/* Settings Menu */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-                  aria-label="Settings"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-
-                {showSettingsMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                    <button
-                      onClick={handleChangePassword}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      Change Password
-                    </button>
-                    <hr className="my-1 border-gray-200" />
-                    <button
-                      onClick={handleLogout}
-                      disabled={isAuthLoading}
-                      className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      {isAuthLoading ? 'Logging out...' : 'Logout'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-        {/* Error banner */}
-        {error && (
-          <div className="rounded-lg bg-red-50 p-4 border border-red-200" role="alert">
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm text-red-700">{error}</p>
-                <button
-                  onClick={loadData}
-                  className="mt-2 text-sm font-medium text-red-600 hover:text-red-500 underline"
-                >
-                  Try again
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Welcome Banner */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sm:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-4">
+    <div className="space-y-8 animate-fade-in pb-12">
+      {/* Top Banner with Greeting & Profile Overview */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/90 via-primary-50/40 to-secondary-50/30 dark:from-neutral-900/90 dark:via-neutral-900/60 dark:to-neutral-800/40 border border-neutral-200/80 dark:border-neutral-800/80 p-6 sm:p-8 backdrop-blur-2xl shadow-soft">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+          <div className="flex items-center gap-5">
             {/* Profile Photo */}
-            <div className="relative">
+            <div className="relative group">
               {getProfilePhotoUrl(user) ? (
                 <img
                   src={getProfilePhotoUrl(user)}
                   alt="Profile"
-                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-white dark:border-neutral-700 shadow-glow transition-all duration-300 group-hover:scale-105"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
-                  <span className="text-gray-400 text-2xl">?</span>
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-primary-600 via-primary-500 to-secondary-500 text-white text-2xl font-black flex items-center justify-center shadow-glow">
+                  {fullName.charAt(0).toUpperCase()}
                 </div>
               )}
-              <label className="absolute bottom-0 right-0 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-1.5 cursor-pointer transition-colors shadow-sm">
+              <label className="absolute -bottom-1 -right-1 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-xl p-1.5 cursor-pointer shadow-soft hover:scale-110 transition-transform">
                 <input
                   type="file"
                   accept="image/*"
@@ -577,367 +479,457 @@ export default function StudentDashboard() {
                   className="hidden"
                 />
                 {isUploadingPhoto ? (
-                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+                  <Upload className="w-3.5 h-3.5" />
                 )}
               </label>
             </div>
+
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Welcome back, {fullName}!</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Here is an overview of your profile and internship activity.
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-neutral-900 dark:text-white">
+                  Welcome back, {fullName}!
+                </h1>
+              </div>
+              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mt-1">
+                Your AI-powered opportunity pipeline is active and analyzing fresh roles.
               </p>
             </div>
           </div>
-          <Link
-            to="/profile"
-            className="inline-flex items-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
-            {isComplete ? 'View Profile' : 'Complete Profile'}
-            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <Link to="/recommendations" className="flex-1 sm:flex-initial">
+              <Button className="w-full sm:w-auto rounded-2xl shadow-glow text-xs sm:text-sm font-bold">
+                <Sparkles className="w-4 h-4 mr-1.5" /> AI Matches
+              </Button>
+            </Link>
+            <Link to="/profile" className="flex-1 sm:flex-initial">
+              <Button variant="secondary" className="w-full sm:w-auto rounded-2xl text-xs sm:text-sm font-bold">
+                {isComplete ? 'View Profile' : 'Complete Profile'}
+              </Button>
+            </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleChangePassword}
+              className="rounded-2xl shrink-0"
+              title="Change Password"
+            >
+              <Lock className="w-4 h-4 text-neutral-500" />
+            </Button>
+          </div>
         </div>
+      </div>
 
-        {/* Summary Count Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Link to="/profile" className="block focus:outline-none hover:scale-[1.01] transition-transform">
-            <ProfileCompletionCard
-              percent={completionPct}
-              sections={sections}
-              error={data?.profileError ?? false}
-              onRetry={loadData}
-            />
-          </Link>
-
-          <Link to="/profile" className="block focus:outline-none hover:scale-[1.01] transition-transform">
-            <ResumeStatusCard
-              hasResume={hasResume}
-              statusLabel={resumeStatusLabel}
-              statusColor={resumeStatusColor}
-              skillsDetected={cvSkillsDetected}
-              error={data?.resumeError ?? false}
-              onRetry={loadData}
-            />
-          </Link>
-
-          <Link to="/recommendations" className="block focus:outline-none hover:scale-[1.01] transition-transform">
-            <CountCard
-              label="Recommendations"
-              value={data?.recommendationsError ? null : recommendationsCount}
-              error={data?.recommendationsError ?? false}
-              onRetry={loadData}
-              emptyMessage="Complete your profile for matches"
-              presentMessage="Internships matched for you"
-            />
-          </Link>
-
-          <Link to="/saved" className="block focus:outline-none hover:scale-[1.01] transition-transform">
-            <CountCard
-              label="Saved"
-              value={data?.dashboardError ? null : savedCount}
-              error={data?.dashboardError ?? false}
-              onRetry={loadData}
-              emptyMessage="No saved internships yet"
-              presentMessage="Internships saved for later"
-            />
-          </Link>
-
-          <Link to="/internships" className="block focus:outline-none hover:scale-[1.01] transition-transform">
-            <CountCard
-              label="Applications"
-              value={data?.dashboardError ? null : applicationsCount}
-              error={data?.dashboardError ?? false}
-              onRetry={loadData}
-              emptyMessage="No applications yet"
-              presentMessage="Internships applied to"
-            />
-          </Link>
+      {/* Error alert if any */}
+      {error && (
+        <div className="rounded-2xl bg-error-50/90 dark:bg-error-950/40 p-4 border border-error-200 dark:border-error-800/80 animate-scale-in" role="alert">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-error-600 dark:text-error-400" />
+              <p className="text-sm font-medium text-error-700 dark:text-error-300">{error}</p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={loadData} className="text-error-600 dark:text-error-400 hover:bg-error-100">
+              Try again
+            </Button>
+          </div>
         </div>
+      )}
 
-        {/* Skills & Interests Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Your Skills & Interests</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Skills ({mySkills.length})</h3>
-              {mySkills.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {mySkills.map((skill) => (
-                    <span
-                      key={skill.id}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100"
-                    >
-                      {skill.name}
-                      {skill.category && <span className="ml-1 text-indigo-400">({skill.category})</span>}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No skills added yet</p>
-              )}
+      {/* KPI Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+        <ProfileCompletionCard
+          percent={completionPct}
+          sections={sections}
+          error={data?.profileError ?? false}
+          onRetry={loadData}
+        />
+
+        <ResumeStatusCard
+          hasResume={hasResume}
+          statusLabel={resumeStatusLabel}
+          statusColor={resumeStatusColor}
+          skillsDetected={cvSkillsDetected}
+          error={data?.resumeError ?? false}
+          onRetry={loadData}
+        />
+
+        <CountCard
+          label="Recommendations"
+          value={data?.recommendationsError ? null : recommendationsCount}
+          error={data?.recommendationsError ?? false}
+          onRetry={loadData}
+          emptyMessage="Complete your profile for matches"
+          presentMessage="Matched for your profile"
+          icon={Sparkles}
+          badgeText="High Fit"
+        />
+
+        <CountCard
+          label="Saved"
+          value={data?.dashboardError ? null : savedCount}
+          error={data?.dashboardError ?? false}
+          onRetry={loadData}
+          emptyMessage="No saved internships yet"
+          presentMessage="Saved internships"
+          icon={Bookmark}
+        />
+
+        <CountCard
+          label="Applied"
+          value={data?.dashboardError ? null : applicationsCount}
+          error={data?.dashboardError ?? false}
+          onRetry={loadData}
+          emptyMessage="No applications yet"
+          presentMessage="Submitted applications"
+          icon={Send}
+        />
+      </div>
+
+      {/* Quick Access Actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          to="/recommendations"
+          className="group card-gradient p-5 rounded-3xl flex items-center justify-between hover:border-primary-400/60 hover:shadow-glow transition-all duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-primary-500/10 text-primary-600 dark:text-primary-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Career Interests ({myInterests.length})</h3>
-              {myInterests.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {myInterests.map((interest) => (
-                    <span
-                      key={interest.id}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100"
-                    >
-                      {interest.name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">No interests added yet</p>
-              )}
+              <p className="text-sm font-bold text-neutral-900 dark:text-white">AI Recommendations</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Personalized matching</p>
             </div>
           </div>
-          {mySkills.length === 0 && myInterests.length === 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <Link
-                to="/profile"
-                className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-              >
-                Add skills and interests to improve your internship matches →
-              </Link>
+          <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:translate-x-1 transition-transform" />
+        </Link>
+
+        <Link
+          to="/internships"
+          className="group card-gradient p-5 rounded-3xl flex items-center justify-between hover:border-secondary-400/60 hover:shadow-glow transition-all duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-secondary-500/10 text-secondary-600 dark:text-secondary-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Compass className="w-5 h-5" />
             </div>
-          )}
+            <div>
+              <p className="text-sm font-bold text-neutral-900 dark:text-white">Browse Internships</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Search all active roles</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:translate-x-1 transition-transform" />
+        </Link>
+
+        <Link
+          to="/profile"
+          className="group card-gradient p-5 rounded-3xl flex items-center justify-between hover:border-emerald-400/60 hover:shadow-glow transition-all duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-neutral-900 dark:text-white">Resume & CV</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">{hasResume ? 'View extraction' : 'Upload CV'}</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:translate-x-1 transition-transform" />
+        </Link>
+
+        <Link
+          to="/applications/history"
+          className="group card-gradient p-5 rounded-3xl flex items-center justify-between hover:border-accent-400/60 hover:shadow-glow transition-all duration-300"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-accent-500/10 text-accent-600 dark:text-accent-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Send className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-neutral-900 dark:text-white">Track Applications</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Application status hub</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:translate-x-1 transition-transform" />
+        </Link>
+      </div>
+
+      {/* Skills & Interests Overview */}
+      <div className="card-gradient p-6 sm:p-8 rounded-3xl shadow-card">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Your Technical Profile & Interests</h2>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              These verified tags are used by the AI engine to compute recommendation similarity.
+            </p>
+          </div>
+          <Link to="/profile">
+            <Button size="sm" variant="ghost" className="rounded-xl text-xs font-bold">
+              Manage Skills <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </Link>
         </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Link to="/recommendations" className="inline-flex items-center px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center mr-3">
-                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                </svg>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-2">
+          <div className="space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-primary-600 dark:text-primary-400">
+              Verified Skills ({mySkills.length})
+            </span>
+            {mySkills.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {mySkills.map((skill) => (
+                  <span
+                    key={skill.id}
+                    className="px-3 py-1 rounded-xl bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 border border-primary-200/70 dark:border-primary-800/80 text-xs font-semibold"
+                  >
+                    {skill.name}
+                    {skill.category && <span className="ml-1 text-primary-400 text-[10px]">({skill.category})</span>}
+                  </span>
+                ))}
               </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">View Recommendations</p>
-                <p className="text-xs text-gray-500">AI-matched internships</p>
-              </div>
-            </Link>
-
-            <Link to="/internships" className="inline-flex items-center px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Browse Internships</p>
-                <p className="text-xs text-gray-500">Explore all active opportunities</p>
-              </div>
-            </Link>
-
-            <Link
-              to="/profile"
-              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-900">Edit Profile</span>
-                <span className="block text-xs text-gray-500">Update your information</span>
-              </div>
-            </Link>
-
-            <Link
-              to="/profile"
-              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-900">
-                  {hasResume ? 'View Resume' : 'Upload Resume'}
-                </span>
-                <span className="block text-xs text-gray-500">
-                  {hasResume ? 'Check parsed content' : 'Unlock AI features'}
-                </span>
-              </div>
-            </Link>
-
-            {!isComplete && (
-              <Link
-                to="/profile"
-                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center group-hover:bg-amber-200 transition-colors">
-                  <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                </div>
-                <div>
-                  <span className="text-sm font-medium text-gray-900">Improve Profile</span>
-                  <span className="block text-xs text-gray-500">Reach {Math.min(100, clampedPct + Math.ceil((100 - clampedPct) / 2))}% completion</span>
-                </div>
-              </Link>
+            ) : (
+              <p className="text-xs text-neutral-400 font-medium">No skills registered yet. Add skills in your profile.</p>
             )}
+          </div>
 
-            <Link
-              to="/profile"
-              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+          <div className="space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+              Career Interests ({myInterests.length})
+            </span>
+            {myInterests.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {myInterests.map((interest) => (
+                  <span
+                    key={interest.id}
+                    className="px-3 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/80 text-xs font-semibold"
+                  >
+                    {interest.name}
+                  </span>
+                ))}
               </div>
-              <div>
-                <span className="text-sm font-medium text-gray-900">Update Preferences</span>
-                <span className="block text-xs text-gray-500">Work mode, location, type</span>
-              </div>
-            </Link>
-
-            <Link
-              to="/recommendations"
-              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-pink-100 flex items-center justify-center group-hover:bg-pink-200 transition-colors">
-                <svg className="w-5 h-5 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-900">View Recommendations</span>
-                <span className="block text-xs text-gray-500">AI-powered internship matches</span>
-              </div>
-            </Link>
-
-            <Link
-              to="/saved"
-              className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
-            >
-              <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
-                <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                </svg>
-              </div>
-              <div>
-                <span className="text-sm font-medium text-gray-900">Saved Internships</span>
-                <span className="block text-xs text-gray-500">View bookmarked internships</span>
-              </div>
-            </Link>
+            ) : (
+              <p className="text-xs text-neutral-400 font-medium">No career interests selected yet.</p>
+            )}
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* Featured Live Internships Section */}
+      <div className="card-gradient p-6 sm:p-8 rounded-3xl shadow-card space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
+                Live Ingested Feed
+              </span>
+              <span className="text-xs text-neutral-400 font-medium">
+                ({featuredInternships.length > 0 ? `${featuredInternships.length} of ${data?.recommendationsCount || '200+'} available` : 'Active positions'})
+              </span>
+            </div>
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white mt-1">Latest Active Internships</h2>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              Real-world positions continuously collected from verified industry data sources and career portals.
+            </p>
+          </div>
+          <Link to="/internships">
+            <Button size="sm" variant="default" className="rounded-xl text-xs font-bold shadow-soft">
+              Browse All Internships <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </Link>
+        </div>
+
+        {featuredInternships.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {featuredInternships.map((internship) => (
+              <div
+                key={internship.id}
+                className="card-gradient p-5 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 flex flex-col justify-between hover:shadow-glow hover:-translate-y-1 transition-all duration-300 group"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-400 capitalize">
+                      {internship.internship_type || 'remote'}
+                    </span>
+                    {internship.work_type && (
+                      <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400 capitalize">
+                        {internship.work_type.replace('_', ' ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-white line-clamp-1 group-hover:text-primary-600 transition-colors">
+                      {internship.title}
+                    </h3>
+                    <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400 mt-0.5">
+                      {internship.organization_name}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-y-1.5 gap-x-3 text-xs text-neutral-500 dark:text-neutral-400 pt-1">
+                    {internship.location_text && (
+                      <span className="inline-flex items-center gap-1 line-clamp-1">
+                        <MapPin className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        <span className="truncate max-w-[140px]">{internship.location_text}</span>
+                      </span>
+                    )}
+                    {internship.category && (
+                      <span className="inline-flex items-center gap-1">
+                        <Briefcase className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        <span className="truncate max-w-[120px]">{internship.category}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {internship.required_skills && internship.required_skills.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {internship.required_skills.slice(0, 3).map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800/80 text-[10px] font-semibold text-neutral-600 dark:text-neutral-300"
+                        >
+                          {typeof skill === 'string' ? skill : (skill as any).name}
+                        </span>
+                      ))}
+                      {internship.required_skills.length > 3 && (
+                        <span className="text-[10px] text-neutral-400 font-semibold self-center">
+                          +{internship.required_skills.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-4 mt-2 border-t border-neutral-100 dark:border-neutral-800">
+                  <Link to={`/internships/${internship.id}`} className="flex-1">
+                    <Button variant="ghost" size="sm" className="w-full rounded-xl text-xs font-bold">
+                      Details
+                    </Button>
+                  </Link>
+                  {internship.application_url ? (
+                    <a
+                      href={internship.application_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1"
+                    >
+                      <Button size="sm" className="w-full rounded-xl text-xs font-bold shadow-glow inline-flex items-center justify-center gap-1">
+                        Apply <ExternalLink className="w-3 h-3 ml-0.5" />
+                      </Button>
+                    </a>
+                  ) : (
+                    <Link to={`/internships/${internship.id}`} className="flex-1">
+                      <Button size="sm" className="w-full rounded-xl text-xs font-bold shadow-glow">
+                        Apply
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 rounded-2xl bg-neutral-50 dark:bg-neutral-900/40 border border-dashed border-neutral-200 dark:border-neutral-800">
+            <Compass className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Syncing live internships...</p>
+            <p className="text-xs text-neutral-400 mt-1">Real-time listings will appear here automatically.</p>
+          </div>
+        )}
+      </div>
 
       {/* Change Password Modal */}
       {showChangePasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="card-gradient rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-glow border border-neutral-200/80 dark:border-neutral-800 animate-scale-in">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Change Password</h2>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-primary-500/10 text-primary-600 dark:text-primary-400 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Change Password</h2>
+              </div>
               <button
                 onClick={() => {
                   setShowChangePasswordModal(false)
                   setPasswordError(null)
                   setPasswordSuccess(null)
                 }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
 
             {passwordSuccess && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p className="text-sm text-green-700">{passwordSuccess}</p>
+              <div className="mb-4 p-3.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-2xl">
+                <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300">{passwordSuccess}</p>
               </div>
             )}
 
             {passwordError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-700">{passwordError}</p>
+              <div className="mb-4 p-3.5 bg-error-50 dark:bg-error-950/50 border border-error-200 dark:border-error-800 rounded-2xl">
+                <p className="text-xs font-bold text-error-700 dark:text-error-300">{passwordError}</p>
               </div>
             )}
 
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div>
-                <label htmlFor="old_password" className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
                   Current Password
                 </label>
                 <input
                   type="password"
-                  id="old_password"
                   name="old_password"
                   required
                   disabled={isChangingPassword}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 rounded-2xl border-2 border-neutral-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
                 />
               </div>
 
               <div>
-                <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
                   New Password
                 </label>
                 <input
                   type="password"
-                  id="new_password"
                   name="new_password"
                   required
                   disabled={isChangingPassword}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 rounded-2xl border-2 border-neutral-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
                 />
               </div>
 
               <div>
-                <label htmlFor="new_password_confirm" className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
                   Confirm New Password
                 </label>
                 <input
                   type="password"
-                  id="new_password_confirm"
                   name="new_password_confirm"
                   required
                   disabled={isChangingPassword}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full px-4 py-2.5 rounded-2xl border-2 border-neutral-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/80 text-sm text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
                 />
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
+              <div className="flex gap-3 pt-3">
+                <Button
                   type="button"
-                  onClick={() => {
-                    setShowChangePasswordModal(false)
-                    setPasswordError(null)
-                    setPasswordSuccess(null)
-                  }}
+                  variant="secondary"
+                  onClick={() => setShowChangePasswordModal(false)}
                   disabled={isChangingPassword}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-2xl text-xs font-bold"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
                   disabled={isChangingPassword}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 rounded-2xl shadow-glow text-xs font-bold"
                 >
-                  {isChangingPassword ? 'Changing...' : 'Change Password'}
-                </button>
+                  {isChangingPassword ? 'Updating...' : 'Update Password'}
+                </Button>
               </div>
             </form>
           </div>

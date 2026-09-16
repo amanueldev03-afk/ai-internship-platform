@@ -173,7 +173,7 @@ export default function PersonalEducationSection({
   if (isLoading) {
     return (
       <SectionCard title="Personal & Education">
-        <p className="text-sm text-gray-500">Loading your details...</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading your details...</p>
       </SectionCard>
     )
   }
@@ -188,17 +188,17 @@ export default function PersonalEducationSection({
 
       {/* Profile Photo Section */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
+        <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">Profile Photo</label>
         <div className="flex items-center gap-4">
           {getProfilePhotoUrl(user) ? (
             <img
               src={getProfilePhotoUrl(user)}
               alt="Profile"
-              className="w-20 h-20 rounded-full object-cover border-2 border-gray-200"
+              className="w-20 h-20 rounded-2xl object-cover border-2 border-neutral-200 dark:border-neutral-700 shadow-glow"
             />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
-              <span className="text-gray-400 text-2xl">?</span>
+            <div className="w-20 h-20 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center border-2 border-neutral-300 dark:border-neutral-700 shadow-glow">
+              <span className="text-neutral-400 dark:text-neutral-500 text-2xl font-bold">?</span>
             </div>
           )}
           <div>
@@ -212,15 +212,15 @@ export default function PersonalEducationSection({
             />
             <label
               htmlFor="profile-photo"
-              className={`inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+              className={`inline-flex items-center px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer shadow-glow transition-all duration-200 hover:scale-105 ${
                 isUploadingPhoto
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed'
+                  : 'btn-primary'
               }`}
             >
               {isUploadingPhoto ? 'Uploading...' : user?.profile_photo ? 'Change Photo' : 'Upload Photo'}
             </label>
-            <p className="text-xs text-gray-500 mt-1">JPEG, PNG, GIF, or WebP (max 5MB)</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1.5 font-medium">JPEG, PNG, GIF, or WebP (max 5MB)</p>
           </div>
         </div>
       </div>
@@ -319,16 +319,16 @@ export default function PersonalEducationSection({
         </div>
       </div>
 
-      <div className="flex items-center gap-3 pt-1">
+      <div className="flex items-center gap-3 pt-2">
         <button
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+          className="btn-primary inline-flex items-center px-5 py-2.5 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {isSaving ? 'Saving...' : 'Save Changes'}
         </button>
-        <span className="text-xs text-gray-400">Updates your profile instantly.</span>
+        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Updates your profile instantly.</span>
       </div>
     </SectionCard>
   )

@@ -38,6 +38,8 @@ export async function searchInternships(filters: InternshipFilters = {}): Promis
   if (filters.duration_min_weeks) params.duration_min_weeks = filters.duration_min_weeks
   if (filters.duration_max_weeks) params.duration_max_weeks = filters.duration_max_weeks
   if (filters.skill) params.skill = filters.skill
+  if (filters.page) params.page = filters.page
+  if (filters.page_size) params.page_size = filters.page_size
   
   const response = await api.get('/internships/', { params })
   return response.data

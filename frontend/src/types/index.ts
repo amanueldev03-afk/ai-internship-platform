@@ -118,11 +118,21 @@ export interface RecommendationResponse {
 
 export interface RecommendationHistoryEntry {
   id: number
-  internship: Internship
+  internship: number | Internship
   internship_title: string
   organization_name: string
+  overall_score?: number
+  semantic_score?: number
+  skill_score?: number
+  preference_score?: number
+  location_score?: number
+  salary_score?: number
   status: string
   recommendation_date: string
+  viewed_at?: string
+  saved_at?: string
+  applied_at?: string
+  ignored_at?: string
   created_at: string
   updated_at: string
 }

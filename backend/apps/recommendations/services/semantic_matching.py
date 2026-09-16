@@ -40,6 +40,13 @@ def build_student_text(student_profile):
         if skills:
             parts.append("Skills: " + ", ".join(skills))
 
+    if hasattr(student_profile, "career_interests"):
+        interests = list(
+            student_profile.career_interests.values_list("name", flat=True)
+        )
+        if interests:
+            parts.append("Career Interests: " + ", ".join(interests))
+
     if getattr(student_profile, "bio", None):
         parts.append("Profile: " + student_profile.bio)
 
@@ -108,6 +115,9 @@ def build_student_text(student_profile):
                                      "; ".join(edu_items[:3]))
         except Exception:
             pass
+
+    if not parts:
+        parts.append("Student intern candidate seeking technology opportunities.")
 
     return "\n".join(parts)
 

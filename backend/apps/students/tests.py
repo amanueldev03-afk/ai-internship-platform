@@ -1173,6 +1173,30 @@ class Phase3ResumeParsingTaskTest(TestCase):
         self.assertTrue(self.profile.resume_parsed)
         self.assertIsNotNone(self.profile.resume_parsed_at)
 
+    def test_parse_resume_ignores_cv_replaced_during_processing(self):
+        """A stale task must not turn a replacement upload into a 500."""
+        from unittest.mock import patch
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import CV
+
+        cv = CV.objects.create(
+            student=self.user,
+            file=SimpleUploadedFile('resume.pdf', self._pdf_bytes()),
+            processing_status=CV.STATUS_PENDING,
+        )
+
+        def extract_and_replace(_file):
+            cv.delete()
+            return "Python Django resume with enough extractable text"
+
+        from apps.students.tasks import parse_resume
+        with patch('apps.students.tasks.extract_cv_text', side_effect=extract_and_replace):
+            result = parse_resume.run(self.user.id)
+
+        self.assertEqual(result['status'], 'superseded')
+        self.profile.refresh_from_db()
+        self.assertFalse(self.profile.resume_parsed)
+
 
 class ProfileCompletionTest(TestCase):
     """

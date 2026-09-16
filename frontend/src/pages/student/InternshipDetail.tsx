@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { MapPin, Briefcase, Calendar, Heart, ExternalLink, AlertCircle, X, Building2, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { getInternshipDetail, getSavedInternships, saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
 import { validateApplicationUrl } from '@/utils/urlValidation'
 import type { Internship } from '@/types'
+import { Button } from '@/components/ui/button'
 
 export default function InternshipDetail() {
   const { id } = useParams<{ id: string }>()
@@ -82,21 +84,18 @@ export default function InternshipDetail() {
   const handleApply = () => {
     setApplyError(null)
 
-    // 1. Validate application URL (syntax, reachability, flagging, dead links)
     const validation = validateApplicationUrl(internship ?? undefined)
     if (!validation.isValid) {
       setApplyError(validation.error || 'The application link for this internship is unavailable or invalid.')
       return
     }
 
-    // 2. Fire-and-forget background tracking (non-blocking with short timeout)
     if (internship) {
       trackApplication(internship.id).catch((err) => {
         console.warn('Background application tracking failed (non-blocking):', err)
       })
     }
 
-    // 3. Immediately redirect student to external employer portal in a new tab
     window.open(internship!.application_url!, '_blank', 'noopener,noreferrer')
     setIsApplied(true)
   }
@@ -115,169 +114,122 @@ export default function InternshipDetail() {
     ? `${internship.city}, ${internship.country}`
     : internship?.city || internship?.country || internship?.location_text || 'Location not specified'
 
-  // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <Link
-              to="/recommendations"
-              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Recommendations
-            </Link>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-            <div className="animate-pulse space-y-6">
-              <div className="h-8 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-6 bg-gray-200 rounded w-1/2"></div>
-              <div className="h-32 bg-gray-200 rounded"></div>
-              <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-              <div className="h-24 bg-gray-200 rounded"></div>
-            </div>
+      <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="card-gradient p-10 rounded-3xl animate-pulse space-y-6">
+            <div className="h-8 bg-neutral-200 dark:bg-neutral-800 rounded-2xl w-3/4"></div>
+            <div className="h-6 bg-neutral-200 dark:bg-neutral-800 rounded-2xl w-1/2"></div>
+            <div className="h-36 bg-neutral-100 dark:bg-neutral-800/60 rounded-2xl"></div>
           </div>
         </div>
       </div>
     )
   }
 
-  // Error state
-  if (error) {
+  if (error || !internship) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <Link
-              to="/recommendations"
-              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Recommendations
-            </Link>
-          </div>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-            <div className="text-red-600 mb-4">
-              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              {error === 'Internship not found' ? 'Internship Not Found' : 'Error Loading Internship'}
-            </h2>
-            <p className="text-gray-600 mb-6">
-              {error === 'Internship not found'
-                ? 'The internship may have been removed or is no longer available.'
-                : 'An error occurred while loading the internship details. Please try again.'}
-            </p>
-            <Link
-              to="/recommendations"
-              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Back to Recommendations
-            </Link>
-          </div>
+      <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-xl mx-auto card-gradient p-10 rounded-3xl text-center space-y-6 shadow-card">
+          <AlertCircle className="w-16 h-16 text-error-500 mx-auto" />
+          <h2 className="text-2xl font-bold text-neutral-900 dark:text-white">
+            {error === 'Internship not found' ? 'Internship Not Found' : 'Error Loading Internship'}
+          </h2>
+          <p className="text-sm text-neutral-500">
+            {error === 'Internship not found'
+              ? 'The opportunity may have expired or been archived.'
+              : 'An error occurred while loading opportunity details.'}
+          </p>
+          <Link to="/recommendations">
+            <Button className="rounded-2xl shadow-glow">
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back to Recommendations
+            </Button>
+          </Link>
         </div>
       </div>
     )
-  }
-
-  // Internship not loaded
-  if (!internship) {
-    return null
   }
 
   const hasApplicationUrl = internship.application_url && internship.application_url.trim() !== ''
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Back Navigation */}
-        <div className="mb-6">
-          <Link
-            to="/recommendations"
-            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to Recommendations
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in pb-16">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Breadcrumb Navigation */}
+        <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider">
+          <Link to="/internships" className="text-primary-600 dark:text-primary-400 hover:underline">
+            Internships
           </Link>
+          <span>/</span>
+          <span className="text-neutral-700 dark:text-neutral-300 truncate max-w-xs">{internship.title}</span>
         </div>
 
-        {/* Main Content */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* Header */}
-          <div className="p-6 sm:p-8 border-b border-gray-100">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="flex-1">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+        {/* Main Card */}
+        <div className="card-gradient rounded-3xl overflow-hidden shadow-card border border-neutral-200/80 dark:border-neutral-800">
+          {/* Header Banner */}
+          <div className="p-6 sm:p-10 border-b border-neutral-200/80 dark:border-neutral-800 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+              <div className="flex-1 space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-primary-500/10 text-primary-600 dark:text-primary-400 text-xs font-bold">
+                  <Building2 className="w-3.5 h-3.5" />
+                  {internship.organization_name}
+                </div>
+                <h1 className="text-2xl sm:text-4xl font-black text-neutral-900 dark:text-white tracking-tight leading-tight">
                   {internship.title}
                 </h1>
-                <p className="text-lg text-gray-600">{internship.organization_name}</p>
               </div>
-              
+
               {/* Save Button */}
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                className={`px-4 py-2.5 rounded-2xl font-bold text-xs sm:text-sm transition-all duration-300 flex items-center gap-2 ${
                   isSaved
-                    ? 'bg-pink-100 text-pink-700 hover:bg-pink-200'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800 shadow-soft'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 border border-neutral-200/80 dark:border-neutral-700'
+                } disabled:opacity-50`}
                 aria-label={isSaved ? 'Unsave' : 'Save'}
               >
-                {isSaving ? '...' : isSaved ? '♥ Saved' : '♡ Save'}
+                <Heart className={`w-4 h-4 ${isSaved ? 'fill-current text-rose-500' : ''}`} />
+                <span>{isSaved ? 'Saved' : 'Save'}</span>
               </button>
             </div>
 
-            {/* Meta Information */}
-            <div className="flex flex-wrap gap-4 mt-6 text-sm text-gray-600">
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+            {/* Meta Tags */}
+            <div className="flex flex-wrap gap-3 text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-neutral-800/90">
+                <MapPin className="w-3.5 h-3.5 text-neutral-400" />
                 {location}
               </span>
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                {internship.internship_type.charAt(0).toUpperCase() + internship.internship_type.slice(1)}
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-neutral-800/90">
+                <Briefcase className="w-3.5 h-3.5 text-neutral-400" />
+                {internship.internship_type ? internship.internship_type.charAt(0).toUpperCase() + internship.internship_type.slice(1) : 'Internship'}
               </span>
-              <span className="flex items-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
+              <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-100/90 dark:bg-neutral-800/90">
+                <Calendar className="w-3.5 h-3.5 text-neutral-400" />
                 Deadline: {formatDate(internship.application_deadline)}
               </span>
             </div>
           </div>
 
-          {/* Description */}
-          <div className="p-6 sm:p-8 border-b border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Description</h2>
-            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-line">
+          {/* Description Section */}
+          <div className="p-6 sm:p-10 border-b border-neutral-200/80 dark:border-neutral-800 space-y-4">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Role Description & Responsibilities</h2>
+            <div className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-line leading-relaxed">
               {internship.description}
             </div>
           </div>
 
-          {/* Required Skills */}
+          {/* Required Skills Section */}
           {internship.required_skills && internship.required_skills.length > 0 && (
-            <div className="p-6 sm:p-8 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Required Skills</h2>
+            <div className="p-6 sm:p-10 border-b border-neutral-200/80 dark:border-neutral-800 space-y-4">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Required Skills & Technologies</h2>
               <div className="flex flex-wrap gap-2">
                 {internship.required_skills.map((skill, index) => (
                   <span
                     key={index}
-                    className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-sm rounded-md"
+                    className="px-3 py-1.5 rounded-xl bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 border border-primary-200/70 dark:border-primary-800/80 text-xs font-bold"
                   >
                     {skill}
                   </span>
@@ -286,48 +238,55 @@ export default function InternshipDetail() {
             </div>
           )}
 
-          {/* Save Error */}
+          {/* Save Error Alert */}
           {saveError && (
-            <div className="p-4 bg-red-50 text-red-700 text-sm">
-              {saveError}
-            </div>
-          )}
-
-          {/* Apply Error */}
-          {applyError && (
-            <div className="p-4 bg-red-50 text-red-700 text-sm border-t border-red-100 flex items-center justify-between">
-              <span>{applyError}</span>
-              <button
-                onClick={() => setApplyError(null)}
-                className="text-red-500 hover:text-red-700 font-bold ml-4"
-              >
-                ✕
+            <div className="p-4 bg-error-50 dark:bg-error-950/50 text-error-700 dark:text-error-300 text-xs font-medium border-t border-error-200 dark:border-error-800 flex items-center justify-between">
+              <span>{saveError}</span>
+              <button onClick={() => setSaveError(null)}>
+                <X className="w-4 h-4 text-error-500" />
               </button>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="p-6 sm:p-8 bg-gray-50">
+          {/* Apply Error Alert */}
+          {applyError && (
+            <div className="p-4 bg-error-50 dark:bg-error-950/50 text-error-700 dark:text-error-300 text-xs font-medium border-t border-error-200 dark:border-error-800 flex items-center justify-between">
+              <span>{applyError}</span>
+              <button onClick={() => setApplyError(null)}>
+                <X className="w-4 h-4 text-error-500" />
+              </button>
+            </div>
+          )}
+
+          {/* Bottom Action Footer */}
+          <div className="p-6 sm:p-10 bg-neutral-50/70 dark:bg-neutral-900/50 flex flex-wrap items-center justify-between gap-4">
             {hasApplicationUrl ? (
-              <div className="flex items-center gap-4">
-                <button
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                <Button
                   onClick={handleApply}
-                  className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                  size="lg"
+                  className="w-full sm:w-auto rounded-2xl shadow-glow text-sm font-bold"
                 >
-                  {isApplied ? 'Applied ✓' : 'Apply Now'}
-                  <span className="sr-only"> — Opens employer website in a new tab</span>
-                </button>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  {isApplied ? 'Applied ✓' : 'Apply on Employer Portal'}
+                </Button>
                 {isApplied && (
-                  <span className="text-sm text-green-700 font-medium">
-                    Redirected to employer site
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> Application tracked
                   </span>
                 )}
               </div>
             ) : (
-              <div className="text-gray-500 text-sm">
-                Application URL not available. Please check back later or contact the employer directly.
-              </div>
+              <p className="text-xs text-neutral-500 font-medium">
+                Application URL not available. Please check back later.
+              </p>
             )}
+
+            <Link to="/internships">
+              <Button variant="ghost" size="sm" className="rounded-xl text-xs font-bold">
+                <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to Search
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

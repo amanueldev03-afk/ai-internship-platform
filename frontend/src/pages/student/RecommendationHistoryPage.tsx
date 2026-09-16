@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Sparkles, Clock, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getRecommendationHistory } from '@/services/recommendationApi'
 import type { RecommendationHistoryEntry } from '@/types'
+import { Button } from '@/components/ui/button'
 
 export default function RecommendationHistoryPage() {
   const [entries, setEntries] = useState<RecommendationHistoryEntry[]>([])
@@ -34,37 +36,135 @@ export default function RecommendationHistoryPage() {
   }, [page])
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        <Link to="/recommendations" className="text-sm text-indigo-600 hover:text-indigo-800">Back to AI Matches</Link>
-        <div className="mt-3 mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Recommendation History</h1>
-          <p className="mt-2 text-gray-600">{count} saved recommendation{count === 1 ? '' : 's'}</p>
+    <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in pb-16">
+      <div className="max-w-5xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="card-gradient p-6 sm:p-8 rounded-3xl shadow-soft">
+          <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
+            <Link to="/recommendations" className="text-primary-600 dark:text-primary-400 hover:underline">
+              AI Matches
+            </Link>
+            <span>/</span>
+            <span className="text-neutral-700 dark:text-neutral-300">History Log</span>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                Recommendation <span className="gradient-text">History</span>
+              </h1>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
+                {count} historical recommendation{count === 1 ? '' : 's'} recorded by the matching engine
+              </p>
+            </div>
+            <Link to="/recommendations">
+              <Button size="sm" className="rounded-2xl shadow-glow text-xs font-bold">
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Current Matches
+              </Button>
+            </Link>
+          </div>
         </div>
-        {loading && <p className="text-gray-600">Loading history...</p>}
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>}
-        {!loading && !error && entries.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-600">No recommendation history yet.</div>
-        )}
-        {!loading && !error && entries.length > 0 && (
-          <div className="space-y-3">
-            {entries.map((entry) => (
-              <Link key={entry.id} to={`/internships/${entry.internship.id}`} className="block rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:border-indigo-300">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="font-semibold text-gray-900">{entry.internship_title}</h2>
-                    <p className="text-sm text-gray-600">{entry.organization_name}</p>
-                  </div>
-                  <time className="text-sm text-gray-500" dateTime={entry.recommendation_date}>{new Date(entry.recommendation_date).toLocaleString()}</time>
-                </div>
-              </Link>
-            ))}
+
+        {loading && (
+          <div className="card-gradient p-8 rounded-3xl animate-pulse space-y-3">
+            <div className="h-6 w-48 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            <div className="h-4 w-96 bg-neutral-100 dark:bg-neutral-800/60 rounded" />
           </div>
         )}
+
+        {error && (
+          <div className="rounded-2xl border border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-950/40 p-4 text-error-700 dark:text-error-300 text-xs font-medium">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && entries.length === 0 && (
+          <div className="card-gradient rounded-3xl p-12 text-center shadow-card space-y-4">
+            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-primary-600 to-secondary-500 rounded-2xl flex items-center justify-center text-white shadow-glow">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-bold text-neutral-900 dark:text-white">No Recommendation History Logged</h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto leading-relaxed">
+              As you interact with new recommendation batches, your historical match records will populate here.
+            </p>
+            <Link to="/recommendations">
+              <Button size="sm" className="rounded-2xl shadow-glow text-xs font-bold">
+                Go to AI Recommendations
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {!loading && !error && entries.length > 0 && (
+          <div className="space-y-4 animate-slide-up">
+            {entries.map((entry) => {
+              const internshipId = typeof entry.internship === 'number'
+                ? entry.internship
+                : (entry.internship as any)?.id || entry.id
+              return (
+                <Link
+                  key={entry.id}
+                  to={`/internships/${internshipId}`}
+                  className="card-gradient block p-5 sm:p-6 rounded-3xl shadow-card hover:shadow-glow hover:border-primary-400/60 transition-all duration-300 group"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-bold text-neutral-900 dark:text-white group-hover:text-primary-600 transition-colors">
+                          {entry.internship_title}
+                        </h2>
+                        {entry.overall_score !== undefined && entry.overall_score !== null && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-500/10 text-primary-600 dark:text-primary-400">
+                            {Math.round(entry.overall_score)}% Match
+                          </span>
+                        )}
+                        {entry.status && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                            {entry.status}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                        {entry.organization_name}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-medium text-neutral-400 shrink-0">
+                      <Clock className="w-3.5 h-3.5" />
+                      <time dateTime={entry.recommendation_date || entry.created_at}>
+                        {new Date(entry.recommendation_date || entry.created_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
+
         {(hasNext || hasPrevious) && (
-          <div className="mt-8 flex justify-center gap-3">
-            <button disabled={!hasPrevious} onClick={() => setPage((current) => current - 1)} className="rounded-md border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
-            <button disabled={!hasNext} onClick={() => setPage((current) => current + 1)} className="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+          <div className="flex justify-center gap-3 pt-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!hasPrevious}
+              onClick={() => setPage((current) => current - 1)}
+              className="rounded-2xl text-xs font-bold"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+            </Button>
+            <Button
+              size="sm"
+              disabled={!hasNext}
+              onClick={() => setPage((current) => current + 1)}
+              className="rounded-2xl shadow-glow text-xs font-bold"
+            >
+              Next <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           </div>
         )}
       </div>

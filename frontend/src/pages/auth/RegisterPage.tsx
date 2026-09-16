@@ -109,11 +109,11 @@ export default function RegisterPage() {
 
   if (registrationSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
-        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center space-y-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 animate-fade-in">
+        <div className="max-w-md w-full card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card text-center space-y-6 animate-scale-in">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-success-400 to-success-600 shadow-glow">
             <svg
-              className="h-8 w-8 text-green-600"
+              className="h-8 w-8 text-white"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -122,23 +122,23 @@ export default function RegisterPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Registration Successful!</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <h1 className="text-2xl font-bold gradient-text dark:text-white">Registration Successful!</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
               We have sent a verification email to{' '}
-              <span className="font-semibold text-gray-800">{registeredEmail}</span>. Please click the link in that email to activate your account before logging in.
+              <span className="font-semibold text-primary-700 dark:text-primary-400">{registeredEmail}</span>. Please click the link in that email to activate your account before logging in.
             </p>
           </div>
           <div className="pt-2 space-y-3">
             <Link
               to="/login"
-              className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+              className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
               Go to Login
             </Link>
             <div>
               <Link
                 to="/verify-email"
-                className="text-xs font-medium text-indigo-600 hover:text-indigo-500"
+                className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors duration-200"
               >
                 Didn't receive an email? Resend verification
               </Link>
@@ -150,20 +150,20 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
+      <div className="max-w-md w-full space-y-8 card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card animate-slide-up">
         <div>
-          <h1 className="text-center text-3xl font-extrabold text-gray-900 tracking-tight">
+          <h1 className="text-center text-3xl font-extrabold gradient-text dark:text-white tracking-tight">
             Create your account
           </h1>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-neutral-600 dark:text-neutral-400 font-medium">
             Join the AI Internship Platform
           </p>
         </div>
 
         {generalBackendError && (
-          <div className="rounded-lg bg-red-50 p-4 border border-red-200" role="alert">
-            <p className="text-sm text-red-700">{generalBackendError}</p>
+          <div className="rounded-xl bg-error-50 p-4 border-2 border-error-200 dark:bg-error-900/20 dark:border-error-800 animate-scale-in" role="alert">
+            <p className="text-sm font-medium text-error-700 dark:text-error-300">{generalBackendError}</p>
           </div>
         )}
 
@@ -171,7 +171,7 @@ export default function RegisterPage() {
         <div>
           <a
             href={googleOAuthUrl}
-            className="w-full flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+            className="btn-secondary w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
           >
             <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
               <path
@@ -195,18 +195,18 @@ export default function RegisterPage() {
           </a>
         </div>
 
-        <div className="relative my-4">
+        <div className="relative my-6">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200"></div>
+            <div className="w-full border-t border-neutral-200 dark:border-dark-border"></div>
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-500">Or continue with email</span>
+            <span className="bg-white dark:bg-dark-card px-4 text-neutral-500 dark:text-neutral-400 font-semibold">Or continue with email</span>
           </div>
         </div>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
           <div>
-            <label htmlFor="full_name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="full_name" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               Full Name
             </label>
             <input
@@ -218,22 +218,22 @@ export default function RegisterPage() {
               value={formData.full_name}
               onChange={handleChange}
               disabled={isLoading}
-              className={`appearance-none block w-full px-3 py-2 border rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 ${
+              className={`input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200 ${
                 clientErrors.full_name || getBackendErrorForField('full_name')
-                  ? 'border-red-300 focus:border-red-500'
-                  : 'border-gray-300 focus:border-indigo-500'
+                  ? 'border-error-300 focus:border-error-500 focus:ring-error-500 dark:border-error-700 dark:focus:border-error-600'
+                  : 'border-neutral-300 focus:border-primary-500 focus:ring-primary-500 dark:border-neutral-700 dark:focus:border-primary-400'
               }`}
               placeholder="Jane Doe"
             />
             {(clientErrors.full_name || getBackendErrorForField('full_name')) && (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs font-medium text-error-600 dark:text-error-400">
                 {clientErrors.full_name || getBackendErrorForField('full_name')}
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               Email address
             </label>
             <input
@@ -245,23 +245,23 @@ export default function RegisterPage() {
               value={formData.email}
               onChange={handleChange}
               disabled={isLoading}
-              className={`appearance-none block w-full px-3 py-2 border rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 ${
+              className={`input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200 ${
                 clientErrors.email || getBackendErrorForField('email')
-                  ? 'border-red-300 focus:border-red-500'
-                  : 'border-gray-300 focus:border-indigo-500'
+                  ? 'border-error-300 focus:border-error-500 focus:ring-error-500 dark:border-error-700 dark:focus:border-error-600'
+                  : 'border-neutral-300 focus:border-primary-500 focus:ring-primary-500 dark:border-neutral-700 dark:focus:border-primary-400'
               }`}
               placeholder="student@example.com"
             />
             {(clientErrors.email || getBackendErrorForField('email')) && (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs font-medium text-error-600 dark:text-error-400">
                 {clientErrors.email || getBackendErrorForField('email')}
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-              Phone number <span className="text-gray-400 font-normal">(optional)</span>
+            <label htmlFor="phone" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+              Phone number <span className="text-neutral-400 dark:text-neutral-500 font-normal">(optional)</span>
             </label>
             <input
               id="phone"
@@ -271,13 +271,13 @@ export default function RegisterPage() {
               value={formData.phone}
               onChange={handleChange}
               disabled={isLoading}
-              className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100"
+              className="input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200"
               placeholder="+1234567890"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               Password
             </label>
             <input
@@ -289,22 +289,22 @@ export default function RegisterPage() {
               value={formData.password}
               onChange={handleChange}
               disabled={isLoading}
-              className={`appearance-none block w-full px-3 py-2 border rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 ${
+              className={`input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200 ${
                 clientErrors.password || getBackendErrorForField('password')
-                  ? 'border-red-300 focus:border-red-500'
-                  : 'border-gray-300 focus:border-indigo-500'
+                  ? 'border-error-300 focus:border-error-500 focus:ring-error-500 dark:border-error-700 dark:focus:border-error-600'
+                  : 'border-neutral-300 focus:border-primary-500 focus:ring-primary-500 dark:border-neutral-700 dark:focus:border-primary-400'
               }`}
               placeholder="••••••••"
             />
             {(clientErrors.password || getBackendErrorForField('password')) && (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs font-medium text-error-600">
                 {clientErrors.password || getBackendErrorForField('password')}
               </p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password_confirm" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password_confirm" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               Confirm Password
             </label>
             <input
@@ -316,15 +316,15 @@ export default function RegisterPage() {
               value={formData.password_confirm}
               onChange={handleChange}
               disabled={isLoading}
-              className={`appearance-none block w-full px-3 py-2 border rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 ${
+              className={`input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200 ${
                 clientErrors.password_confirm || getBackendErrorForField('password_confirm')
-                  ? 'border-red-300 focus:border-red-500'
-                  : 'border-gray-300 focus:border-indigo-500'
+                  ? 'border-error-300 focus:border-error-500 focus:ring-error-500 dark:border-error-700 dark:focus:border-error-600'
+                  : 'border-neutral-300 focus:border-primary-500 focus:ring-primary-500 dark:border-neutral-700 dark:focus:border-primary-400'
               }`}
               placeholder="••••••••"
             />
             {(clientErrors.password_confirm || getBackendErrorForField('password_confirm')) && (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs font-medium text-error-600 dark:text-error-400">
                 {clientErrors.password_confirm || getBackendErrorForField('password_confirm')}
               </p>
             )}
@@ -334,11 +334,11 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="btn-primary w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin -ml-1 mr-h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
@@ -351,10 +351,10 @@ export default function RegisterPage() {
           </div>
 
           <div className="text-center pt-2">
-            <span className="text-sm text-gray-600">Already have an account? </span>
+            <span className="text-sm text-neutral-600 dark:text-neutral-400 font-medium">Already have an account? </span>
             <Link
               to="/login"
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+              className="text-sm font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors duration-200"
             >
               Sign in
             </Link>

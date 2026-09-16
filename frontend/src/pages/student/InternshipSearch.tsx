@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { Sparkles, Bookmark, Compass, RefreshCw } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { searchInternships, getSavedInternships } from '@/services/internshipApi'
 import type { InternshipFilters } from '@/types/filters'
@@ -7,8 +8,8 @@ import type { Internship } from '@/types'
 import SearchFilterBar from '@/components/search/SearchFilterBar'
 import RecommendationCard from '@/components/recommendations/RecommendationCard'
 import RecommendationSkeleton from '@/components/recommendations/RecommendationSkeleton'
-import RecommendationEmptyState from '@/components/recommendations/RecommendationEmptyState'
 import RecommendationErrorState from '@/components/recommendations/RecommendationErrorState'
+import { Button } from '@/components/ui/button'
 
 export default function InternshipSearch() {
   const navigate = useNavigate()
@@ -17,6 +18,7 @@ export default function InternshipSearch() {
   const [filters, setFilters] = useState<InternshipFilters>({})
   const [internships, setInternships] = useState<Internship[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
   const [savedInternships, setSavedInternships] = useState<Set<number>>(new Set())
@@ -67,6 +69,18 @@ export default function InternshipSearch() {
     }
   }, [loadInternships, isAuthenticated, role])
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        loadInternships(),
+        loadSavedState(),
+      ])
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
   const handleApply = async (internshipId: number) => {
     console.log('Applied to internship:', internshipId)
   }
@@ -83,47 +97,57 @@ export default function InternshipSearch() {
     })
   }, [])
 
-  // Convert Internship to Recommendation format for card component
   const internshipToRecommendation = (internship: Internship) => ({
     id: internship.id,
-    match_score: 0, // No match score for search results
+    match_score: 0,
     internship,
     explanation: null,
     score_breakdown: null,
   })
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header with Navigation */}
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <Link to="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
-              <span>/</span>
-              <span className="text-gray-900 font-medium">Browse Internships</span>
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in pb-16">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="card-gradient p-6 sm:p-8 rounded-3xl shadow-soft">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
+                <Link to="/dashboard" className="text-primary-600 dark:text-primary-400 hover:underline">
+                  Dashboard
+                </Link>
+                <span>/</span>
+                <span className="text-neutral-700 dark:text-neutral-300">Discover</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                Discover <span className="gradient-text">Internships</span>
+              </h1>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
+                Explore real-time tech opportunities • {totalCount} verified role{totalCount !== 1 ? 's' : ''} available
+              </p>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Browse & Search Internships</h1>
-            <p className="text-gray-600 mt-1">
-              {totalCount === 0 && !isLoading
-                ? 'No internships found'
-                : `${totalCount} active internship${totalCount !== 1 ? 's' : ''} available`}
-            </p>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <Link
-              to="/recommendations"
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-            >
-              ✨ AI Matches
-            </Link>
-            <Link
-              to="/saved"
-              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              ♥ Saved ({savedInternships.size})
-            </Link>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing || isLoading}
+                className="rounded-2xl text-xs font-bold"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} /> {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              <Link to="/recommendations">
+                <Button size="sm" className="rounded-2xl shadow-glow text-xs font-bold">
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" /> View AI Matches
+                </Button>
+              </Link>
+              <Link to="/saved">
+                <Button size="sm" variant="secondary" className="rounded-2xl text-xs font-bold">
+                  <Bookmark className="w-3.5 h-3.5 mr-1.5" /> Saved ({savedInternships.size})
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -135,7 +159,7 @@ export default function InternshipSearch() {
         />
 
         {/* Results */}
-        <div className="mt-6">
+        <div className="animate-slide-up">
           {isLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -148,10 +172,21 @@ export default function InternshipSearch() {
               onRetry={loadInternships}
             />
           ) : internships.length === 0 ? (
-            <RecommendationEmptyState
-              message="No internships match your search criteria. Try adjusting your filters."
-              onRefresh={loadInternships}
-            />
+            <div className="card-gradient rounded-3xl p-12 text-center shadow-card space-y-4">
+              <Compass className="w-10 h-10 text-neutral-400 mx-auto" />
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white">No internships match your criteria</h3>
+              <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+                Try searching for a different keyword or resetting your filter criteria.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setFilters({})}
+                className="rounded-2xl text-xs font-bold"
+              >
+                Reset Filters
+              </Button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {internships.map((internship) => (

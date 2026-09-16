@@ -157,12 +157,12 @@ export default function ExtractedCVContent({
     <div className="space-y-6">
       {parsed.skills.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">Parsed Skills</h4>
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">Parsed Skills</h4>
           <div className="flex flex-wrap gap-2">
             {parsed.skills.map((skill, idx) => (
               <span
                 key={idx}
-                className="px-3 py-1 bg-indigo-50 text-indigo-700 font-medium rounded-lg text-sm border border-indigo-100"
+                className="px-3 py-1 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300 font-semibold rounded-xl text-sm border border-primary-200/60 dark:border-primary-800/60 shadow-xs"
               >
                 {skill}
               </span>
@@ -173,21 +173,21 @@ export default function ExtractedCVContent({
 
       {parsed.education.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">Parsed Education</h4>
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">Parsed Education</h4>
           <div className="space-y-3">
             {parsed.education.map((raw, idx) => {
               const item = (raw || {}) as ExtractedEducation
               return (
-                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
-                  {item.degree && <div className="font-semibold text-gray-900">{item.degree}</div>}
+                <div key={idx} className="p-4 bg-neutral-50 dark:bg-neutral-900/60 rounded-xl border border-neutral-200/80 dark:border-dark-border text-sm">
+                  {item.degree && <div className="font-bold text-neutral-900 dark:text-white">{item.degree}</div>}
                   {(item.institution || item.field || item.field_of_study) && (
-                    <div className="text-xs text-indigo-600">
+                    <div className="text-xs font-semibold text-primary-600 dark:text-primary-400 mt-0.5">
                       {[item.institution, item.field_of_study || item.field].filter(Boolean).join(' — ')}
                     </div>
                   )}
-                  {item.years && <div className="text-xs text-gray-500 mt-0.5">{item.years}</div>}
+                  {item.years && <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">{item.years}</div>}
                   {(item.start_date || item.end_date) && (
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
                       {item.start_date ?? ''}
                       {item.start_date && item.end_date ? ' → ' : ''}
                       {item.end_date ?? ''}
@@ -202,24 +202,24 @@ export default function ExtractedCVContent({
 
       {parsed.experience.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">Parsed Experience</h4>
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">Parsed Experience</h4>
           <div className="space-y-3">
             {parsed.experience.map((raw, idx) => {
               const item = (raw || {}) as ExtractedExperience
               return (
-                <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
-                  <div className="font-semibold text-gray-900">
+                <div key={idx} className="p-4 bg-neutral-50 dark:bg-neutral-900/60 rounded-xl border border-neutral-200/80 dark:border-dark-border text-sm">
+                  <div className="font-bold text-neutral-900 dark:text-white">
                     {String(item.role ?? item.title ?? '') || '—'}
                   </div>
                   {(item.company || item.start_date || item.end_date) && (
-                    <div className="text-xs text-indigo-600">
+                    <div className="text-xs font-semibold text-primary-600 dark:text-primary-400 mt-0.5">
                       {[item.company, [item.start_date, item.end_date].filter(Boolean).join(' → ')]
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
                   )}
                   {item.description && (
-                    <p className="text-xs text-gray-600 mt-1">{String(item.description)}</p>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1.5 leading-relaxed">{String(item.description)}</p>
                   )}
                 </div>
               )
@@ -230,9 +230,9 @@ export default function ExtractedCVContent({
 
       {parsed.projects.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">
             Parsed Projects
-            <span className="ml-2 text-xs font-normal text-gray-500">
+            <span className="ml-2 text-xs font-normal text-neutral-500 dark:text-neutral-400">
               ({parsed.projects.length})
             </span>
           </h4>
@@ -243,22 +243,22 @@ export default function ExtractedCVContent({
               return (
                 <div
                   key={idx}
-                  className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm"
+                  className="p-4 bg-neutral-50 dark:bg-neutral-900/60 rounded-xl border border-neutral-200/80 dark:border-dark-border text-sm"
                 >
-                  <div className="font-semibold text-gray-900">
+                  <div className="font-bold text-neutral-900 dark:text-white">
                     {item.name?.trim() || `Project ${idx + 1}`}
                   </div>
                   {item.description && (
-                    <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1.5 whitespace-pre-line leading-relaxed">
                       {String(item.description)}
                     </p>
                   )}
                   {techs.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
                       {techs.map((t, ti) => (
                         <span
                           key={ti}
-                          className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-xs"
+                          className="px-2.5 py-0.5 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300 border border-primary-200/60 dark:border-primary-800/60 rounded-lg text-xs font-semibold"
                         >
                           {t}
                         </span>
@@ -274,21 +274,21 @@ export default function ExtractedCVContent({
 
       {parsed.certifications.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">Parsed Certifications</h4>
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">Parsed Certifications</h4>
           <div className="space-y-2">
             {parsed.certifications.map((cert, idx) => (
               <div
                 key={idx}
-                className="p-3 bg-emerald-50 rounded-lg border border-emerald-100 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
+                className="p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200/60 dark:border-emerald-800/60 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
               >
                 <div>
-                  <div className="font-semibold text-emerald-900">{cert.name}</div>
+                  <div className="font-bold text-emerald-900 dark:text-emerald-200">{cert.name}</div>
                   {cert.issuer && (
-                    <div className="text-xs text-emerald-700">Issued by {cert.issuer}</div>
+                    <div className="text-xs font-medium text-emerald-700 dark:text-emerald-400 mt-0.5">Issued by {cert.issuer}</div>
                   )}
                 </div>
                 {cert.date && (
-                  <div className="text-xs font-medium text-emerald-700 whitespace-nowrap">
+                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
                     {cert.date}
                   </div>
                 )}
@@ -300,16 +300,16 @@ export default function ExtractedCVContent({
 
       {parsed.languages.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-800 mb-2">Parsed Languages</h4>
+          <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200 mb-2.5">Parsed Languages</h4>
           <div className="flex flex-wrap gap-2">
             {parsed.languages.map((lang, idx) => (
               <span
                 key={idx}
-                className="px-3 py-1 bg-sky-50 text-sky-700 font-medium rounded-lg text-sm border border-sky-100"
+                className="px-3 py-1 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 font-semibold rounded-xl text-sm border border-sky-200/60 dark:border-sky-800/60"
               >
                 {lang.name}
                 {lang.proficiency ? (
-                  <span className="ml-1.5 text-sky-500 font-normal">— {lang.proficiency}</span>
+                  <span className="ml-1.5 text-sky-500 dark:text-sky-400 font-normal">— {lang.proficiency}</span>
                 ) : null}
               </span>
             ))}

@@ -7,16 +7,30 @@ import {
   removeInternship,
   type InternshipReviewItem,
 } from '@/services/adminApi'
+import {
+  ArrowLeft,
+  Briefcase,
+  Check,
+  X,
+  Trash2,
+  Search,
+  AlertTriangle,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    draft: 'bg-yellow-100 text-yellow-700',
-    active: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
-    removed: 'bg-gray-100 text-gray-700',
+  const styles: Record<string, string> = {
+    draft: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    active: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    rejected: 'bg-error-500/10 text-error-600 dark:text-error-400 border-error-500/20',
+    removed: 'bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border-neutral-500/20',
   }
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || 'bg-slate-100 text-slate-700'}`}>
+    <span className={`inline-flex items-center px-3 py-1 rounded-xl text-xs font-bold border uppercase tracking-wider ${styles[status] || styles.draft}`}>
       {status}
     </span>
   )
@@ -101,98 +115,156 @@ export default function AdminInternshipReview() {
   const totalPages = Math.ceil(totalCount / 20)
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8 lg:px-10">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-6">
-          <button onClick={() => navigate('/admin/dashboard')} className="mb-2 text-sm text-indigo-600 hover:text-indigo-500">&larr; Back to Dashboard</button>
-          <h1 className="text-2xl font-bold text-slate-900">Internship Review Queue</h1>
-          <p className="mt-1 text-sm text-slate-500">{totalCount} items flagged for review</p>
+    <main className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in pb-16">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <header className="card-gradient p-6 sm:p-8 rounded-3xl shadow-soft flex flex-wrap items-center justify-between gap-4 animate-slide-up">
+          <div>
+            <button
+              onClick={() => navigate('/admin/dashboard')}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline mb-2 transition-all"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-primary-600 to-secondary-500 text-white flex items-center justify-center shadow-glow">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                Internship Review <span className="gradient-text">Queue</span>
+              </h1>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+              {totalCount} flagged opportunities awaiting administrator verification
+            </p>
+          </div>
         </header>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <form onSubmit={(e) => { e.preventDefault(); setPage(1); fetchItems() }} className="flex gap-2">
+        {/* Filter Toolbar */}
+        <div className="card-gradient p-4 rounded-3xl shadow-card flex flex-wrap items-center gap-3">
+          <form onSubmit={(e) => { e.preventDefault(); setPage(1); fetchItems() }} className="flex-1 min-w-[260px] relative">
+            <Search className="w-4 h-4 text-neutral-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search internships..."
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              placeholder="Search by role or company..."
+              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
             />
-            <button type="submit" className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">Search</button>
           </form>
+
           <select
             value={reasonFilter}
             onChange={(e) => { setReasonFilter(e.target.value); setPage(1) }}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="px-4 py-2.5 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all"
           >
-            <option value="">All reasons</option>
-            <option value="broken_link">Broken link</option>
-            <option value="near_duplicate">Near duplicate</option>
+            <option value="">All Flag Reasons</option>
+            <option value="broken_link">Broken Link</option>
+            <option value="near_duplicate">Near Duplicate</option>
           </select>
+
+          <Button
+            size="sm"
+            onClick={() => { setPage(1); fetchItems() }}
+            className="rounded-2xl shadow-glow text-xs font-bold"
+          >
+            Filter
+          </Button>
         </div>
 
-        {error && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">{error}</p>}
+        {error && (
+          <div role="alert" className="rounded-2xl border border-error-200 dark:border-error-800 bg-error-50 dark:bg-error-950/40 p-4 text-error-700 dark:text-error-300 text-xs font-medium flex items-center gap-2 animate-scale-in">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
         {isLoading ? (
-          <p className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600">Loading review queue...</p>
+          <div className="card-gradient p-8 rounded-3xl animate-pulse space-y-4 text-center">
+            <p className="text-xs font-semibold text-neutral-500">Loading review queue...</p>
+            <div className="h-24 bg-neutral-100 dark:bg-neutral-800/60 rounded-2xl" />
+          </div>
         ) : items.length === 0 ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-            <p className="text-lg font-medium text-slate-900">All clear!</p>
-            <p className="mt-1 text-sm text-slate-500">No internships are currently flagged for review.</p>
+          <div className="card-gradient p-12 rounded-3xl text-center max-w-lg mx-auto shadow-card space-y-3 animate-scale-in">
+            <div className="w-16 h-16 mx-auto bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shadow-glow">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">All clear!</h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto">
+              No internships are currently flagged for review.
+            </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-slide-up">
             {items.map((item) => (
-              <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-semibold text-slate-900 truncate">{item.title}</h3>
+              <div
+                key={item.id}
+                className="card-gradient rounded-3xl p-6 sm:p-7 shadow-soft hover:shadow-glow transition-all duration-300 space-y-4"
+              >
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-base font-black text-neutral-900 dark:text-white truncate">{item.title}</h3>
                       <StatusBadge status={item.status} />
                     </div>
-                    <p className="mt-1 text-sm text-slate-600">{item.organization_name}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <p className="text-xs font-bold text-primary-600 dark:text-primary-400">{item.organization_name}</p>
+
+                    <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-neutral-400 pt-1">
                       {item.source_name && <span>Source: {item.source_name}</span>}
-                      {item.data_source_name && <span>Data Source: {item.data_source_name}</span>}
+                      {item.data_source_name && <span>• Data Source: {item.data_source_name}</span>}
                     </div>
+
                     {item.invalid_urls.length > 0 && (
-                      <div className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700">
-                        Invalid URLs: {item.invalid_urls.join(', ')}
+                      <div className="rounded-2xl bg-error-50 dark:bg-error-950/40 p-3 text-xs text-error-700 dark:text-error-300 font-medium border border-error-200 dark:border-error-800 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>Invalid URLs: {item.invalid_urls.join(', ')}</span>
                       </div>
                     )}
+
                     {item.low_confidence_skills.length > 0 && (
-                      <div className="mt-1 rounded bg-yellow-50 p-2 text-xs text-yellow-700">
-                        Low-confidence skills: {item.low_confidence_skills.join(', ')}
+                      <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-3 text-xs text-amber-700 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Low-confidence skills: {item.low_confidence_skills.join(', ')}</span>
                       </div>
                     )}
+
                     {item.pending_duplicate_count > 0 && (
-                      <div className="mt-1 rounded bg-orange-50 p-2 text-xs text-orange-700">
-                        {item.pending_duplicate_count} pending duplicate flag(s)
+                      <div className="rounded-2xl bg-orange-50 dark:bg-orange-950/40 p-3 text-xs text-orange-700 dark:text-orange-300 font-medium border border-orange-200 dark:border-orange-800 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>{item.pending_duplicate_count} pending duplicate flag(s)</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button
+
+                  <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+                    <Button
+                      size="sm"
                       onClick={() => handleApprove(item.id)}
                       disabled={actionLoading === item.id}
-                      className="rounded bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                      className="rounded-2xl shadow-glow text-xs font-bold"
                     >
+                      <Check className="w-3.5 h-3.5 mr-1" />
                       {actionLoading === item.id ? '...' : 'Approve'}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
                       onClick={() => setRejectModal(item)}
                       disabled={actionLoading === item.id}
-                      className="rounded bg-yellow-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-yellow-600 disabled:opacity-50"
+                      className="rounded-2xl text-xs font-bold"
                     >
+                      <X className="w-3.5 h-3.5 mr-1" />
                       Reject
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
                       onClick={() => handleRemove(item.id)}
                       disabled={actionLoading === item.id}
-                      className="rounded bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      className="rounded-2xl text-xs font-bold"
                     >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
                       Remove
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -201,30 +273,64 @@ export default function AdminInternshipReview() {
         )}
 
         {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-xs text-slate-500">Page {page} of {totalPages}</span>
+          <div className="flex items-center justify-between card-gradient p-4 rounded-3xl">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 font-bold">
+              Page {page} of {totalPages}
+            </span>
             <div className="flex gap-2">
-              <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">Prev</button>
-              <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50">Next</button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="rounded-xl text-xs font-bold"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> Prev
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="rounded-xl text-xs font-bold"
+              >
+                Next <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             </div>
           </div>
         )}
 
+        {/* Reject Modal */}
         {rejectModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setRejectModal(null)}>
-            <div className="mx-4 w-full max-w-md rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-lg font-semibold text-slate-900">Reject Internship</h2>
-              <p className="mt-1 text-sm text-slate-500">{rejectModal.title}</p>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in"
+            onClick={() => setRejectModal(null)}
+          >
+            <div
+              className="w-full max-w-md card-gradient rounded-3xl p-6 sm:p-8 shadow-glow border border-neutral-200/80 dark:border-neutral-800 space-y-4 animate-scale-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-black text-neutral-900 dark:text-white">Reject Internship</h2>
+                <button onClick={() => setRejectModal(null)} className="text-neutral-400 hover:text-neutral-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs font-bold text-primary-600 dark:text-primary-400">{rejectModal.title}</p>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Rejection reason (optional)..."
-                className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                rows={3}
+                placeholder="Rejection reason or notes for scraper team..."
+                className="w-full rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700 p-3.5 text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                rows={4}
               />
-              <div className="mt-4 flex justify-end gap-2">
-                <button onClick={() => setRejectModal(null)} className="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100">Cancel</button>
-                <button onClick={handleReject} className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Confirm Reject</button>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button size="sm" variant="ghost" onClick={() => setRejectModal(null)} className="rounded-2xl text-xs font-bold">
+                  Cancel
+                </Button>
+                <Button size="sm" variant="danger" onClick={handleReject} className="rounded-2xl text-xs font-bold">
+                  Confirm Reject
+                </Button>
               </div>
             </div>
           </div>

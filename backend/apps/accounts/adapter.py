@@ -61,6 +61,17 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
             user.role = User.Role.STUDENT
 
         user.save()
+
+        if user.role == User.Role.STUDENT:
+            from apps.students.models import StudentProfile
+            StudentProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    "internship_type": "any",
+                    "work_type": "either",
+                },
+            )
+
         return user
 
 

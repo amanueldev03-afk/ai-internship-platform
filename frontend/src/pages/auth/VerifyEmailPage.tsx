@@ -87,13 +87,13 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
+      <div className="max-w-md w-full space-y-8 card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card animate-slide-up">
         {status === 'loading' && (
           <div className="text-center py-6">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-indigo-50">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 shadow-glow">
               <svg
-                className="animate-spin h-8 w-8 text-indigo-600"
+                className="animate-spin h-8 w-8 text-white"
                 fill="none"
                 viewBox="0 0 24 24"
               >
@@ -105,27 +105,27 @@ export default function VerifyEmailPage() {
                 />
               </svg>
             </div>
-            <h1 className="mt-4 text-2xl font-bold text-gray-900">Verifying your email</h1>
-            <p className="mt-2 text-sm text-gray-600">Please wait while we confirm your email address...</p>
+            <h1 className="mt-4 text-2xl font-bold gradient-text dark:text-white">Verifying your email</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 font-medium">Please wait while we confirm your email address...</p>
           </div>
         )}
 
         {status === 'success' && (
-          <div className="text-center py-4 space-y-5">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
-              <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-4 space-y-5 animate-scale-in">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-success-400 to-success-600 shadow-glow">
+              <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Email Verified!</h1>
-              <p className="mt-2 text-sm text-gray-600">
+              <h1 className="text-2xl font-bold gradient-text dark:text-white">Email Verified!</h1>
+              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
                 Your account is now activated. You can now sign in to your dashboard.
               </p>
             </div>
             <button
               onClick={() => navigate('/login')}
-              className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+              className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
               Continue to Login
             </button>
@@ -133,21 +133,21 @@ export default function VerifyEmailPage() {
         )}
 
         {status === 'already_verified' && (
-          <div className="text-center py-4 space-y-5">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-blue-100">
-              <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-4 space-y-5 animate-scale-in">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-info-400 to-info-600 shadow-glow">
+              <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Already Verified</h1>
-              <p className="mt-2 text-sm text-gray-600">
+              <h1 className="text-2xl font-bold gradient-text dark:text-white">Already Verified</h1>
+              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
                 This email address has already been verified. You can log in directly.
               </p>
             </div>
             <button
               onClick={() => navigate('/login')}
-              className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+              className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
               Go to Login
             </button>
@@ -157,15 +157,15 @@ export default function VerifyEmailPage() {
         {(status === 'error' || status === 'idle') && (
           <div className="space-y-6">
             <div className="text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100">
-                <svg className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-warning-400 to-warning-600 shadow-glow">
+                <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h1 className="mt-4 text-2xl font-bold text-gray-900">
+              <h1 className="mt-4 text-2xl font-bold gradient-text dark:text-white">
                 {status === 'error' ? 'Verification Failed' : 'Resend Verification Email'}
               </h1>
-              <p className="mt-2 text-sm text-gray-600">
+              <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 font-medium">
                 {status === 'error'
                   ? errorMessage
                   : 'Enter your registered email address to receive a new verification link.'}
@@ -173,13 +173,13 @@ export default function VerifyEmailPage() {
             </div>
 
             {resendSuccess ? (
-              <div className="rounded-lg bg-green-50 p-4 border border-green-200 text-center space-y-3">
-                <p className="text-sm font-medium text-green-800">
+              <div className="rounded-xl bg-success-50 dark:bg-success-900/20 p-4 border-2 border-success-200 dark:border-success-800 text-center space-y-3 animate-scale-in">
+                <p className="text-sm font-semibold text-success-800 dark:text-success-300">
                   A new verification link has been sent to your email.
                 </p>
                 <Link
                   to="/login"
-                  className="inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  className="inline-block text-sm font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors duration-200"
                 >
                   Back to Login
                 </Link>
@@ -187,12 +187,12 @@ export default function VerifyEmailPage() {
             ) : (
               <form onSubmit={handleResend} className="space-y-4" noValidate>
                 {resendError && (
-                  <div className="rounded-lg bg-red-50 p-3 border border-red-200">
-                    <p className="text-xs text-red-700">{resendError}</p>
+                  <div className="rounded-xl bg-error-50 dark:bg-error-900/20 p-3 border-2 border-error-200 dark:border-error-800 animate-scale-in">
+                    <p className="text-xs font-medium text-error-700 dark:text-error-300">{resendError}</p>
                   </div>
                 )}
                 <div>
-                  <label htmlFor="resendEmail" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="resendEmail" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                     Email address
                   </label>
                   <input
@@ -206,18 +206,18 @@ export default function VerifyEmailPage() {
                       if (resendError) setResendError('')
                     }}
                     placeholder="student@example.com"
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm text-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:focus:border-primary-400 transition-all duration-200"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={resendLoading}
-                  className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  className="btn-primary w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {resendLoading ? 'Sending...' : 'Send Verification Email'}
                 </button>
                 <div className="text-center pt-2">
-                  <Link to="/login" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                  <Link to="/login" className="text-sm font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors duration-200">
                     Back to Login
                   </Link>
                 </div>

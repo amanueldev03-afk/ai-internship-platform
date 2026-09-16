@@ -17,7 +17,7 @@ from apps.students.models import StudentCV, StudentProfile, CV as CVModel
 from .models import Recommendation
 from .pagination import RecommendationPagination
 from .serializers import RecommendationSerializer, RecommendationFeedbackSerializer
-from ai_engine.recommendation import generate_recommendations
+from .services.recommendation_engine_v2 import generate_recommendations
 from apps.internships.serializers import InternshipSerializer
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,16 @@ def get_recommendation_cache_key(user_id: int) -> str:
 
 
 def bust_recommendation_cache(user_id: int) -> None:
-    """Delete cached recommendations for a user. Call after any profile change."""
+    """Delete cached recommendations for a user and refresh embedding."""
     cache.delete(get_recommendation_cache_key(user_id))
+    try:
+        from apps.students.models import StudentProfile
+        from apps.recommendations.services.semantic_matching import update_student_embedding
+        profile = StudentProfile.objects.filter(user_id=user_id).first()
+        if profile:
+            update_student_embedding(profile)
+    except Exception as e:
+        logger.warning(f"Could not refresh student embedding on cache bust for user {user_id}: {e}")
 
 
 class StudentRecommendationView(APIView):
@@ -164,9 +172,13 @@ class StudentRecommendationView(APIView):
             recommendations = cached
             from_cache = True
         else:
-            # Phase 6 engine queries active internships internally
+            active_internships = (
+                Internship.objects
+                .filter(status="active", is_verified=True, needs_review=False)
+                .order_by("-created_at")
+            )
             raw_results = generate_recommendations(
-                request.user, limit=50, save_to_db=True
+                request.user, active_internships, save_to_db=True
             )
 
             # Serialise to plain dicts (ORM objects are not cacheable)

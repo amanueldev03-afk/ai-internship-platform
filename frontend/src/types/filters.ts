@@ -17,6 +17,8 @@ export interface InternshipFilters {
   duration_min_weeks?: number
   duration_max_weeks?: number
   skill?: string
+  page?: number
+  page_size?: number
 }
 
 export const INTERNSHIP_TYPE_CHOICES = [

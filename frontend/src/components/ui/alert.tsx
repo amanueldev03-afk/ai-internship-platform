@@ -4,19 +4,19 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const alertVariants = cva(
-  "relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-neutral-950 [&>svg]:w-4 [&>svg]:h-4",
+  "relative w-full rounded-2xl border p-4 shadow-soft backdrop-blur-md [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-2px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:w-5 [&>svg]:h-5 transition-all duration-300",
   {
     variants: {
       variant: {
-        default: "bg-white text-neutral-950 border-neutral-200",
+        default: "bg-white/90 dark:bg-neutral-900/90 text-neutral-900 dark:text-neutral-100 border-neutral-200 dark:border-neutral-800 [&>svg]:text-neutral-700 dark:[&>svg]:text-neutral-300",
         destructive:
-          "border-error-200/50 text-error-800 [&>svg]:text-error-800 bg-error-50",
+          "border-error-300/60 dark:border-error-800/80 text-error-800 dark:text-error-300 [&>svg]:text-error-600 dark:[&>svg]:text-error-400 bg-error-50/90 dark:bg-error-950/40",
         success:
-          "border-success-200/50 text-success-800 [&>svg]:text-success-800 bg-success-50",
+          "border-emerald-300/60 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400 bg-emerald-50/90 dark:bg-emerald-950/40",
         warning:
-          "border-warning-200/50 text-warning-800 [&>svg]:text-warning-800 bg-warning-50",
+          "border-amber-300/60 dark:border-amber-800/80 text-amber-800 dark:text-amber-300 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400 bg-amber-50/90 dark:bg-amber-950/40",
         info:
-          "border-info-200/50 text-info-800 [&>svg]:text-info-800 bg-info-50",
+          "border-primary-300/60 dark:border-primary-800/80 text-primary-900 dark:text-primary-300 [&>svg]:text-primary-600 dark:[&>svg]:text-primary-400 bg-primary-50/90 dark:bg-primary-950/40",
       },
     },
     defaultVariants: {

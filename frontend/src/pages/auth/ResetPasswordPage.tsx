@@ -75,11 +75,11 @@ export default function ResetPasswordPage() {
 
   if (!uid || !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center space-y-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-md w-full card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card text-center space-y-6 animate-scale-in">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-warning-400 to-warning-600 shadow-glow">
             <svg
-              className="h-8 w-8 text-amber-600"
+              className="h-8 w-8 text-white"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -93,14 +93,14 @@ export default function ResetPasswordPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Invalid Reset Link</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <h1 className="text-2xl font-bold gradient-text dark:text-white">Invalid Reset Link</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
               This password reset link is missing required verification tokens. Please request a new one.
             </p>
           </div>
           <Link
             to="/forgot-password"
-            className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+            className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
           >
             Request New Reset Link
           </Link>
@@ -111,11 +111,11 @@ export default function ResetPasswordPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center space-y-6">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-md w-full card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card text-center space-y-6 animate-scale-in">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gradient-to-br from-success-400 to-success-600 shadow-glow">
             <svg
-              className="h-8 w-8 text-green-600"
+              className="h-8 w-8 text-white"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -124,14 +124,14 @@ export default function ResetPasswordPage() {
             </svg>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Password Reset Successful</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <h1 className="text-2xl font-bold gradient-text dark:text-white">Password Reset Successful</h1>
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
               Your password has been changed successfully. You can now sign in with your new password.
             </p>
           </div>
           <button
             onClick={() => navigate('/login')}
-            className="w-full inline-flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors"
+            className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
           >
             Continue to Login
           </button>
@@ -141,26 +141,26 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-sm border border-gray-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-dark-bg dark:to-neutral-900/30 px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
+      <div className="max-w-md w-full space-y-8 card-gradient p-8 rounded-2xl shadow-glow border-2 border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-card animate-slide-up">
         <div>
-          <h1 className="text-center text-3xl font-extrabold text-gray-900 tracking-tight">
+          <h1 className="text-center text-3xl font-extrabold gradient-text dark:text-white tracking-tight">
             Create new password
           </h1>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm text-neutral-600 dark:text-neutral-400 font-medium">
             Please enter your new password below.
           </p>
         </div>
 
         {(clientError || serverError) && (
-          <div className="rounded-lg bg-red-50 p-4 border border-red-200" role="alert">
-            <p className="text-sm text-red-700">{clientError || serverError}</p>
+          <div className="rounded-xl bg-error-50 p-4 border-2 border-error-200 dark:bg-error-900/20 dark:border-error-800 animate-scale-in" role="alert">
+            <p className="text-sm font-medium text-error-700 dark:text-error-300">{clientError || serverError}</p>
           </div>
         )}
 
         <form className="mt-6 space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               New Password
             </label>
             <input
@@ -172,13 +172,13 @@ export default function ResetPasswordPage() {
               value={formData.password}
               onChange={handleChange}
               disabled={isLoading}
-              className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm disabled:bg-gray-100"
+              className="input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 text-sm disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200"
               placeholder="••••••••"
             />
           </div>
 
           <div>
-            <label htmlFor="password_confirm" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="password_confirm" className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
               Confirm New Password
             </label>
             <input
@@ -190,7 +190,7 @@ export default function ResetPasswordPage() {
               value={formData.password_confirm}
               onChange={handleChange}
               disabled={isLoading}
-              className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm disabled:bg-gray-100"
+              className="input-base appearance-none block w-full px-4 py-2.5 rounded-xl shadow-sm placeholder-neutral-400 dark:placeholder-neutral-500 dark:bg-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:focus:border-primary-400 dark:focus:ring-primary-400 text-sm disabled:bg-neutral-100 dark:disabled:bg-neutral-800 transition-all duration-200"
               placeholder="••••••••"
             />
           </div>
@@ -199,7 +199,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="btn-primary w-full flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <>
@@ -218,7 +218,7 @@ export default function ResetPasswordPage() {
           <div className="text-center pt-2">
             <Link
               to="/login"
-              className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+              className="text-sm font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors duration-200"
             >
               Back to Login
             </Link>

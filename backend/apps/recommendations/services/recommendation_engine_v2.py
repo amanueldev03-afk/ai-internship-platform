@@ -73,17 +73,18 @@ def _get_embedding(obj, attr, updater):
     return embedding
 
 
-def calculate_semantic_score(profile, internship):
+def calculate_semantic_score(student_embedding, internship):
     """
     40% weight.  Returns 0.0–1.0.
-    Always reads the freshest stored embeddings.
+    Calculates cosine similarity between the student embedding and internship embedding.
     """
-    student_embedding = _get_embedding(
-        profile,    "embedding", update_student_embedding)
+    if not student_embedding:
+        return 0.0
+
     internship_embedding = _get_embedding(
         internship, "embedding", update_internship_embedding)
 
-    if not student_embedding or not internship_embedding:
+    if not internship_embedding:
         return 0.0
 
     similarity = calculate_semantic_similarity(
@@ -99,21 +100,6 @@ def passes_hard_filters(internship, profile):
         return True
 
     if getattr(internship, "status", "active") != "active":
-        return False
-
-    # Internship type (remote / onsite / hybrid / any)
-    pref_type = getattr(profile, "internship_type", "any") or "any"
-    if pref_type != "any":
-        if getattr(internship, "internship_type", None) != pref_type:
-            return False
-
-    # Compensation hard filter
-    comp_pref = getattr(profile, "compensation_preference",
-                        "either") or "either"
-    internship_comp = getattr(internship, "compensation_type", "unknown")
-    if comp_pref == "paid" and internship_comp == "unpaid":
-        return False
-    if comp_pref == "unpaid" and internship_comp == "paid":
         return False
 
     return True
@@ -341,6 +327,8 @@ def _get_student_skills(profile):
     Returns a deduplicated list of lowercase-trimmed names.
     """
     skills = list(profile.skills.values_list("name", flat=True))
+    if hasattr(profile, "career_interests"):
+        skills.extend(list(profile.career_interests.values_list("name", flat=True)))
 
     user = getattr(profile, "user", None)
     if user:
@@ -403,6 +391,8 @@ def generate_recommendations(student, internships, save_to_db=True):
         return []
 
     student_skills = _get_student_skills(profile)
+    student_embedding = _get_embedding(
+        profile, "embedding", update_student_embedding)
 
     results = []
 
@@ -411,8 +401,8 @@ def generate_recommendations(student, internships, save_to_db=True):
         if not passes_hard_filters(internship, profile):
             continue
 
-        # ---- 1. semantic (40 %) — fetches fresh embeddings ----
-        semantic = calculate_semantic_score(profile, internship)
+        # ---- 1. semantic (40 %) — uses student_embedding ----
+        semantic = calculate_semantic_score(student_embedding, internship)
 
         # ---- 2. skills (25 %) ----
         i_skills = list(

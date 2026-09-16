@@ -61,14 +61,14 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
   if (!url) return null
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm mt-4">
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-800 truncate">
-          <svg className="w-5 h-5 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="border border-neutral-200 dark:border-dark-border rounded-2xl overflow-hidden bg-white dark:bg-dark-card shadow-glow mt-4">
+      <div className="flex items-center justify-between px-5 py-3.5 bg-neutral-50 dark:bg-neutral-900/80 border-b border-neutral-200 dark:border-dark-border">
+        <div className="flex items-center gap-2.5 text-sm font-bold text-neutral-800 dark:text-neutral-200 truncate">
+          <svg className="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <span className="truncate">{displayName}</span>
-          <span className="text-xs uppercase px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold">
+          <span className="text-xs uppercase px-2.5 py-0.5 rounded-full bg-primary-100 dark:bg-primary-950/60 text-primary-800 dark:text-primary-300 font-bold border border-primary-200 dark:border-primary-800">
             {fileType.toUpperCase()}
           </span>
         </div>
@@ -77,7 +77,7 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
           target="_blank"
           rel="noopener noreferrer"
           download
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-primary-50 hover:bg-primary-100 dark:bg-primary-950/40 dark:hover:bg-primary-900/50 text-primary-700 dark:text-primary-300 rounded-xl text-xs font-bold border border-primary-200/60 dark:border-primary-800/60 transition-colors shadow-xs"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -88,7 +88,7 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
 
       <div
         id="resume-preview-container"
-        className="w-full bg-gray-100 flex flex-col items-center justify-center p-3 overflow-auto"
+        className="w-full bg-neutral-100 dark:bg-neutral-900/60 flex flex-col items-center justify-center p-4 overflow-auto"
         style={{ minHeight: '500px', maxHeight: '80vh' }}
       >
         {fileType === 'pdf' && (
@@ -96,7 +96,7 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
             src={url}
             title={displayName}
             type="application/pdf"
-            className="w-full rounded-lg bg-white shadow-inner"
+            className="w-full rounded-xl bg-white shadow-inner"
             style={{ height: '75vh', border: 0 }}
           />
         )}
@@ -106,28 +106,28 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
             <img
               src={url}
               alt={displayName}
-              className="max-h-[70vh] w-auto rounded-lg shadow object-contain bg-white"
+              className="max-h-[70vh] w-auto rounded-xl shadow object-contain bg-white dark:bg-dark-card"
             />
           </div>
         )}
 
         {fileType === 'docx' && (
-          <div className="w-full bg-white p-6 rounded-lg shadow min-h-[500px] overflow-auto">
+          <div className="w-full bg-white dark:bg-dark-card p-6 rounded-xl shadow min-h-[500px] overflow-auto">
             {docxLoading && (
               <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                <p className="text-sm text-gray-500">Rendering Word Document...</p>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 dark:border-primary-400"></div>
+                <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">Rendering Word Document...</p>
               </div>
             )}
             {docxError && (
               <div className="text-center py-10">
-                <p className="text-sm text-red-600 mb-3">{docxError}</p>
+                <p className="text-sm font-medium text-error-600 dark:text-error-400 mb-3">{docxError}</p>
                 <a
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
                   download
-                  className="inline-flex items-center gap-1 px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700"
+                  className="btn-primary inline-flex items-center gap-1 px-4 py-2 text-xs font-semibold rounded-xl shadow-glow"
                 >
                   Download DOCX to View ↗
                 </a>
@@ -139,18 +139,18 @@ export default function ResumePreview({ url, fileName }: ResumePreviewProps) {
 
         {fileType === 'other' && (
           <div className="text-center py-12 px-4 space-y-3">
-            <div className="mx-auto w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-950/60 flex items-center justify-center text-primary-600 dark:text-primary-400 shadow-glow">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-gray-900">{displayName}</p>
+            <p className="text-sm font-bold text-neutral-900 dark:text-white">{displayName}</p>
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
               download
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 shadow-sm"
+              className="btn-primary inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold shadow-glow"
             >
               Download or Open Document ↗
             </a>

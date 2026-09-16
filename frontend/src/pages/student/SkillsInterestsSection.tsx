@@ -119,7 +119,7 @@ export default function SkillsInterestsSection({
   if (isLoading) {
     return (
       <SectionCard title="Skills & Interests">
-        <p className="text-sm text-gray-500">Loading catalogue...</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">Loading catalogue...</p>
       </SectionCard>
     )
   }
@@ -133,14 +133,14 @@ export default function SkillsInterestsSection({
         <ErrorBanner messages={errorMessage} />
         <SuccessBanner message={success} />
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           {mySkills.length === 0 && (
-            <p className="text-sm text-gray-500">No skills added yet.</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">No skills added yet.</p>
           )}
           {mySkills.map((skill) => (
             <span
               key={skill.id}
-              className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 font-medium rounded-lg text-sm border border-indigo-100"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-50 dark:bg-primary-950/40 text-primary-700 dark:text-primary-300 font-semibold rounded-xl text-sm border border-primary-200/60 dark:border-primary-800/60 shadow-xs"
             >
               {skill.name}
               <button
@@ -148,7 +148,7 @@ export default function SkillsInterestsSection({
                 aria-label={`Remove skill ${skill.name}`}
                 disabled={pendingSkillId === skill.id}
                 onClick={() => handleRemoveSkill(skill.id)}
-                className="text-indigo-400 hover:text-red-600 disabled:opacity-50"
+                className="text-primary-400 hover:text-error-600 dark:hover:text-error-400 disabled:opacity-50 transition-colors ml-0.5"
               >
                 ×
               </button>
@@ -156,7 +156,7 @@ export default function SkillsInterestsSection({
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <select
             value={selectedSkillId}
             onChange={(e) => setSelectedSkillId(e.target.value)}
@@ -178,7 +178,7 @@ export default function SkillsInterestsSection({
             type="button"
             onClick={handleAddSkill}
             disabled={!selectedSkillId}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+            className="btn-primary shrink-0 px-5 py-2.5 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Add Skill
           </button>
@@ -189,14 +189,14 @@ export default function SkillsInterestsSection({
         title="Career Interests"
         description="Pick interests from the Task 1.3 catalogue — free-text interests are rejected by the API."
       >
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5">
           {myInterests.length === 0 && (
-            <p className="text-sm text-gray-500">No career interests added yet.</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">No career interests added yet.</p>
           )}
           {myInterests.map((interest) => (
             <span
               key={interest.id}
-              className="inline-flex items-center gap-2 px-3 py-1 bg-teal-50 text-teal-700 font-medium rounded-lg text-sm border border-teal-100"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 font-semibold rounded-xl text-sm border border-teal-200/60 dark:border-teal-800/60 shadow-xs"
             >
               {interest.name}
               <button
@@ -204,7 +204,7 @@ export default function SkillsInterestsSection({
                 aria-label={`Remove interest ${interest.name}`}
                 disabled={pendingInterestId === interest.id}
                 onClick={() => handleRemoveInterest(interest.id)}
-                className="text-teal-400 hover:text-red-600 disabled:opacity-50"
+                className="text-teal-400 hover:text-error-600 dark:hover:text-error-400 disabled:opacity-50 transition-colors ml-0.5"
               >
                 ×
               </button>
@@ -212,7 +212,7 @@ export default function SkillsInterestsSection({
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <select
             value={selectedInterestId}
             onChange={(e) => setSelectedInterestId(e.target.value)}
@@ -233,7 +233,7 @@ export default function SkillsInterestsSection({
             type="button"
             onClick={handleAddInterest}
             disabled={!selectedInterestId}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+            className="btn-accent shrink-0 px-5 py-2.5 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Add Interest
           </button>

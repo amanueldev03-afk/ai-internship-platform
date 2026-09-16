@@ -127,6 +127,31 @@ def find_near_duplicate(normalized):
     return None, 0.0
 
 
+def _safe_datetime(val):
+    if not val:
+        return None
+    import datetime
+    from django.utils.dateparse import parse_datetime, parse_date
+    if isinstance(val, (datetime.datetime, datetime.date)):
+        return val
+    if isinstance(val, (int, float)):
+        try:
+            return datetime.datetime.fromtimestamp(val, tz=datetime.timezone.utc)
+        except Exception:
+            return None
+    if isinstance(val, str):
+        val = val.strip()
+        if not val:
+            return None
+        dt = parse_datetime(val)
+        if dt:
+            return dt
+        d = parse_date(val)
+        if d:
+            return datetime.datetime.combine(d, datetime.time.min, tzinfo=datetime.timezone.utc)
+    return None
+
+
 def _build_internship(normalized, *, data_source=None, content_hash=None, now=None):
     """Instantiate an unsaved Internship from a normalized listing."""
     now = now or timezone.now()
@@ -137,10 +162,15 @@ def _build_internship(normalized, *, data_source=None, content_hash=None, now=No
     data["last_seen_at"] = now
 
     kwargs = {field: data.get(field) for field in MODEL_FIELDS}
+    kwargs["posted_at"] = _safe_datetime(data.get("posted_at"))
+    kwargs["application_deadline"] = _safe_datetime(data.get("application_deadline"))
     kwargs["preferred_skills"] = data.get("preferred_skills") or []
     kwargs["skills_review"] = data.get("skills_review") or []
     kwargs["data_source"] = data_source
     kwargs["last_seen_at"] = now
+    kwargs["status"] = Internship.STATUS_ACTIVE
+    kwargs["is_verified"] = True
+    kwargs["needs_review"] = False
 
     return Internship(**kwargs)
 

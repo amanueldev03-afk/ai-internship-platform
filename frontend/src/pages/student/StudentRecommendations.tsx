@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { Sparkles, SlidersHorizontal, RefreshCw, Compass } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { getRecommendations } from '@/services/recommendationApi'
 import { getSavedInternships } from '@/services/internshipApi'
@@ -8,6 +9,7 @@ import RecommendationCard from '@/components/recommendations/RecommendationCard'
 import RecommendationSkeleton from '@/components/recommendations/RecommendationSkeleton'
 import RecommendationEmptyState from '@/components/recommendations/RecommendationEmptyState'
 import RecommendationErrorState from '@/components/recommendations/RecommendationErrorState'
+import { Button } from '@/components/ui/button'
 
 export default function StudentRecommendations() {
   const navigate = useNavigate()
@@ -18,18 +20,26 @@ export default function StudentRecommendations() {
   const [error, setError] = useState<string | null>(null)
   const [savedInternships, setSavedInternships] = useState<Set<number>>(new Set())
   const [appliedInternships, setAppliedInternships] = useState<Set<number>>(new Set())
+  const [minMatchThreshold, setMinMatchThreshold] = useState<number>(0)
+  const [searchFilter, setSearchFilter] = useState('')
   const [pagination, setPagination] = useState({
     count: 0,
     next: null as string | null,
     previous: null as string | null,
   })
 
-  const loadRecommendations = useCallback(async () => {
-    setIsLoading(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const loadRecommendations = useCallback(async (refresh = false) => {
+    if (refresh) {
+      setIsRefreshing(true)
+    } else {
+      setIsLoading(true)
+    }
     setError(null)
     try {
       const [response, savedData] = await Promise.all([
-        getRecommendations(),
+        getRecommendations(refresh),
         getSavedInternships().catch(() => []),
       ])
       
@@ -47,6 +57,7 @@ export default function StudentRecommendations() {
       console.error('Failed to load recommendations:', err)
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
   }, [])
 
@@ -74,22 +85,32 @@ export default function StudentRecommendations() {
     })
   }, [])
 
-  // Sort recommendations by descending match score (backend already does this, but ensure frontend maintains order)
-  const sortedRecommendations = useMemo(() => {
-    return [...recommendations].sort((a, b) => b.match_score - a.match_score)
-  }, [recommendations])
+  const filteredRecommendations = useMemo(() => {
+    return recommendations
+      .filter((rec) => rec.match_score >= minMatchThreshold)
+      .filter((rec) => {
+        if (!searchFilter.trim()) return true
+        const query = searchFilter.toLowerCase()
+        return (
+          rec.internship.title.toLowerCase().includes(query) ||
+          rec.internship.organization_name.toLowerCase().includes(query) ||
+          rec.internship.required_skills?.some((s) => s.toLowerCase().includes(query))
+        )
+      })
+      .sort((a, b) => b.match_score - a.match_score)
+  }, [recommendations, minMatchThreshold, searchFilter])
 
   if (!isAuthenticated || role !== 'student') {
-    return null // Will redirect in useEffect
+    return null
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Your Recommendations</h1>
-            <p className="text-gray-600 mt-2">AI-powered internship matches based on your profile</p>
+      <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="card-gradient p-8 rounded-3xl animate-pulse space-y-3">
+            <div className="h-8 w-64 bg-neutral-200 dark:bg-neutral-800 rounded-xl" />
+            <div className="h-4 w-96 bg-neutral-100 dark:bg-neutral-800/60 rounded-lg" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <RecommendationSkeleton />
@@ -103,26 +124,18 @@ export default function StudentRecommendations() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Your Recommendations</h1>
-            <p className="text-gray-600 mt-2">AI-powered internship matches based on your profile</p>
-          </div>
+      <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+        <div className="max-w-7xl mx-auto space-y-6">
           <RecommendationErrorState error={error} onRetry={loadRecommendations} />
         </div>
       </div>
     )
   }
 
-  if (sortedRecommendations.length === 0) {
+  if (recommendations.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Your Recommendations</h1>
-            <p className="text-gray-600 mt-2">AI-powered internship matches based on your profile</p>
-          </div>
           <RecommendationEmptyState onRefresh={loadRecommendations} />
         </div>
       </div>
@@ -130,77 +143,115 @@ export default function StudentRecommendations() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <Link to="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
-              <span>/</span>
-              <span className="text-gray-900 font-medium">AI Matches</span>
+    <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8 animate-fade-in pb-16">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header with Title and Quick Filter Pills */}
+        <div className="card-gradient p-6 sm:p-8 rounded-3xl shadow-soft">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">
+                <Link to="/dashboard" className="text-primary-600 dark:text-primary-400 hover:underline">
+                  Dashboard
+                </Link>
+                <span>/</span>
+                <span className="text-neutral-700 dark:text-neutral-300">AI Matches</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                Autonomous <span className="gradient-text">AI Recommendations</span>
+              </h1>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-medium">
+                Personalized matches ranked by semantic skillset, experience, and profile preferences • {pagination.count} available
+              </p>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">Your AI Recommendations</h1>
-            <p className="text-gray-600 mt-2">
-              Personalized matches ranked by skill and profile fit • {pagination.count} recommendation{pagination.count !== 1 ? 's' : ''} available
-            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => loadRecommendations(true)}
+                disabled={isRefreshing}
+                className="rounded-2xl text-xs font-bold"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} /> {isRefreshing ? 'Re-scoring...' : 'Refresh'}
+              </Button>
+              <Link to="/internships">
+                <Button size="sm" className="rounded-2xl shadow-glow text-xs font-bold">
+                  <Compass className="w-3.5 h-3.5 mr-1.5" /> Browse All Roles
+                </Button>
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/internships"
-              className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-sm transition-all"
-            >
-              Browse All Listings
-            </Link>
-            <Link
-              to="/saved"
-              className="inline-flex items-center px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all"
-            >
-              Saved ({savedInternships.size})
-            </Link>
+
+          {/* Interactive Filters Bar */}
+          <div className="mt-6 pt-6 border-t border-neutral-200/80 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-neutral-400 mr-2 flex items-center gap-1">
+                <SlidersHorizontal className="w-3.5 h-3.5" /> Fit Filter:
+              </span>
+              {[
+                { label: 'All Matches', value: 0 },
+                { label: 'High Fit (80%+)', value: 80 },
+                { label: 'Moderate Fit (60%+)', value: 60 },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  onClick={() => setMinMatchThreshold(item.value)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    minMatchThreshold === item.value
+                      ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white shadow-glow'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="w-full sm:w-64">
+              <input
+                type="text"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                placeholder="Filter by role or skill..."
+                className="w-full px-3.5 py-1.5 text-xs rounded-xl bg-neutral-100/90 dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-primary-500"
+              />
+            </div>
           </div>
         </div>
 
         {/* Recommendations Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedRecommendations.map((recommendation) => (
-            <RecommendationCard
-              key={recommendation.internship.id}
-              recommendation={recommendation}
-              isSaved={savedInternships.has(recommendation.internship.id)}
-              isApplied={appliedInternships.has(recommendation.internship.id)}
-              onApply={handleApply}
-              onSave={handleSave}
-              onUnsave={handleUnsave}
-            />
-          ))}
-        </div>
-
-        {/* Pagination */}
-        {(pagination.next || pagination.previous) && (
-          <div className="mt-8 flex justify-center gap-4">
-            {pagination.previous && (
-              <button
-                onClick={() => {
-                  // Handle previous page - would need to parse URL and fetch
-                  console.log('Previous page:', pagination.previous)
-                }}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Previous
-              </button>
-            )}
-            {pagination.next && (
-              <button
-                onClick={() => {
-                  // Handle next page - would need to parse URL and fetch
-                  console.log('Next page:', pagination.next)
-                }}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                Next
-              </button>
-            )}
+        {filteredRecommendations.length === 0 ? (
+          <div className="card-gradient rounded-3xl p-12 text-center shadow-card space-y-4">
+            <Sparkles className="w-10 h-10 text-primary-500 mx-auto" />
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">No matches found with this filter</h3>
+            <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+              Try adjusting your match threshold filter or reset the search query to see more recommended roles.
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setMinMatchThreshold(0)
+                setSearchFilter('')
+              }}
+              className="rounded-2xl text-xs font-bold"
+            >
+              Reset Filters
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
+            {filteredRecommendations.map((recommendation) => (
+              <RecommendationCard
+                key={recommendation.internship.id}
+                recommendation={recommendation}
+                isSaved={savedInternships.has(recommendation.internship.id)}
+                isApplied={appliedInternships.has(recommendation.internship.id)}
+                onApply={handleApply}
+                onSave={handleSave}
+                onUnsave={handleUnsave}
+              />
+            ))}
           </div>
         )}
       </div>
