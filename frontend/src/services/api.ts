@@ -3,7 +3,20 @@ import type { InternalAxiosRequestConfig } from 'axios'
 import { store } from '@/store'
 import { refreshAccessToken, logoutUser } from '@/features/auth/authSlice'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+function getBaseUrl(): string {
+  const envUrl = import.meta.env.VITE_API_BASE_URL
+  if (!envUrl) return '/api'
+  let url = envUrl.trim()
+  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
+    url = `https://${url}`
+  }
+  if (!url.endsWith('/api') && !url.endsWith('/api/')) {
+    url = `${url.replace(/\/$/, '')}/api`
+  }
+  return url
+}
+
+const baseURL = getBaseUrl()
 
 // Raw Axios instance without 401 retry interceptors (e.g. for refresh token calls)
 export const rawApi = axios.create({

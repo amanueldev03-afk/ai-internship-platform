@@ -24,6 +24,9 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copy project source
 COPY . .
 
+RUN chmod +x /app/entrypoint.prod.sh
+
 EXPOSE 8000
 
-CMD gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-2} --timeout ${GUNICORN_TIMEOUT:-120}
+ENTRYPOINT ["/app/entrypoint.prod.sh"]
+CMD ["gunicorn", "--config", "/app/gunicorn.conf.py", "config.wsgi:application"]

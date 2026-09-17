@@ -82,10 +82,8 @@ def _determine_workers() -> int:
     return 4
 
 
-# -----------------------------------------------------------------------------
-# Server Socket
-# -----------------------------------------------------------------------------
-bind = os.getenv("GUNICORN_BIND", "0.0.0.0:8000")
+port = os.getenv("PORT", "8000")
+bind = os.getenv("GUNICORN_BIND", f"0.0.0.0:{port}")
 backlog = _get_positive_int("GUNICORN_BACKLOG", 2048)
 
 # -----------------------------------------------------------------------------
