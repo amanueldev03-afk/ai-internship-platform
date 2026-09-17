@@ -1,0 +1,101 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Django Gunicorn Backend
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: ai-internship-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/health/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: DJANGO_ENV
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-internship-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-internship-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: ai-internship-redis
+          property: connectionString
+      - key: ALLOWED_HOSTS
+        value: "*"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "*"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://*.onrender.com,http://localhost"
+      - key: GUNICORN_WORKERS
+        value: "2"
+      - key: GUNICORN_TIMEOUT
+        value: "120"
+
+  # ---------------------------------------------------------------------------
+  # Celery Background Worker
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: ai-internship-celery
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A config worker -l info
+    plan: starter
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: DJANGO_ENV
+        value: production
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: ai-internship-backend
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-internship-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: ai-internship-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: ai-internship-redis
+          property: connectionString
+
+  # ---------------------------------------------------------------------------
+  # React Frontend (Nginx Docker)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: ai-internship-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "/api"
+
+databases:
+  - name: ai-internship-db
+    databaseName: ai_internship
+    user: ai_user
+    plan: starter
+    postgresMajorVersion: "15"
