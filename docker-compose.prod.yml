@@ -52,6 +52,7 @@ services:
   # Django Backend (Gunicorn)
   # -------------------------------------------------------------------------
   backend:
+    image: ai-internship-platform_backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -101,11 +102,11 @@ services:
         condition: service_healthy
     command: /app/entrypoint.prod.sh gunicorn --config /app/gunicorn.conf.py config.wsgi:application
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/api/health/ || exit 1"]
-      interval: 10s
-      timeout: 60s
-      retries: 10
-      start_period: 120s
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/')\" || exit 1"]
+      interval: 15s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
     networks:
       - app_network
 
@@ -113,9 +114,7 @@ services:
   # Celery Worker
   # -------------------------------------------------------------------------
   celery:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ai-internship-platform_backend:latest
     container_name: ai_internship_prod_celery
     restart: unless-stopped
     environment:
@@ -163,9 +162,7 @@ services:
   # Celery Beat (Periodic task scheduler)
   # -------------------------------------------------------------------------
   celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ai-internship-platform_backend:latest
     container_name: ai_internship_prod_celery_beat
     restart: unless-stopped
     environment:
