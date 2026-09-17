@@ -31,6 +31,8 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://*.onrender.com,http://localhost"
       - key: GUNICORN_WORKERS
+        value: "1"
+      - key: GUNICORN_THREADS
         value: "2"
       - key: GUNICORN_TIMEOUT
         value: "120"
