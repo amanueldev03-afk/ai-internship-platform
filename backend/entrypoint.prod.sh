@@ -26,6 +26,18 @@ python manage.py migrate --noinput || {
     echo "==> [Entrypoint] Warning: Migration encountered an issue. Proceeding with application server..."
 }
 
+echo "==> [Entrypoint] Seeding initial internships if database is empty..."
+python -c "
+import os, django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
+django.setup()
+from apps.internships.models import Internship
+if Internship.objects.count() == 0:
+    from django.core.management import call_command
+    print('Empty database detected. Seeding live internships...')
+    call_command('fetch_live_data', '--sources', 'github,remoteok,arbeitsagentur')
+" || true
+
 echo "==> [Entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput
 
