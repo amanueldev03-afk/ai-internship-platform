@@ -216,9 +216,9 @@ else:
         )
     }
 
-    DATABASES["default"]["OPTIONS"] = {
-        "connect_timeout": 10,
-    }
+    if "OPTIONS" not in DATABASES["default"]:
+        DATABASES["default"]["OPTIONS"] = {}
+    DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
 # --------------------------------------------------
 # Password Validation
