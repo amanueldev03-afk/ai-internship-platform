@@ -13,10 +13,12 @@ from .validators import validate_production_settings
 
 # Host configuration
 _allowed_hosts_str = config("ALLOWED_HOSTS", default="*")
-if _allowed_hosts_str == "*":
+if _allowed_hosts_str == "*" or "*" in _allowed_hosts_str:
     ALLOWED_HOSTS = ["*"]
 else:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_str.split(",") if h.strip()]
+    if ".trycloudflare.com" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.extend([".trycloudflare.com", "localhost", "127.0.0.1", "backend", "frontend"])
 
 # CSRF Trusted Origins
 _csrf_trusted = config(

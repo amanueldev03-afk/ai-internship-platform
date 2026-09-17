@@ -498,10 +498,10 @@ ACCOUNT_ADAPTER = "apps.accounts.adapter.CustomAccountAdapter"
 
 # After a successful allauth (social) login, redirect to the SPA callback
 # route carrying the minted JWT tokens. This reuses our custom adapter.
-LOGIN_REDIRECT_URL = "http://localhost:5173/auth/callback"
+LOGIN_REDIRECT_URL = config("LOGIN_REDIRECT_URL", default="/auth/callback")
 
 # URL the frontend considers the OAuth callback (with query params appended).
-FRONTEND_OAUTH_CALLBACK_URL = "http://localhost:5173/auth/callback"
+FRONTEND_OAUTH_CALLBACK_URL = config("FRONTEND_OAUTH_CALLBACK_URL", default="/auth/callback")
 
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]

@@ -17,8 +17,10 @@ def build_oauth_callback_url(user):
     base = getattr(
         settings,
         "FRONTEND_OAUTH_CALLBACK_URL",
-        "http://localhost:5173/auth/callback",
+        "/auth/callback",
     )
+    if not base:
+        base = "/auth/callback"
     query = urlencode(
         {
             "access": str(refresh.access_token),
