@@ -37,7 +37,7 @@ services:
   # React Frontend (100% Free Static Site)
   # ---------------------------------------------------------------------------
   - type: web
-    name: ai-internship-frontend
+    name: ai-internship-web
     env: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: ./frontend/dist
