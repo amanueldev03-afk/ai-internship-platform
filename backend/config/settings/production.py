@@ -17,8 +17,9 @@ if _allowed_hosts_str == "*" or "*" in _allowed_hosts_str:
     ALLOWED_HOSTS = ["*"]
 else:
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_str.split(",") if h.strip()]
-    if ".trycloudflare.com" not in ALLOWED_HOSTS:
-        ALLOWED_HOSTS.extend([".trycloudflare.com", "localhost", "127.0.0.1", "backend", "frontend"])
+    for host_pattern in [".onrender.com", ".railway.app", ".up.railway.app", ".trycloudflare.com", "localhost", "127.0.0.1", "backend", "frontend"]:
+        if host_pattern not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host_pattern)
 
 # CSRF Trusted Origins
 _csrf_trusted = config(
@@ -29,6 +30,9 @@ if _csrf_trusted:
     CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(",") if o.strip()]
 else:
     CSRF_TRUSTED_ORIGINS = [
+        "https://*.onrender.com",
+        "https://*.up.railway.app",
+        "https://*.railway.app",
         "https://*.trycloudflare.com",
         "http://localhost",
         "http://127.0.0.1",

@@ -38,21 +38,21 @@ def apply_migration(apps, schema_editor):
             # For production, try to create extension
             try:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            except Exception:
-                # If we can't create it, raise the original error
-                raise RuntimeError(
-                    "pgvector extension is not installed. Run as superuser:\n"
-                    "  sudo -u postgres psql -d ai_internship "
-                    "-c \"CREATE EXTENSION IF NOT EXISTS vector;\""
+                # Drop old JSONField column and add new VectorField column
+                cursor.execute(
+                    "ALTER TABLE internships_internship DROP COLUMN IF EXISTS embedding;"
                 )
-
-        # Drop old JSONField column and add new VectorField column
-        cursor.execute(
-            "ALTER TABLE internships_internship DROP COLUMN IF EXISTS embedding;"
-        )
-        cursor.execute(
-            "ALTER TABLE internships_internship ADD COLUMN embedding vector(1536);"
-        )
+                cursor.execute(
+                    "ALTER TABLE internships_internship ADD COLUMN embedding vector(1536);"
+                )
+            except Exception:
+                # If pgvector is unavailable on this shared database, keep JSONB
+                cursor.execute(
+                    "ALTER TABLE internships_internship DROP COLUMN IF EXISTS embedding;"
+                )
+                cursor.execute(
+                    "ALTER TABLE internships_internship ADD COLUMN embedding JSONB;"
+                )
 
 
 def reverse_migration(apps, schema_editor):
