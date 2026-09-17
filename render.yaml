@@ -1,6 +1,6 @@
 services:
   # ---------------------------------------------------------------------------
-  # Django Gunicorn Backend (100% Free Plan)
+  # Django Gunicorn Backend (100% Free Web Service)
   # ---------------------------------------------------------------------------
   - type: web
     name: ai-internship-backend
@@ -34,24 +34,14 @@ services:
         value: "120"
 
   # ---------------------------------------------------------------------------
-  # React Frontend (100% Free Static Site)
+  # React Frontend (100% Free Web Service via Nginx Docker)
   # ---------------------------------------------------------------------------
   - type: web
     name: ai-internship-frontend
-    env: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: ./frontend/dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_BASE_URL
-        fromService:
-          type: web
-          name: ai-internship-backend
-          property: host
-        value: "https://${ai-internship-backend.host}/api"
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
 
 databases:
   # ---------------------------------------------------------------------------
@@ -61,4 +51,3 @@ databases:
     databaseName: ai_internship
     user: ai_user
     plan: free
-    postgresMajorVersion: "15"
