@@ -24,11 +24,11 @@ DEBUG = str(config("DEBUG", default="False")).lower() in (
 if DEBUG:
     SILENCED_SYSTEM_CHECKS = ['django.E027']  # Skip database connection check
 
-ALLOWED_HOSTS = config(
-    "ALLOWED_HOSTS",
-    cast=Csv(),
-    default=["127.0.0.1", "localhost"],
-)
+_allowed_hosts_val = config("ALLOWED_HOSTS", default="*")
+if _allowed_hosts_val == "*" or _allowed_hosts_val == ["*"]:
+    ALLOWED_HOSTS = ["*"]
+else:
+    ALLOWED_HOSTS = [h.strip() for h in str(_allowed_hosts_val).split(",") if h.strip()]
 
 # Allow Django test client host (used in automated checks)
 if DEBUG:

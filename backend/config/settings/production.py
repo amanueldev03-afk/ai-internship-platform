@@ -12,20 +12,26 @@ DEBUG = False
 from .validators import validate_production_settings
 
 # Host configuration
-ALLOWED_HOSTS = config(
-    "ALLOWED_HOSTS",
-    default="127.0.0.1,localhost,backend,frontend",
-    cast=Csv(),
-)
+_allowed_hosts_str = config("ALLOWED_HOSTS", default="*")
+if _allowed_hosts_str == "*":
+    ALLOWED_HOSTS = ["*"]
+else:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_str.split(",") if h.strip()]
 
 # CSRF Trusted Origins
 _csrf_trusted = config(
     "CSRF_TRUSTED_ORIGINS",
     default="",
-    cast=Csv(),
 )
 if _csrf_trusted:
-    CSRF_TRUSTED_ORIGINS = list(_csrf_trusted)
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in _csrf_trusted.split(",") if o.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://*.trycloudflare.com",
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://localhost:8080",
+    ]
 
 # CORS configuration
 _cors_origins = config(
