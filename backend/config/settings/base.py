@@ -188,14 +188,17 @@ ASGI_APPLICATION = "config.asgi.application"
 USE_SQLITE = config("USE_SQLITE", default=False, cast=bool)
 
 _DATABASE_URL = config("DATABASE_URL", default="")
-
-# ssl_require=True only for remote/cloud URLs (Neon, RDS, etc.)
-# Local Docker Compose URLs (localhost / 127.0.0.1) don't use SSL.
-_db_requires_ssl = (
-    "localhost" not in _DATABASE_URL
-    and "127.0.0.1" not in _DATABASE_URL
-    and "@db:" not in _DATABASE_URL  # docker-compose service name
-)
+_db_ssl_config = config("DB_SSL_REQUIRE", default="")
+if _db_ssl_config != "":
+    _db_requires_ssl = _db_ssl_config.lower() in ("true", "1", "yes")
+else:
+    _db_requires_ssl = (
+        bool(_DATABASE_URL)
+        and "localhost" not in _DATABASE_URL
+        and "127.0.0.1" not in _DATABASE_URL
+        and "@db:" not in _DATABASE_URL
+        and "internal" not in _DATABASE_URL
+    )
 
 if USE_SQLITE:
     DATABASES = {
@@ -578,15 +581,21 @@ CELERY_TASK_EAGER_PROPAGATES = config(
     cast=bool,
 )
 
-CACHES = {
-    "default": {
-        "BACKEND": (
-            "django.core.cache.backends.redis."
-            "RedisCache"
-        ),
-        "LOCATION": config("REDIS_URL", default="redis://127.0.0.1:6379/1"),
+_redis_url = config("REDIS_URL", default="")
+if _redis_url and not _redis_url.startswith("locmem"):
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _redis_url,
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "ai-internship-locmem-cache",
+        }
+    }
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 

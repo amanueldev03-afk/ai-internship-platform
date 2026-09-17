@@ -71,13 +71,15 @@ def validate_production_settings(settings_dict: Dict[str, Any]) -> None:
     # 5. Redis / Cache / Broker validation
     caches = settings_dict.get("CACHES", {})
     default_cache = caches.get("default", {})
+    cache_backend = default_cache.get("BACKEND", "").lower()
     cache_location = default_cache.get("LOCATION", "")
-    if not cache_location:
+    if "locmem" not in cache_backend and not cache_location:
         errors.append("Production configuration error: CACHES['default']['LOCATION'] (REDIS_URL) is required.")
 
-    celery_broker = settings_dict.get("CELERY_BROKER_URL", "")
-    if not celery_broker:
-        errors.append("Production configuration error: CELERY_BROKER_URL is required.")
+    if not settings_dict.get("CELERY_TASK_ALWAYS_EAGER", False):
+        celery_broker = settings_dict.get("CELERY_BROKER_URL", "")
+        if not celery_broker:
+            errors.append("Production configuration error: CELERY_BROKER_URL is required when not in eager mode.")
 
     # 6. Storage backend conditional validation
     storage_backend = settings_dict.get("STORAGE_BACKEND", "filesystem")
