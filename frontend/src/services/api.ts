@@ -5,8 +5,16 @@ import { refreshAccessToken, logoutUser } from '@/features/auth/authSlice'
 
 function getBaseUrl(): string {
   const envUrl = import.meta.env.VITE_API_BASE_URL
-  if (!envUrl) return '/api'
+  if (!envUrl || envUrl === '/api') return '/api'
   let url = envUrl.trim()
+  if (
+    typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1' &&
+    (url.includes('localhost') || url.includes('127.0.0.1'))
+  ) {
+    return '/api'
+  }
   if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
     url = `https://${url}`
   }

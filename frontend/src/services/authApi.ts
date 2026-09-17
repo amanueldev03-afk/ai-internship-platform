@@ -29,11 +29,19 @@ export interface RefreshResponse {
 
 // Helper to determine the correct Google OAuth login endpoint
 export function getGoogleOAuthUrl(): string {
-  const envUrl = import.meta.env.VITE_API_BASE_URL
+  const envUrl = import.meta.env.VITE_OAUTH_BASE_URL || import.meta.env.VITE_API_BASE_URL
   if (envUrl) {
     try {
       if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
         const parsed = new URL(envUrl)
+        if (
+          typeof window !== 'undefined' &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1' &&
+          (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+        ) {
+          return '/accounts/google/login/'
+        }
         return `${parsed.origin}/accounts/google/login/`
       }
     } catch {
