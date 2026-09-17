@@ -466,21 +466,23 @@ SIMPLE_JWT = {
 }
 
 EMAIL_BACKEND = config(
-    "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 
-EMAIL_HOST = config("EMAIL_HOST")
-EMAIL_PORT = config("EMAIL_PORT", cast=int)
+EMAIL_HOST = config("EMAIL_HOST", default="localhost")
+EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 
 EMAIL_USE_TLS = config(
     "EMAIL_USE_TLS",
+    default=False,
     cast=bool,
 )
 
 DEFAULT_FROM_EMAIL = config(
-    "DEFAULT_FROM_EMAIL"
+    "DEFAULT_FROM_EMAIL",
+    default="noreply@ai-internship.local",
 )
 
 AUTHENTICATION_BACKENDS = [
@@ -515,8 +517,8 @@ SOCIALACCOUNT_PROVIDERS = {
     "google": {
         "APPS": [
             {
-                "client_id": config("GOOGLE_CLIENT_ID"),
-                "secret": config("GOOGLE_CLIENT_SECRET"),
+                "client_id": config("GOOGLE_CLIENT_ID", default=""),
+                "secret": config("GOOGLE_CLIENT_SECRET", default=""),
                 "key": "",
             },
         ],
