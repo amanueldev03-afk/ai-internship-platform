@@ -5,7 +5,7 @@ from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from rest_framework_simplejwt.tokens import RefreshToken
 
 
-def build_oauth_callback_url(user):
+def build_oauth_callback_url(user, request=None):
     """Build the frontend callback URL with fresh JWT tokens for ``user``."""
     from django.contrib.auth import get_user_model
 
@@ -17,10 +17,17 @@ def build_oauth_callback_url(user):
     base = getattr(
         settings,
         "FRONTEND_OAUTH_CALLBACK_URL",
-        "/auth/callback",
+        "",
     )
-    if not base:
-        base = "/auth/callback"
+    if not base or base == "/auth/callback":
+        frontend_url = getattr(settings, "FRONTEND_URL", "").strip()
+        if frontend_url and frontend_url not in ("http://localhost", "http://localhost:8080", "http://127.0.0.1", "http://127.0.0.1:8080"):
+            if not frontend_url.startswith("http://") and not frontend_url.startswith("https://"):
+                frontend_url = f"https://{frontend_url}"
+            base = f"{frontend_url.rstrip('/')}/auth/callback"
+        else:
+            base = "/auth/callback"
+
     query = urlencode(
         {
             "access": str(refresh.access_token),

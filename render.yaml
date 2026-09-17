@@ -40,6 +40,11 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: ai-internship-web
+          property: host
 
   # ---------------------------------------------------------------------------
   # React Frontend (100% Free Static Site)
