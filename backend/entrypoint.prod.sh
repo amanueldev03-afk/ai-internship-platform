@@ -22,8 +22,9 @@ if db_url:
 " || true
 
 echo "==> [Entrypoint] Running database migrations..."
-python manage.py migrate --noinput || {
-    echo "==> [Entrypoint] Warning: Migration encountered an issue. Proceeding with application server..."
+python manage.py migrate --noinput --verbosity 2 || {
+    echo "==> [Entrypoint] Migration failed! Printing details:"
+    python manage.py migrate --noinput -v 3 || true
 }
 
 echo "==> [Entrypoint] Initializing Django Site..."

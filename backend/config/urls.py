@@ -24,6 +24,52 @@ def health_check(request):
     return JsonResponse({"status": "OK"})
 
 
+def run_migrations(request):
+    """Run database migrations and initialize site/apps."""
+    import io
+    from django.core.management import call_command
+    buf = io.StringIO()
+    try:
+        call_command("migrate", interactive=False, stdout=buf, stderr=buf)
+        migration_output = buf.getvalue()
+
+        from django.contrib.sites.models import Site
+        site, created = Site.objects.get_or_create(
+            id=1,
+            defaults={"domain": "onrender.com", "name": "AI Internship Platform"}
+        )
+
+        google_client_id = getattr(settings, "GOOGLE_CLIENT_ID", "") or ""
+        google_client_secret = getattr(settings, "GOOGLE_CLIENT_SECRET", "") or ""
+        app_info = "No Google Client ID provided"
+        if google_client_id:
+            from allauth.socialaccount.models import SocialApp
+            app, _ = SocialApp.objects.get_or_create(
+                provider="google",
+                defaults={"name": "Google", "client_id": google_client_id, "secret": google_client_secret}
+            )
+            app.client_id = google_client_id
+            app.secret = google_client_secret
+            app.sites.add(site)
+            app.save()
+            app_info = f"SocialApp configured with client_id={google_client_id[:8]}..."
+
+        return JsonResponse({
+            "status": "OK",
+            "migration_output": migration_output,
+            "site": {"id": site.id, "domain": site.domain, "name": site.name},
+            "app_info": app_info,
+        })
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            "status": "ERROR",
+            "migration_output": buf.getvalue(),
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }, status=200)
+
+
 def debug_oauth(request):
     """Diagnostic endpoint to inspect live Google OAuth configuration and errors."""
     try:
@@ -31,7 +77,16 @@ def debug_oauth(request):
         from allauth.socialaccount.models import SocialApp
         from allauth.socialaccount.providers.google.views import oauth2_login
         
-        site = Site.objects.get_current(request)
+        # Check if site table exists, if not trigger migration
+        try:
+            site = Site.objects.get_current(request)
+        except Exception:
+            import io
+            from django.core.management import call_command
+            buf = io.StringIO()
+            call_command("migrate", interactive=False, stdout=buf, stderr=buf)
+            site, _ = Site.objects.get_or_create(id=1, defaults={"domain": "onrender.com", "name": "AI Internship Platform"})
+
         apps = list(SocialApp.objects.all().values("id", "provider", "name", "client_id"))
         
         resp = oauth2_login(request)
@@ -57,6 +112,7 @@ urlpatterns = [
     # Health check — used by frontend to verify backend connectivity
     path("api/health/", health_check, name="health-check"),
     path("api/debug-oauth/", debug_oauth, name="debug-oauth"),
+    path("api/run-migrations/", run_migrations, name="run-migrations"),
     # API Documentation (kept public — override the global IsAuthenticated)
     path(
         "api/schema/",
