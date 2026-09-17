@@ -40,13 +40,14 @@ else:
     ]
 
 # CORS configuration
-_cors_origins = config(
-    "CORS_ALLOWED_ORIGINS",
-    default="",
-    cast=Csv(),
-)
-if _cors_origins:
-    CORS_ALLOWED_ORIGINS = list(_cors_origins)
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.onrender\.com$",
+    r"^https://.*\.trycloudflare\.com$",
+    r"^https://.*\.railway\.app$",
+    r"^https://.*\.up\.railway\.app$",
+]
 
 # Header used by reverse proxies (Nginx / Load Balancers) to indicate HTTPS
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

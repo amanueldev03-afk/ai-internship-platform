@@ -51,6 +51,28 @@ def create_student_user(*, email, password, username=None,
 
     return user
 
+def get_live_frontend_url():
+    url = getattr(settings, "FRONTEND_URL", "").strip()
+    if not url or url in ("http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:8080"):
+        site_url = getattr(settings, "SITE_BASE_URL", "").strip()
+        if site_url and "localhost" not in site_url:
+            url = site_url
+    if not url:
+        return "https://ai-internship-web.onrender.com"
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"https://{url}"
+    return url.rstrip("/")
+
+
+def get_live_site_url():
+    url = getattr(settings, "SITE_BASE_URL", "").strip()
+    if not url or "localhost" in url:
+        return "https://ai-internship-backend-4nwx.onrender.com"
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = f"https://{url}"
+    return url.rstrip("/")
+
+
 def send_verification_email(user):
     """
     Send a real email verification link.
@@ -64,14 +86,13 @@ def send_verification_email(user):
         user
     )
 
-    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    site_url = get_live_site_url()
+    frontend_url = get_live_frontend_url()
     api_verification_url = (
         f"{site_url}/api/auth/verify-email/{uid}/{token}/"
     )
     frontend_verification_url = (
-        f"{frontend_url}"
-        f"/verify-email?uid={uid}&token={token}"
+        f"{frontend_url}/verify-email?uid={uid}&token={token}"
     )
 
     try:
@@ -79,14 +100,13 @@ def send_verification_email(user):
             subject="Verify your Internship Platform account",
 
             message=(
-                f"Hello {user.username},\n\n"
-                f"Thank you for registering.\n\n"
-                f"Please verify your email address "
-                f"using one of the links below:\n\n"
-                f"{frontend_verification_url}\n"
+                f"Hello {user.username or user.email},\n\n"
+                f"Thank you for registering on AI Internship Platform.\n\n"
+                f"Please verify your email address using the link below:\n\n"
+                f"{frontend_verification_url}\n\n"
+                f"Direct API verification link:\n"
                 f"{api_verification_url}\n\n"
-                f"If you did not create this account, "
-                f"please ignore this email."
+                f"If you did not create this account, please ignore this email."
             ),
 
             from_email=settings.DEFAULT_FROM_EMAIL,
@@ -114,28 +134,26 @@ def send_password_reset_email(user):
         user
     )
 
-    site_url = getattr(settings, "SITE_BASE_URL", "http://localhost:8000").rstrip("/")
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    site_url = get_live_site_url()
+    frontend_url = get_live_frontend_url()
     api_reset_url = (
         f"{site_url}/api/auth/password-reset-confirm/{uid}/{token}/"
     )
     frontend_reset_url = (
-        f"{frontend_url}"
-        f"/reset-password?uid={uid}&token={token}"
+        f"{frontend_url}/reset-password?uid={uid}&token={token}"
     )
 
     send_mail(
         subject="Reset your Internship Platform password",
 
         message=(
-            f"Hello {user.username},\n\n"
-            f"We received a request to reset "
-            f"your password.\n\n"
-                f"Reset your password using one of these links:\n\n"
-                f"{frontend_reset_url}\n"
-                f"{api_reset_url}\n\n"
-            f"If you did not request a password reset, "
-            f"you can safely ignore this email."
+            f"Hello {user.username or user.email},\n\n"
+            f"We received a request to reset your password.\n\n"
+            f"Reset your password using this link:\n\n"
+            f"{frontend_reset_url}\n\n"
+            f"Direct API link:\n"
+            f"{api_reset_url}\n\n"
+            f"If you did not request a password reset, you can safely ignore this email."
         ),
 
         from_email=settings.DEFAULT_FROM_EMAIL,
