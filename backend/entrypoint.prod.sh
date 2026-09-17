@@ -26,6 +26,19 @@ python manage.py migrate --noinput || {
     echo "==> [Entrypoint] Warning: Migration encountered an issue. Proceeding with application server..."
 }
 
+echo "==> [Entrypoint] Initializing Django Site..."
+python -c "
+import os, django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
+django.setup()
+try:
+    from django.contrib.sites.models import Site
+    site, created = Site.objects.get_or_create(id=1, defaults={'domain': 'onrender.com', 'name': 'AI Internship Platform'})
+    print('Django Site initialized successfully!')
+except Exception as e:
+    print(f'Site initialization notice: {e}')
+" || true
+
 echo "==> [Entrypoint] Seeding initial internships if database is empty..."
 python -c "
 import os, django

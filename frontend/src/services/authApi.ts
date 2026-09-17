@@ -32,8 +32,12 @@ export function getGoogleOAuthUrl(): string {
   const envUrl = import.meta.env.VITE_OAUTH_BASE_URL || import.meta.env.VITE_API_BASE_URL
   if (envUrl) {
     try {
-      if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
-        const parsed = new URL(envUrl)
+      let target = envUrl.trim()
+      if (!target.startsWith('http://') && !target.startsWith('https://') && !target.startsWith('/')) {
+        target = `https://${target}`
+      }
+      if (target.startsWith('http://') || target.startsWith('https://')) {
+        const parsed = new URL(target)
         if (
           typeof window !== 'undefined' &&
           window.location.hostname !== 'localhost' &&
