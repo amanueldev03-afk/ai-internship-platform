@@ -24,10 +24,39 @@ def health_check(request):
     return JsonResponse({"status": "OK"})
 
 
+def debug_oauth(request):
+    """Diagnostic endpoint to inspect live Google OAuth configuration and errors."""
+    try:
+        from django.contrib.sites.models import Site
+        from allauth.socialaccount.models import SocialApp
+        from allauth.socialaccount.providers.google.views import oauth2_login
+        
+        site = Site.objects.get_current(request)
+        apps = list(SocialApp.objects.all().values("id", "provider", "name", "client_id"))
+        
+        resp = oauth2_login(request)
+        return JsonResponse({
+            "status": "OK",
+            "site": {"id": site.id, "domain": site.domain, "name": site.name},
+            "apps": apps,
+            "redirect_url": resp.get("Location", "") if hasattr(resp, "get") else str(resp),
+            "status_code": resp.status_code,
+        })
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            "status": "ERROR",
+            "error": str(e),
+            "type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+        }, status=200)
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     # Health check — used by frontend to verify backend connectivity
     path("api/health/", health_check, name="health-check"),
+    path("api/debug-oauth/", debug_oauth, name="debug-oauth"),
     # API Documentation (kept public — override the global IsAuthenticated)
     path(
         "api/schema/",
