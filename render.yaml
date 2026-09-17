@@ -34,6 +34,10 @@ services:
         value: "2"
       - key: GUNICORN_TIMEOUT
         value: "120"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
 
   # ---------------------------------------------------------------------------
   # React Frontend (100% Free Static Site)
