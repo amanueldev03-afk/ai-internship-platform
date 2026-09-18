@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Sparkles, Bookmark, Compass, RefreshCw } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
@@ -22,6 +22,8 @@ export default function InternshipSearch() {
   const [error, setError] = useState<string | null>(null)
   const [totalCount, setTotalCount] = useState(0)
   const [savedInternships, setSavedInternships] = useState<Set<number>>(new Set())
+  const currentInternshipIds = useRef<number[]>([])
+  const loadInternshipsRef = useRef<(excludeIds?: number[]) => Promise<void>>(() => Promise.resolve())
 
   useEffect(() => {
     if (!isAuthenticated || role !== 'student') {
@@ -47,13 +49,14 @@ export default function InternshipSearch() {
     }
   }, [isAuthenticated, role, loadSavedState])
 
-  const loadInternships = useCallback(async () => {
+  const loadInternships = useCallback(async (excludeIds: number[] = []) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await searchInternships(filters)
+      const response = await searchInternships({ ...filters, exclude_ids: excludeIds })
       setInternships(response.results)
+      currentInternshipIds.current = response.results.map((internship) => internship.id)
       setTotalCount(response.count)
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to load internships')
@@ -64,16 +67,30 @@ export default function InternshipSearch() {
   }, [filters])
 
   useEffect(() => {
+    loadInternshipsRef.current = loadInternships
+  }, [loadInternships])
+
+  useEffect(() => {
     if (isAuthenticated && role === 'student') {
       loadInternships()
     }
   }, [loadInternships, isAuthenticated, role])
 
+  useEffect(() => {
+    if (!isAuthenticated || role !== 'student') return
+
+    const refreshEveryDay = window.setInterval(() => {
+      loadInternshipsRef.current(currentInternshipIds.current)
+    }, 24 * 60 * 60 * 1000)
+
+    return () => window.clearInterval(refreshEveryDay)
+  }, [isAuthenticated, role])
+
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
       await Promise.all([
-        loadInternships(),
+        loadInternships(currentInternshipIds.current),
         loadSavedState(),
       ])
     } finally {

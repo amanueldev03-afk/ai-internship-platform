@@ -501,7 +501,10 @@ ACCOUNT_ADAPTER = "apps.accounts.adapter.CustomAccountAdapter"
 LOGIN_REDIRECT_URL = config("LOGIN_REDIRECT_URL", default="/auth/callback")
 
 # URL the frontend considers the OAuth callback (with query params appended).
-FRONTEND_OAUTH_CALLBACK_URL = config("FRONTEND_OAUTH_CALLBACK_URL", default="/auth/callback")
+FRONTEND_OAUTH_CALLBACK_URL = config(
+    "FRONTEND_OAUTH_CALLBACK_URL",
+    default="http://localhost:5173/auth/callback" if DEBUG else "/auth/callback",
+)
 
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]

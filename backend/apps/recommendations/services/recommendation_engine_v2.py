@@ -94,12 +94,96 @@ def calculate_semantic_score(student_embedding, internship):
 
 def passes_hard_filters(internship, profile):
     """
-    Hard constraints — return False to exclude the internship entirely.
+    Hard constraints — only active listings and a usable profile proceed to AI.
+
+    Preference fields are scoring inputs, not listing-level exclusions. A
+    complete profile must still receive ranked results when the current live
+    feed has no exact preference match.
     """
     if not profile:
-        return True
+        return False
 
     if getattr(internship, "status", "active") != "active":
+        return False
+
+    return has_recommendation_preferences(profile)
+
+
+def has_recommendation_preferences(profile):
+    """Return True only when the student has supplied a real preference."""
+    return any((
+        getattr(profile, "internship_type", "any") not in (None, "", "any"),
+        getattr(profile, "work_type", "either") not in (None, "", "either"),
+        getattr(profile, "compensation_preference", "either") not in (None, "", "either"),
+        bool(getattr(profile, "preferred_locations", None)),
+        bool(getattr(profile, "preferred_industries", None)),
+        bool(getattr(profile, "preferred_roles", None)),
+        getattr(profile, "internship_duration_min_weeks", None) is not None,
+        getattr(profile, "internship_duration_max_weeks", None) is not None,
+        bool(getattr(profile, "willing_to_relocate", False)),
+    ))
+
+
+def passes_preference_requirements(internship, profile):
+    """Require every explicitly selected preference to match the listing."""
+    if not has_recommendation_preferences(profile):
+        return False
+
+    if profile.internship_type not in (None, "", "any"):
+        if internship.internship_type != profile.internship_type:
+            return False
+
+    if profile.work_type not in (None, "", "either"):
+        if internship.work_type != profile.work_type:
+            return False
+
+    if profile.compensation_preference not in (None, "", "either"):
+        if calculate_salary_score(internship, profile) < 1.0:
+            return False
+
+    preferred_locations = [
+        str(location).lower().strip()
+        for location in (profile.preferred_locations or [])
+        if location
+    ]
+    if preferred_locations:
+        listing_location = " ".join(filter(None, (
+            getattr(internship, "city", ""),
+            getattr(internship, "country", ""),
+            getattr(internship, "location_text", ""),
+        ))).lower()
+        if not any(location in listing_location for location in preferred_locations):
+            if not ("remote" in preferred_locations and internship.internship_type == "remote"):
+                return False
+
+    preferred_industries = {
+        str(industry).lower().strip()
+        for industry in (profile.preferred_industries or [])
+        if industry
+    }
+    if preferred_industries and (internship.category or "").lower() not in preferred_industries:
+        return False
+
+    preferred_roles = [
+        str(role).lower().strip()
+        for role in (profile.preferred_roles or [])
+        if role
+    ]
+    if preferred_roles:
+        listing_role = " ".join(filter(None, (
+            getattr(internship, "title", ""),
+            getattr(internship, "category", ""),
+        ))).lower()
+        if not any(role in listing_role for role in preferred_roles):
+            return False
+
+    duration_min = getattr(profile, "internship_duration_min_weeks", None)
+    duration_max = getattr(profile, "internship_duration_max_weeks", None)
+    internship_min = getattr(internship, "duration_min_weeks", None)
+    internship_max = getattr(internship, "duration_max_weeks", None)
+    if duration_min is not None and internship_max is not None and internship_max < duration_min:
+        return False
+    if duration_max is not None and internship_min is not None and internship_min > duration_max:
         return False
 
     return True
@@ -388,6 +472,10 @@ def generate_recommendations(student, internships, save_to_db=True):
         )
     except StudentProfile.DoesNotExist:
         logger.warning(f"No StudentProfile found for user {student.id}")
+        return []
+
+    if not has_recommendation_preferences(profile):
+        logger.info("No explicit preferences for student %s; returning no recommendations", student.id)
         return []
 
     student_skills = _get_student_skills(profile)

@@ -19,6 +19,7 @@ export interface InternshipFilters {
   skill?: string
   page?: number
   page_size?: number
+  exclude_ids?: number[]
 }
 
 export const INTERNSHIP_TYPE_CHOICES = [

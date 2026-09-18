@@ -96,3 +96,9 @@ class CustomAccountAdapter(DefaultAccountAdapter):
         if user is not None and user.is_authenticated:
             return build_oauth_callback_url(user)
         return super().get_login_redirect_url(request)
+
+    def get_signup_redirect_url(self, request):
+        user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated:
+            return build_oauth_callback_url(user)
+        return super().get_signup_redirect_url(request)

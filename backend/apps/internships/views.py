@@ -191,6 +191,14 @@ class InternshipListView(generics.ListAPIView):
             .select_related("source")
         )
 
+        excluded_ids = {
+            int(value)
+            for value in (self.request.query_params.get("exclude_ids") or "").split(",")
+            if value.strip().isdigit()
+        }
+        if excluded_ids:
+            queryset = queryset.exclude(id__in=excluded_ids)
+
         q = (self.request.query_params.get("q") or "").strip()
         if q:
             vector = SearchVector("title", weight="A") + \

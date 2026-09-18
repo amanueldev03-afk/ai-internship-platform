@@ -17,7 +17,10 @@ from apps.students.models import StudentCV, StudentProfile, CV as CVModel
 from .models import Recommendation
 from .pagination import RecommendationPagination
 from .serializers import RecommendationSerializer, RecommendationFeedbackSerializer
-from .services.recommendation_engine_v2 import generate_recommendations
+from .services.recommendation_engine_v2 import (
+    generate_recommendations,
+    has_recommendation_preferences,
+)
 from apps.internships.serializers import InternshipSerializer
 
 logger = logging.getLogger(__name__)
@@ -29,7 +32,7 @@ RECOMMENDATION_CACHE_TTL = 60 * 30
 
 
 def get_recommendation_cache_key(user_id: int) -> str:
-    return f"recommendations:user:{user_id}"
+    return f"recommendations:v2:user:{user_id}"
 
 
 def bust_recommendation_cache(user_id: int) -> None:
@@ -163,10 +166,16 @@ class StudentRecommendationView(APIView):
         cv_data = _build_cv_data(request.user)
         prof_summary = _build_profile_summary(profile)
 
+        # Do not expose stale scores, or calculate AI matches, until the
+        # student has selected at least one explicit preference.
+        preferences_ready = has_recommendation_preferences(profile)
+        if not preferences_ready:
+            cache.delete(cache_key)
+
         # ----------------------------------------------------------
         # Try cache
         # ----------------------------------------------------------
-        cached = cache.get(cache_key)
+        cached = cache.get(cache_key) if preferences_ready else None
 
         if cached is not None:
             recommendations = cached
@@ -266,6 +275,10 @@ class RecommendationHistoryListView(ListAPIView):
 
     def get_queryset(self):
         if self.request.user.role != "student":
+            return Recommendation.objects.none()
+
+        profile = StudentProfile.objects.filter(user=self.request.user).first()
+        if not profile or not has_recommendation_preferences(profile):
             return Recommendation.objects.none()
 
         return (

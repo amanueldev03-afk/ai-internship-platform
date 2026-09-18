@@ -40,6 +40,7 @@ export async function searchInternships(filters: InternshipFilters = {}): Promis
   if (filters.skill) params.skill = filters.skill
   if (filters.page) params.page = filters.page
   if (filters.page_size) params.page_size = filters.page_size
+  if (filters.exclude_ids?.length) params.exclude_ids = filters.exclude_ids.join(',')
   
   const response = await api.get('/internships/', { params })
   return response.data
