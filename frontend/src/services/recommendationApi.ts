@@ -5,8 +5,11 @@ import type { PaginatedHistory, RecommendationHistoryEntry, RecommendationRespon
  * Get AI-powered recommendations for the authenticated student.
  * @param refresh - Set to true to bust cache and re-score immediately
  */
-export async function getRecommendations(refresh = false): Promise<RecommendationResponse> {
-  const params = refresh ? { refresh: 'true' } : {}
+export async function getRecommendations(refresh = false, page = 1): Promise<RecommendationResponse> {
+  const params = {
+    ...(refresh ? { refresh: 'true' } : {}),
+    ...(page > 1 ? { page } : {}),
+  }
   const response = await api.get<RecommendationResponse>('/recommendations/', { params })
   return response.data
 }

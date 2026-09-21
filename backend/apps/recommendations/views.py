@@ -166,16 +166,10 @@ class StudentRecommendationView(APIView):
         cv_data = _build_cv_data(request.user)
         prof_summary = _build_profile_summary(profile)
 
-        # Do not expose stale scores, or calculate AI matches, until the
-        # student has selected at least one explicit preference.
-        preferences_ready = has_recommendation_preferences(profile)
-        if not preferences_ready:
-            cache.delete(cache_key)
-
         # ----------------------------------------------------------
         # Try cache
         # ----------------------------------------------------------
-        cached = cache.get(cache_key) if preferences_ready else None
+        cached = cache.get(cache_key)
 
         if cached is not None:
             recommendations = cached
@@ -278,7 +272,7 @@ class RecommendationHistoryListView(ListAPIView):
             return Recommendation.objects.none()
 
         profile = StudentProfile.objects.filter(user=self.request.user).first()
-        if not profile or not has_recommendation_preferences(profile):
+        if not profile:
             return Recommendation.objects.none()
 
         return (

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Sparkles, SlidersHorizontal, RefreshCw, Compass } from 'lucide-react'
+import { Sparkles, SlidersHorizontal, RefreshCw, Compass, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { getRecommendations } from '@/services/recommendationApi'
 import { getSavedInternships } from '@/services/internshipApi'
@@ -30,7 +30,7 @@ export default function StudentRecommendations() {
 
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const loadRecommendations = useCallback(async (refresh = false) => {
+  const loadRecommendations = useCallback(async (refresh = false, page = 1) => {
     if (refresh) {
       setIsRefreshing(true)
     } else {
@@ -39,7 +39,7 @@ export default function StudentRecommendations() {
     setError(null)
     try {
       const [response, savedData] = await Promise.all([
-        getRecommendations(refresh),
+        getRecommendations(refresh, page),
         getSavedInternships().catch(() => []),
       ])
       
@@ -60,6 +60,13 @@ export default function StudentRecommendations() {
       setIsRefreshing(false)
     }
   }, [])
+
+  const currentPage = pagination.next
+    ? Number(new URL(pagination.next, window.location.origin).searchParams.get('page') || 2) - 1
+    : pagination.previous
+      ? Number(new URL(pagination.previous, window.location.origin).searchParams.get('page') || 1) + 1
+      : 1
+  const totalPages = Math.max(1, Math.ceil(pagination.count / 10))
 
   useEffect(() => {
     if (!isAuthenticated || role !== 'student') {
@@ -168,7 +175,7 @@ export default function StudentRecommendations() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => loadRecommendations(true)}
+                onClick={() => loadRecommendations(true, 1)}
                 disabled={isRefreshing}
                 className="rounded-2xl text-xs font-bold"
               >
@@ -218,6 +225,32 @@ export default function StudentRecommendations() {
             </div>
           </div>
         </div>
+
+        {pagination.count > 10 && (
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!pagination.previous || isLoading}
+              onClick={() => loadRecommendations(false, Math.max(1, currentPage - 1))}
+              className="rounded-2xl text-xs font-bold"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Previous
+            </Button>
+            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!pagination.next || isLoading}
+              onClick={() => loadRecommendations(false, currentPage + 1)}
+              className="rounded-2xl text-xs font-bold"
+            >
+              Next <ChevronRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+        )}
 
         {/* Recommendations Grid */}
         {filteredRecommendations.length === 0 ? (

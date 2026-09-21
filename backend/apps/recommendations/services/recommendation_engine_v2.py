@@ -106,7 +106,7 @@ def passes_hard_filters(internship, profile):
     if getattr(internship, "status", "active") != "active":
         return False
 
-    return has_recommendation_preferences(profile)
+    return True
 
 
 def has_recommendation_preferences(profile):
@@ -472,10 +472,6 @@ def generate_recommendations(student, internships, save_to_db=True):
         )
     except StudentProfile.DoesNotExist:
         logger.warning(f"No StudentProfile found for user {student.id}")
-        return []
-
-    if not has_recommendation_preferences(profile):
-        logger.info("No explicit preferences for student %s; returning no recommendations", student.id)
         return []
 
     student_skills = _get_student_skills(profile)
