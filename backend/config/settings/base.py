@@ -42,6 +42,12 @@ SITE_BASE_URL = config(
     default="http://localhost:8000",
 ).rstrip("/")
 
+# Base URL of the frontend SPA application
+FRONTEND_URL = config(
+    "FRONTEND_URL",
+    default="http://localhost:5173" if DEBUG else "https://ai-internship-web.onrender.com",
+).rstrip("/")
+
 # Recommendation score is expressed on a 0-100 scale. Override this business
 # threshold per environment without changing notification task code.
 NOTIFICATION_HIGH_SCORE_THRESHOLD = config(
@@ -487,17 +493,23 @@ EMAIL_USE_TLS = config(
     default=True,
     cast=bool,
 )
+EMAIL_USE_SSL = config(
+    "EMAIL_USE_SSL",
+    default=False,
+    cast=bool,
+)
 
 EMAIL_TIMEOUT = config(
     "EMAIL_TIMEOUT",
-    default=5,
+    default=15,
     cast=int,
 )
 
 DEFAULT_FROM_EMAIL = config(
     "DEFAULT_FROM_EMAIL",
-    default="noreply@ai-internship.com",
+    default=EMAIL_HOST_USER or "noreply@ai-internship.com",
 )
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

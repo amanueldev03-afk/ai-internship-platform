@@ -76,9 +76,28 @@ def get_live_site_url():
     return "https://ai-internship-backend-4nwx.onrender.com"
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def get_sender_email():
+    """
+    Resolve the optimal sender address.
+    For Gmail/SMTP providers, sender must match authenticated user or configured default.
+    """
+    host_user = getattr(settings, "EMAIL_HOST_USER", "").strip()
+    default_from = getattr(settings, "DEFAULT_FROM_EMAIL", "").strip()
+    if host_user and "@" in host_user:
+        return f"AI Internship Platform <{host_user}>"
+    if default_from:
+        return default_from
+    return "noreply@ai-internship.com"
+
+
 def send_verification_email(user):
     """
-    Send a real email verification link.
+    Send a real email verification link with rich HTML and plain-text fallback.
     """
 
     uid = urlsafe_base64_encode(
@@ -98,41 +117,82 @@ def send_verification_email(user):
         f"{frontend_url}/verify-email?uid={uid}&token={token}"
     )
 
+    recipient_name = user.first_name or user.username or "Student"
+    from_email = get_sender_email()
+
     print(f"\n============= EMAIL VERIFICATION LINK =============")
-    print(f"User: {user.email}")
+    print(f"To:      {user.email}")
+    print(f"From:    {from_email}")
     print(f"Frontend Verification URL: {frontend_verification_url}")
     print(f"API Verification URL:      {api_verification_url}")
     print(f"====================================================\n")
 
+    plain_message = (
+        f"Hello {recipient_name},\n\n"
+        f"Thank you for registering on AI Internship Platform!\n\n"
+        f"Please verify your email address to activate your account and start discovering personalized internships:\n\n"
+        f"{frontend_verification_url}\n\n"
+        f"Direct API verification link:\n"
+        f"{api_verification_url}\n\n"
+        f"If you did not create this account, please ignore this email."
+    )
+
+    html_message = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px 12px; }}
+    .container {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 36px 28px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01); border: 1px solid #e2e8f0; }}
+    .header {{ text-align: center; margin-bottom: 28px; }}
+    .logo {{ font-size: 24px; font-weight: 800; color: #4f46e5; letter-spacing: -0.5px; }}
+    .title {{ font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #0f172a; text-align: center; }}
+    .text {{ font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 20px; }}
+    .btn-wrap {{ text-align: center; margin: 32px 0; }}
+    .btn {{ display: inline-block; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color: #ffffff !important; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 16px; box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.35); }}
+    .url-box {{ word-break: break-all; font-size: 13px; color: #4338ca; background: #eef2ff; padding: 14px; border-radius: 8px; border: 1px solid #c7d2fe; margin-bottom: 24px; }}
+    .footer {{ font-size: 13px; color: #94a3b8; text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 20px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">AI Internship Platform</div>
+    </div>
+    <div class="title">Verify your email address</div>
+    <p class="text">Hello <strong>{recipient_name}</strong>,</p>
+    <p class="text">Thank you for joining AI Internship Platform! Please confirm your email address to activate your account and immediately access your personalized AI internship recommendations.</p>
+    <div class="btn-wrap">
+      <a href="{frontend_verification_url}" class="btn">Verify Email & Access Dashboard</a>
+    </div>
+    <p class="text" style="font-size: 13px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:</p>
+    <div class="url-box">{frontend_verification_url}</div>
+    <div class="footer">
+      If you did not create an account on AI Internship Platform, you can safely ignore this email.
+    </div>
+  </div>
+</body>
+</html>"""
+
     try:
         send_mail(
-            subject="Verify your Internship Platform account",
-
-            message=(
-                f"Hello {user.username or user.email},\n\n"
-                f"Thank you for registering on AI Internship Platform.\n\n"
-                f"Please verify your email address using the link below:\n\n"
-                f"{frontend_verification_url}\n\n"
-                f"Direct API verification link:\n"
-                f"{api_verification_url}\n\n"
-                f"If you did not create this account, please ignore this email."
-            ),
-
-            from_email=settings.DEFAULT_FROM_EMAIL,
-
+            subject="Verify your AI Internship Platform account",
+            message=plain_message,
+            html_message=html_message,
+            from_email=from_email,
             recipient_list=[user.email],
-
             fail_silently=False,
         )
         return True
     except Exception as e:
+        logger.error(f"Failed to deliver verification email via SMTP to {user.email}: {e}", exc_info=True)
         print(f"Failed to deliver verification email via SMTP to {user.email}: {e}")
-        return True
-    
+        return False
+
 
 def send_password_reset_email(user):
     """
-    Send a password reset email.
+    Send a password reset email with rich HTML and plain-text fallback.
     """
 
     uid = urlsafe_base64_encode(
@@ -152,35 +212,74 @@ def send_password_reset_email(user):
         f"{frontend_url}/reset-password?uid={uid}&token={token}"
     )
 
+    recipient_name = user.first_name or user.username or "Student"
+    from_email = get_sender_email()
+
     print(f"\n================ PASSWORD RESET LINK ================")
-    print(f"User: {user.email}")
+    print(f"To:      {user.email}")
+    print(f"From:    {from_email}")
     print(f"Frontend Reset URL: {frontend_reset_url}")
     print(f"API Reset URL:      {api_reset_url}")
     print(f"====================================================\n")
 
+    plain_message = (
+        f"Hello {recipient_name},\n\n"
+        f"We received a request to reset your AI Internship Platform password.\n\n"
+        f"Reset your password using this link:\n\n"
+        f"{frontend_reset_url}\n\n"
+        f"Direct API link:\n"
+        f"{api_reset_url}\n\n"
+        f"If you did not request a password reset, you can safely ignore this email."
+    )
+
+    html_message = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 24px 12px; }}
+    .container {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 36px 28px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01); border: 1px solid #e2e8f0; }}
+    .header {{ text-align: center; margin-bottom: 28px; }}
+    .logo {{ font-size: 24px; font-weight: 800; color: #4f46e5; letter-spacing: -0.5px; }}
+    .title {{ font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #0f172a; text-align: center; }}
+    .text {{ font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 20px; }}
+    .btn-wrap {{ text-align: center; margin: 32px 0; }}
+    .btn {{ display: inline-block; background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); color: #ffffff !important; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 16px; box-shadow: 0 4px 14px 0 rgba(79, 70, 229, 0.35); }}
+    .url-box {{ word-break: break-all; font-size: 13px; color: #4338ca; background: #eef2ff; padding: 14px; border-radius: 8px; border: 1px solid #c7d2fe; margin-bottom: 24px; }}
+    .footer {{ font-size: 13px; color: #94a3b8; text-align: center; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 20px; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">AI Internship Platform</div>
+    </div>
+    <div class="title">Reset your password</div>
+    <p class="text">Hello <strong>{recipient_name}</strong>,</p>
+    <p class="text">We received a request to reset your password. Click the button below to set a new password for your account.</p>
+    <div class="btn-wrap">
+      <a href="{frontend_reset_url}" class="btn">Reset My Password</a>
+    </div>
+    <p class="text" style="font-size: 13px; color: #64748b;">If the button above does not work, copy and paste this link into your browser:</p>
+    <div class="url-box">{frontend_reset_url}</div>
+    <div class="footer">
+      If you did not request a password reset, you can safely ignore this email.
+    </div>
+  </div>
+</body>
+</html>"""
+
     try:
         send_mail(
-            subject="Reset your Internship Platform password",
-
-            message=(
-                f"Hello {user.username or user.email},\n\n"
-                f"We received a request to reset your password.\n\n"
-                f"Reset your password using this link:\n\n"
-                f"{frontend_reset_url}\n\n"
-                f"Direct API link:\n"
-                f"{api_reset_url}\n\n"
-                f"If you did not request a password reset, you can safely ignore this email."
-            ),
-
-            from_email=settings.DEFAULT_FROM_EMAIL,
-
-            recipient_list=[
-                user.email
-            ],
-
+            subject="Reset your AI Internship Platform password",
+            message=plain_message,
+            html_message=html_message,
+            from_email=from_email,
+            recipient_list=[user.email],
             fail_silently=False,
         )
         return True
     except Exception as e:
+        logger.error(f"Failed to deliver password reset email via SMTP to {user.email}: {e}", exc_info=True)
         print(f"Failed to deliver password reset email via SMTP to {user.email}: {e}")
-        return True
+        return False
