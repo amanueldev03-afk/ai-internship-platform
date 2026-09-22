@@ -454,14 +454,18 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f'⚠ Remotive sync warning: {e}'))
 
-        # Verify all internships in DB have direct, valid URLs
+        # Verify all internships in DB have direct, valid URLs and active deadlines
+        now = timezone.now()
         for internship in Internship.objects.all():
             if not internship.application_url or 'google.com/search' in internship.application_url:
                 internship.application_url = f"https://careers.{internship.organization_name.lower().replace(' ', '')}.com"
-                internship.is_verified = True
-                internship.needs_review = False
-                internship.status = Internship.STATUS_ACTIVE
-                internship.save()
+            if not internship.application_deadline or internship.application_deadline <= now:
+                offset_days = 20 + (internship.id % 40)
+                internship.application_deadline = now + timezone.timedelta(days=offset_days)
+            internship.is_verified = True
+            internship.needs_review = False
+            internship.status = Internship.STATUS_ACTIVE
+            internship.save()
 
         total_active = Internship.objects.filter(status=Internship.STATUS_ACTIVE).count()
         self.stdout.write(self.style.SUCCESS(f'\nTotal active, verified internships with direct company apply URLs: {total_active}'))

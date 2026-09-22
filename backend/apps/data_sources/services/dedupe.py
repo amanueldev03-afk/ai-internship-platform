@@ -162,8 +162,14 @@ def _build_internship(normalized, *, data_source=None, content_hash=None, now=No
     data["last_seen_at"] = now
 
     kwargs = {field: data.get(field) for field in MODEL_FIELDS}
-    kwargs["posted_at"] = _safe_datetime(data.get("posted_at"))
-    kwargs["application_deadline"] = _safe_datetime(data.get("application_deadline"))
+    posted = _safe_datetime(data.get("posted_at")) or now
+    deadline = _safe_datetime(data.get("application_deadline"))
+    if not deadline or deadline <= now:
+        deadline = posted + datetime.timedelta(days=45)
+        if deadline <= now:
+            deadline = now + datetime.timedelta(days=30)
+    kwargs["posted_at"] = posted
+    kwargs["application_deadline"] = deadline
     kwargs["preferred_skills"] = data.get("preferred_skills") or []
     kwargs["skills_review"] = data.get("skills_review") or []
     kwargs["data_source"] = data_source

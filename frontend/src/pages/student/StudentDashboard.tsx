@@ -16,6 +16,7 @@ import {
   Lock,
   MapPin,
   Briefcase,
+  Calendar,
   ExternalLink
 } from 'lucide-react'
 import { useAppSelector } from '@/hooks/redux'
@@ -28,6 +29,12 @@ import type { User, Internship } from '@/types'
 import type { Skill, CareerInterest } from '@/services/studentApi'
 import { Button } from '@/components/ui/button'
 import { normalizeApplicationUrl } from '@/utils/urlValidation'
+
+function formatDate(dateString?: string) {
+  if (!dateString) return 'Active'
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
 
 
 function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -811,6 +818,12 @@ export default function StudentDashboard() {
                       <span className="inline-flex items-center gap-1">
                         <Briefcase className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
                         <span className="truncate max-w-[120px]">{internship.category}</span>
+                      </span>
+                    )}
+                    {internship.application_deadline && (
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                        <span>Deadline: {formatDate(internship.application_deadline)}</span>
                       </span>
                     )}
                   </div>
