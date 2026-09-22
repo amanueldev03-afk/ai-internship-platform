@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom'
+import { useAppDispatch } from '@/hooks/redux'
+import { setCredentials } from '@/features/auth/authSlice'
 import * as authApi from '@/services/authApi'
+import type { User } from '@/types'
 
 export default function VerifyEmailPage() {
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [searchParams] = useSearchParams()
   const routeParams = useParams<{ uid?: string; token?: string }>()
 
@@ -14,6 +18,8 @@ export default function VerifyEmailPage() {
     uid && token ? 'loading' : 'idle'
   )
   const [errorMessage, setErrorMessage] = useState('')
+  const [targetDestination, setTargetDestination] = useState('/dashboard')
+  const [hasAutoLoggedIn, setHasAutoLoggedIn] = useState(false)
 
   // Resend verification state
   const [resendEmail, setResendEmail] = useState('')
@@ -30,10 +36,43 @@ export default function VerifyEmailPage() {
     }
 
     let isMounted = true
+    let redirectTimer: ReturnType<typeof setTimeout> | null = null
+
     const verifyToken = async () => {
       try {
-        await authApi.verifyEmail(uid, token)
-        if (isMounted) {
+        const response = await authApi.verifyEmail(uid, token)
+        if (!isMounted) return
+
+        if (response.access && response.user) {
+          localStorage.setItem('access_token', response.access)
+          if (response.refresh) {
+            localStorage.setItem('refresh_token', response.refresh)
+          }
+
+          const userObj: User = {
+            id: response.user.id,
+            email: response.user.email,
+            username: response.user.username,
+            role: (response.user.role as any) || 'student',
+          }
+
+          dispatch(
+            setCredentials({
+              user: userObj,
+              accessToken: response.access,
+              refreshToken: response.refresh || '',
+            })
+          )
+
+          const dest = userObj.role === 'admin' ? '/admin/dashboard' : '/dashboard'
+          setTargetDestination(dest)
+          setHasAutoLoggedIn(true)
+          setStatus('success')
+
+          redirectTimer = setTimeout(() => {
+            navigate(dest, { replace: true })
+          }, 1500)
+        } else {
           setStatus('success')
         }
       } catch (error: any) {
@@ -55,8 +94,9 @@ export default function VerifyEmailPage() {
 
     return () => {
       isMounted = false
+      if (redirectTimer) clearTimeout(redirectTimer)
     }
-  }, [uid, token])
+  }, [uid, token, dispatch, navigate])
 
   const handleResend = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -120,14 +160,16 @@ export default function VerifyEmailPage() {
             <div>
               <h1 className="text-2xl font-bold gradient-text dark:text-white">Email Verified!</h1>
               <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                Your account is now activated. You can now sign in to your dashboard.
+                {hasAutoLoggedIn
+                  ? 'Your account is now activated. Redirecting you to your dashboard...'
+                  : 'Your account is now activated. You can now access your dashboard.'}
               </p>
             </div>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate(hasAutoLoggedIn ? targetDestination : '/login', { replace: true })}
               className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
-              Continue to Login
+              {hasAutoLoggedIn ? 'Go to Dashboard' : 'Continue to Login'}
             </button>
           </div>
         )}

@@ -193,25 +193,59 @@ describe('Authentication Pages', () => {
   })
 
   describe('VerifyEmailPage', () => {
-    it('verifies token automatically from search parameters and shows success', async () => {
+    it('verifies token and auto-logs in user to dashboard when tokens are returned', async () => {
+      const store = createStore()
+      vi.spyOn(authApi, 'verifyEmail').mockResolvedValueOnce({
+        message: 'Email verified successfully.',
+        access: 'mock-access-token',
+        refresh: 'mock-refresh-token',
+        user: {
+          id: 1,
+          email: 'student@example.com',
+          username: 'student',
+          role: 'student',
+        },
+      })
+
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/verify-email?uid=MQ&token=test-token-123']}>
+            <Routes>
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </Provider>
+      )
+
+      expect(await screen.findByText(/email verified!/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /go to dashboard/i })).toBeInTheDocument()
+      expect(authApi.verifyEmail).toHaveBeenCalledWith('MQ', 'test-token-123')
+      expect(localStorage.getItem('access_token')).toBe('mock-access-token')
+      expect(store.getState().auth.isAuthenticated).toBe(true)
+    })
+
+    it('shows continue to login if no tokens returned', async () => {
+      const store = createStore()
       vi.spyOn(authApi, 'verifyEmail').mockResolvedValueOnce({
         message: 'Email verified successfully.',
       })
 
       render(
-        <MemoryRouter initialEntries={['/verify-email?uid=MQ&token=test-token-123']}>
-          <Routes>
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-          </Routes>
-        </MemoryRouter>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/verify-email?uid=MQ&token=test-token-123']}>
+            <Routes>
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </Provider>
       )
 
       expect(await screen.findByText(/email verified!/i)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: /continue to login/i })).toBeInTheDocument()
-      expect(authApi.verifyEmail).toHaveBeenCalledWith('MQ', 'test-token-123')
     })
 
     it('shows resend form and error message on verification failure', async () => {
+      const store = createStore()
       vi.spyOn(authApi, 'verifyEmail').mockRejectedValueOnce({
         response: {
           data: { detail: 'Invalid or expired verification token.' },
@@ -220,11 +254,13 @@ describe('Authentication Pages', () => {
       })
 
       render(
-        <MemoryRouter initialEntries={['/verify-email?uid=MQ&token=expired-token']}>
-          <Routes>
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-          </Routes>
-        </MemoryRouter>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/verify-email?uid=MQ&token=expired-token']}>
+            <Routes>
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </Provider>
       )
 
       expect(await screen.findByText(/verification failed/i)).toBeInTheDocument()
@@ -233,17 +269,20 @@ describe('Authentication Pages', () => {
     })
 
     it('handles resending verification email successfully', async () => {
+      const store = createStore()
       const user = userEvent.setup()
       vi.spyOn(authApi, 'resendVerification').mockResolvedValueOnce({
         message: 'A new verification email has been sent.',
       })
 
       render(
-        <MemoryRouter initialEntries={['/verify-email']}>
-          <Routes>
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-          </Routes>
-        </MemoryRouter>
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/verify-email']}>
+            <Routes>
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+            </Routes>
+          </MemoryRouter>
+        </Provider>
       )
 
       await user.type(screen.getByLabelText(/email address/i), 'student@example.com')

@@ -106,9 +106,21 @@ export async function updateUser(data: {
   return response.data
 }
 
+export interface VerifyEmailResponse {
+  message: string
+  access?: string
+  refresh?: string
+  user?: {
+    id: number
+    email: string
+    username: string
+    role: string
+  }
+}
+
 // Verify Email - GET /api/auth/verify-email/<uid>/<token>/
-export async function verifyEmail(uid: string, token: string): Promise<{ message: string }> {
-  const response = await api.get<{ message: string }>(`/auth/verify-email/${encodeURIComponent(uid)}/${encodeURIComponent(token)}/`)
+export async function verifyEmail(uid: string, token: string): Promise<VerifyEmailResponse> {
+  const response = await api.get<VerifyEmailResponse>(`/auth/verify-email/${encodeURIComponent(uid)}/${encodeURIComponent(token)}/`)
   return response.data
 }
 

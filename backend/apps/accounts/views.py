@@ -359,12 +359,22 @@ class EmailVerificationLinkView(GenericAPIView):
             raise_exception=True
         )
 
-        serializer.save()
+        user = serializer.save()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
 
         return Response(
             {
                 "message": "Email verified successfully. "
-                           "Your account is now active."
+                           "Your account is now active.",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "username": user.username,
+                    "role": user.role,
+                },
             },
             status=status.HTTP_200_OK,
         )
@@ -376,9 +386,21 @@ class LegacyEmailVerificationView(EmailVerificationLinkView):
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        user = serializer.save()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
         return Response(
-            {"message": "Email verified successfully. Your account is now active."},
+            {
+                "message": "Email verified successfully. Your account is now active.",
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "username": user.username,
+                    "role": user.role,
+                },
+            },
             status=status.HTTP_200_OK,
         )
 
