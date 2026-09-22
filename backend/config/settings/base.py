@@ -483,21 +483,17 @@ EMAIL_BACKEND = config(
     "EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.gmail.com")
-EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
+EMAIL_PORT = config("EMAIL_PORT", default=465, cast=int)
 
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 
-EMAIL_USE_TLS = config(
-    "EMAIL_USE_TLS",
-    default=True,
-    cast=bool,
-)
-EMAIL_USE_SSL = config(
-    "EMAIL_USE_SSL",
-    default=False,
-    cast=bool,
-)
+# Port 465 uses SSL, Port 587 uses TLS (mutually exclusive in Django)
+_default_use_ssl = (EMAIL_PORT == 465)
+_default_use_tls = (EMAIL_PORT == 587)
+
+EMAIL_USE_SSL = config("EMAIL_USE_SSL", default=_default_use_ssl, cast=bool)
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=False if EMAIL_USE_SSL else _default_use_tls, cast=bool)
 
 EMAIL_TIMEOUT = config(
     "EMAIL_TIMEOUT",
