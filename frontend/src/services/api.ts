@@ -32,7 +32,7 @@ export const rawApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 30000,
 })
 
 // Base Axios instance used by all feature services.
@@ -41,7 +41,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 30000,
 })
 
 // Track ongoing refresh to prevent concurrent refresh requests

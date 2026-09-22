@@ -91,23 +91,31 @@ def _get_embedding(obj, attr, updater):
     return embedding
 
 
+def fast_cosine_similarity(vec1, vec2):
+    """Fast in-memory cosine similarity for normalized vectors."""
+    if not vec1 or not vec2:
+        return 0.0
+    try:
+        # For L2 normalized embeddings, dot product == cosine similarity (-1.0 to 1.0)
+        dot = sum(a * b for a, b in zip(vec1, vec2))
+        return max(0.0, min(1.0, dot))
+    except Exception:
+        return 0.0
+
+
 def calculate_semantic_score(student_embedding, internship):
     """
-    40% weight.  Returns 0.0–1.0.
+    40% weight. Returns 0.0–1.0.
     Calculates cosine similarity between the student embedding and internship embedding.
     """
     if not student_embedding:
         return 0.0
 
-    internship_embedding = _get_embedding(
-        internship, "embedding", update_internship_embedding)
-
+    internship_embedding = getattr(internship, "embedding", None)
     if not internship_embedding:
         return 0.0
 
-    similarity = calculate_semantic_similarity(
-        student_embedding, internship_embedding)
-    return max(0.0, min(1.0, similarity / 100.0))
+    return fast_cosine_similarity(student_embedding, internship_embedding)
 
 
 def passes_hard_filters(internship, profile):
@@ -507,9 +515,12 @@ def generate_recommendations(student, internships, save_to_db=True):
         semantic = calculate_semantic_score(student_embedding, internship)
 
         # ---- 2. skills (25 %) ----
-        i_skills = list(
-            internship.required_skills.values_list("name", flat=True)
-        )
+        if hasattr(internship, "_prefetched_objects_cache") and "required_skills" in internship._prefetched_objects_cache:
+            i_skills = [s.name for s in internship.required_skills.all()]
+        else:
+            i_skills = list(
+                internship.required_skills.values_list("name", flat=True)
+            )
         if isinstance(getattr(internship, "preferred_skills", None), list):
             i_skills.extend([s for s in internship.preferred_skills if s and isinstance(s, str)])
         skill = calculate_skill_score(student_skills, i_skills, internship_obj=internship)
@@ -550,13 +561,6 @@ def generate_recommendations(student, internships, save_to_db=True):
             },
         }
 
-        if save_to_db:
-            save_recommendation(
-                student, internship, final_score,
-                semantic, skill, preference, location, salary,
-                profile=profile,
-            )
-
         results.append(RecommendationResult(
             internship=internship,
             score=final_score,
@@ -565,4 +569,21 @@ def generate_recommendations(student, internships, save_to_db=True):
         ))
 
     results.sort(key=lambda r: r.score, reverse=True)
+
+    if save_to_db and results:
+        # Persist top 50 matches for student recommendation history
+        for item in results[:50]:
+            try:
+                save_recommendation(
+                    student, item.internship, item.score,
+                    item.score_breakdown.get("semantic_score", 0) / 100.0,
+                    item.score_breakdown.get("skill_score", 0) / 100.0,
+                    item.score_breakdown.get("preference_score", 0) / 100.0,
+                    item.score_breakdown.get("location_score", 0) / 100.0,
+                    item.score_breakdown.get("salary_score", 0) / 100.0,
+                    profile=profile,
+                )
+            except Exception:
+                pass
+
     return results

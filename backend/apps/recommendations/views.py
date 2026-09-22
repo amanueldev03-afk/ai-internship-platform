@@ -198,6 +198,7 @@ class StudentRecommendationView(APIView):
             active_internships = (
                 Internship.objects
                 .filter(status="active", is_verified=True, needs_review=False)
+                .prefetch_related("required_skills")
                 .order_by("-created_at")
             )
             raw_results = generate_recommendations(
