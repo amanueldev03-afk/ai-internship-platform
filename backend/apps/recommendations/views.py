@@ -21,6 +21,7 @@ from .services.recommendation_engine_v2 import (
     generate_recommendations,
     has_recommendation_preferences,
 )
+from apps.students.services.profile_completion import compute_profile_completion
 from apps.internships.serializers import InternshipSerializer
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,25 @@ class StudentRecommendationView(APIView):
 
         cv_data = _build_cv_data(request.user)
         prof_summary = _build_profile_summary(profile)
+        completion = compute_profile_completion(profile)
+
+        # Profile must be 100% complete to generate personalized AI recommendations
+        if completion.get("percent", 0) < 100:
+            paginator = RecommendationPagination()
+            paginator.paginate_queryset([], request)
+            response_data = paginator.get_paginated_response([])
+            response_data.data["profile_completed"] = False
+            response_data.data["completion"] = completion
+            response_data.data["message"] = (
+                "Profile must be 100% complete to generate personalized AI recommendations."
+            )
+            response_data.data["cv_analysis"] = cv_data
+            response_data.data["profile_summary"] = prof_summary
+            response_data.data["scoring_metadata"] = {
+                "profile_completed": False,
+                "completion_percent": completion.get("percent", 0),
+            }
+            return response_data
 
         # ----------------------------------------------------------
         # Try cache
@@ -228,9 +248,13 @@ class StudentRecommendationView(APIView):
         response_data = paginator.get_paginated_response(results)
 
         # Attach extra context
+        response_data.data["profile_completed"] = True
+        response_data.data["completion"] = completion
         response_data.data["cv_analysis"] = cv_data
         response_data.data["profile_summary"] = prof_summary
         response_data.data["scoring_metadata"] = {
+            "profile_completed": True,
+            "completion_percent": completion.get("percent", 100),
             "from_cache":  from_cache,
             "cache_ttl_seconds": RECOMMENDATION_CACHE_TTL,
             "weights": {

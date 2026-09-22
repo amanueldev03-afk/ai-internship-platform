@@ -32,25 +32,43 @@ SALARY_WEIGHT = 0.05
 # Individual score functions  (all return 0.0 – 1.0)
 # --------------------------------------------------
 
-def calculate_skill_score(student_skills, internship_skills):
+def calculate_skill_score(student_skills, internship_skills, internship_obj=None):
     """
-    Name-based intersection.
-    Returns 0.0–1.0.  If no required skills → neutral 0.5.
+    Name-based intersection + title/category keywords.
+    Returns 0.0–1.0.
     """
     student = {s.lower().strip() for s in student_skills if s}
+    if not student:
+        return 0.1
+
     internship = {s.lower().strip() for s in internship_skills if s}
+    matched = set(student & internship)
+
+    if internship_obj is not None:
+        title_cat = f"{getattr(internship_obj, 'title', '')} {getattr(internship_obj, 'category', '')}".lower()
+        for s in student:
+            if s and len(s) >= 2 and s in title_cat:
+                matched.add(s)
 
     if not internship:
-        return 0.5          # no requirements — neutral, not penalised
+        return min(1.0, 0.2 + (len(matched) * 0.3)) if matched else 0.1
 
-    matched = student & internship
-    return len(matched) / len(internship)
+    score = len(matched) / len(internship)
+    return min(1.0, max(0.0, score))
 
 
-def get_matched_skills(student_skills, internship_skills):
+def get_matched_skills(student_skills, internship_skills, internship_obj=None):
     s_map = {s.lower().strip(): s for s in student_skills if s}
     i_map = {s.lower().strip(): s for s in internship_skills if s}
-    return [s_map[k] for k in sorted(s_map.keys() & i_map.keys())]
+    matched_keys = set(s_map.keys() & i_map.keys())
+
+    if internship_obj is not None:
+        title_cat = f"{getattr(internship_obj, 'title', '')} {getattr(internship_obj, 'category', '')}".lower()
+        for k, original in s_map.items():
+            if k and len(k) >= 2 and k in title_cat:
+                matched_keys.add(k)
+
+    return [s_map[k] for k in sorted(matched_keys) if k in s_map]
 
 
 def _get_embedding(obj, attr, updater):
@@ -490,9 +508,12 @@ def generate_recommendations(student, internships, save_to_db=True):
 
         # ---- 2. skills (25 %) ----
         i_skills = list(
-            internship.required_skills.values_list("name", flat=True))
-        skill = calculate_skill_score(student_skills, i_skills)
-        matched_skills = get_matched_skills(student_skills, i_skills)
+            internship.required_skills.values_list("name", flat=True)
+        )
+        if isinstance(getattr(internship, "preferred_skills", None), list):
+            i_skills.extend([s for s in internship.preferred_skills if s and isinstance(s, str)])
+        skill = calculate_skill_score(student_skills, i_skills, internship_obj=internship)
+        matched_skills = get_matched_skills(student_skills, i_skills, internship_obj=internship)
 
         # ---- 3. preference (20 %) ----
         preference = calculate_preference_score(internship, profile)
