@@ -488,6 +488,12 @@ EMAIL_USE_TLS = config(
     cast=bool,
 )
 
+EMAIL_TIMEOUT = config(
+    "EMAIL_TIMEOUT",
+    default=5,
+    cast=int,
+)
+
 DEFAULT_FROM_EMAIL = config(
     "DEFAULT_FROM_EMAIL",
     default="noreply@ai-internship.com",

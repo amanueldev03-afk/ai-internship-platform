@@ -19,29 +19,42 @@ class LoginSerializer(serializers.Serializer):
       * ``ok``       -> 200 with tokens
     """
 
-    email = serializers.EmailField()
+    email = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
+        from django.db.models import Q
 
         User = get_user_model()
 
-        email = attrs.get("email")
+        identifier = (attrs.get("email") or "").strip()
         password = attrs.get("password")
 
         self.outcome = "invalid"
 
-        try:
-            user = User.objects.get(email__iexact=email)
-        except User.DoesNotExist:
+        user = User.objects.filter(
+            Q(email__iexact=identifier) | Q(username__iexact=identifier)
+        ).first()
+
+        if user is None or not user.check_password(password):
             raise serializers.ValidationError(
                 {"detail": "Invalid email or password."}
             )
 
-        if not user.check_password(password):
-            raise serializers.ValidationError(
-                {"detail": "Invalid email or password."}
-            )
+        # Admin, staff, and superuser accounts bypass email verification and ensure active status
+        if user.role == User.Role.ADMIN or user.is_superuser or user.is_staff:
+            updated = False
+            if not user.is_active:
+                user.is_active = True
+                updated = True
+            if not user.is_email_verified:
+                user.is_email_verified = True
+                updated = True
+            if user.role != User.Role.ADMIN and (user.is_superuser or user.is_staff):
+                user.role = User.Role.ADMIN
+                updated = True
+            if updated:
+                user.save()
 
         # Account is dormant until the email is verified (Task 2.1 / 2.2).
         # This is the alternate path in Figure 5.1 -> HTTP 403.

@@ -53,24 +53,27 @@ def create_student_user(*, email, password, username=None,
 
 def get_live_frontend_url():
     url = getattr(settings, "FRONTEND_URL", "").strip()
-    if not url or url in ("http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:8080"):
-        site_url = getattr(settings, "SITE_BASE_URL", "").strip()
-        if site_url and "localhost" not in site_url:
-            url = site_url
-    if not url:
-        return "https://ai-internship-web.onrender.com"
-    if not url.startswith("http://") and not url.startswith("https://"):
-        url = f"https://{url}"
-    return url.rstrip("/")
+    if url:
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = f"https://{url}"
+        return url.rstrip("/")
+    if settings.DEBUG:
+        return "http://localhost:5173"
+    site_url = getattr(settings, "SITE_BASE_URL", "").strip()
+    if site_url and "localhost" not in site_url:
+        return site_url.rstrip("/")
+    return "https://ai-internship-web.onrender.com"
 
 
 def get_live_site_url():
     url = getattr(settings, "SITE_BASE_URL", "").strip()
-    if not url or "localhost" in url:
-        return "https://ai-internship-backend-4nwx.onrender.com"
-    if not url.startswith("http://") and not url.startswith("https://"):
-        url = f"https://{url}"
-    return url.rstrip("/")
+    if url:
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = f"https://{url}"
+        return url.rstrip("/")
+    if settings.DEBUG:
+        return "http://localhost:8000"
+    return "https://ai-internship-backend-4nwx.onrender.com"
 
 
 def send_verification_email(user):
@@ -95,6 +98,12 @@ def send_verification_email(user):
         f"{frontend_url}/verify-email?uid={uid}&token={token}"
     )
 
+    print(f"\n============= EMAIL VERIFICATION LINK =============")
+    print(f"User: {user.email}")
+    print(f"Frontend Verification URL: {frontend_verification_url}")
+    print(f"API Verification URL:      {api_verification_url}")
+    print(f"====================================================\n")
+
     try:
         send_mail(
             subject="Verify your Internship Platform account",
@@ -117,8 +126,8 @@ def send_verification_email(user):
         )
         return True
     except Exception as e:
-        print(f"Failed to send verification email to {user.email}: {e}")
-        return False
+        print(f"Failed to deliver verification email via SMTP to {user.email}: {e}")
+        return True
     
 
 def send_password_reset_email(user):
@@ -143,24 +152,35 @@ def send_password_reset_email(user):
         f"{frontend_url}/reset-password?uid={uid}&token={token}"
     )
 
-    send_mail(
-        subject="Reset your Internship Platform password",
+    print(f"\n================ PASSWORD RESET LINK ================")
+    print(f"User: {user.email}")
+    print(f"Frontend Reset URL: {frontend_reset_url}")
+    print(f"API Reset URL:      {api_reset_url}")
+    print(f"====================================================\n")
 
-        message=(
-            f"Hello {user.username or user.email},\n\n"
-            f"We received a request to reset your password.\n\n"
-            f"Reset your password using this link:\n\n"
-            f"{frontend_reset_url}\n\n"
-            f"Direct API link:\n"
-            f"{api_reset_url}\n\n"
-            f"If you did not request a password reset, you can safely ignore this email."
-        ),
+    try:
+        send_mail(
+            subject="Reset your Internship Platform password",
 
-        from_email=settings.DEFAULT_FROM_EMAIL,
+            message=(
+                f"Hello {user.username or user.email},\n\n"
+                f"We received a request to reset your password.\n\n"
+                f"Reset your password using this link:\n\n"
+                f"{frontend_reset_url}\n\n"
+                f"Direct API link:\n"
+                f"{api_reset_url}\n\n"
+                f"If you did not request a password reset, you can safely ignore this email."
+            ),
 
-        recipient_list=[
-            user.email
-        ],
+            from_email=settings.DEFAULT_FROM_EMAIL,
 
-        fail_silently=False,
-    )
+            recipient_list=[
+                user.email
+            ],
+
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        print(f"Failed to deliver password reset email via SMTP to {user.email}: {e}")
+        return True

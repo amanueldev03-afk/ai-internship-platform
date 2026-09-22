@@ -160,6 +160,11 @@ urlpatterns = [
         name="auth-password-reset",
     ),
     path(
+        "api/auth/forgot-password/",
+        PasswordResetView.as_view(),
+        name="auth-forgot-password",
+    ),
+    path(
         "api/auth/password-reset-confirm/<str:uid>/<str:token>/",
         PasswordResetConfirmView.as_view(),
         name="auth-password-reset-confirm",
