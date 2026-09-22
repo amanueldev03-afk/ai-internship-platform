@@ -8,6 +8,7 @@ from .services.cv_extraction import extract_cv_text
 from .services.cv_analysis import analyze_cv                    # deterministic parser
 from .services.ai_cv_analysis import analyze_cv_intelligently   # AI merger
 from .services.skill_sync import sync_cv_skills_to_profile
+from .services.auto_profile_fill import auto_fill_profile_from_cv
 from ..internships.services.embedding_service import regenerate_student_embedding
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,28 @@ def _complete_cv_processing(cv, text: str) -> dict:
             profile = StudentProfile.objects.get(user=cv.student)
         except Exception:
             profile = None
+
+    # 7.5 Auto-fill profile from CV data
+    if profile:
+        try:
+            cv_data = {
+                'extracted_skills': cv.extracted_skills,
+                'extracted_education': cv.extracted_education,
+                'extracted_experience': cv.extracted_experience,
+            }
+            auto_fill_result = auto_fill_profile_from_cv(profile, cv_data)
+            logger.info(f"CV {cv.id} — auto-fill: {auto_fill_result}")
+            
+            # If profile is now 100% complete, trigger AI recommendations
+            if auto_fill_result.get('is_complete'):
+                logger.info(f"CV {cv.id} — profile 100% complete, triggering AI recommendations")
+                try:
+                    from apps.recommendations.tasks import generate_recommendations_for_user
+                    generate_recommendations_for_user.delay(cv.student_id)
+                except Exception as exc:
+                    logger.warning(f"CV {cv.id} — failed to trigger recommendations: {exc}")
+        except Exception as exc:
+            logger.warning(f"CV {cv.id} — auto-fill failed (non-fatal): {exc}")
 
     # 8. Generate student embedding INLINE
     #    We do NOT use .delay() here because calling broker.send from inside

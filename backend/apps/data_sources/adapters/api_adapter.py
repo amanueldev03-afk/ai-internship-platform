@@ -70,7 +70,7 @@ class APIAdapter(BaseAdapter):
         """
         Map one raw API listing onto the internal Task 1.5 schema.
         """
-        return normalize_raw_to_schema(raw)
+        return normalize_raw_to_schema(raw, is_verified=True, status="active")
 
     # ------------------------------------------------------------------
     # payload handling
@@ -131,34 +131,93 @@ class APIAdapter(BaseAdapter):
                     return value
             return None
 
+        # Resolve application URL with fallbacks (apply_options, employer_website, job_google_link)
         application_url = external(
-            "application_url", "url", "apply_url"
+            "application_url", "url", "apply_url", "job_apply_link"
         )
-        source_url = (
-            external("source_url", "url") or application_url
-        )
+        if not application_url and isinstance(item.get("apply_options"), list) and item["apply_options"]:
+            first_opt = item["apply_options"][0]
+            if isinstance(first_opt, dict) and first_opt.get("apply_link"):
+                application_url = first_opt["apply_link"]
+
+        if not application_url:
+            application_url = external(
+                "job_google_link", "employer_website", "company_url", "website"
+            )
+
+        # Normalize application URL
+        if application_url and isinstance(application_url, str):
+            application_url = application_url.strip()
+            if application_url and not application_url.startswith(("http://", "https://")):
+                application_url = f"https://{application_url}"
+
+        source_url = external("source_url", "job_google_link", "url") or application_url
+        if source_url and isinstance(source_url, str):
+            source_url = source_url.strip()
+            if source_url and not source_url.startswith(("http://", "https://")):
+                source_url = f"https://{source_url}"
+
         external_id = (
-            external("external_id", "id")
+            external("external_id", "id", "job_id")
             or application_url
-            or external("title")
+            or external("title", "job_title")
         )
+
+        # Extract skills / tags
+        raw_skills = external("required_skills", "skills", "tags", "keywords", "job_required_skills") or []
+        if isinstance(raw_skills, str):
+            required_skills = [s.strip() for s in raw_skills.split(",") if s.strip()]
+        elif isinstance(raw_skills, list):
+            required_skills = []
+            for s in raw_skills:
+                if isinstance(s, str):
+                    required_skills.append(s.strip())
+                elif isinstance(s, dict) and s.get("name"):
+                    required_skills.append(str(s["name"]).strip())
+        else:
+            required_skills = []
+
+        # If qualifications list in highlights, extract key skills if required_skills is empty
+        if not required_skills and isinstance(item.get("job_highlights"), dict):
+            quals = item["job_highlights"].get("Qualifications") or []
+            if isinstance(quals, list):
+                required_skills = [str(q).strip() for q in quals[:5] if q]
+
+        # Extract company name
+        org_name = external(
+            "organization_name",
+            "company_name",
+            "company",
+            "employer_name",
+            "hiring_organization_name",
+        ) or ""
+
+        # Extract location
+        location_text = external(
+            "location_text", "location", "job_location", "candidate_required_location"
+        ) or ""
+        country = external("country", "job_country") or ""
+        city = external("city", "job_city") or ""
+
+        # Determine internship/work mode
+        job_type = str(external("internship_type", "job_employment_type", "employment_types") or "").lower()
+        if "remote" in job_type or "remote" in location_text.lower() or item.get("job_is_remote"):
+            internship_type = "remote"
+        elif "hybrid" in job_type:
+            internship_type = "hybrid"
+        else:
+            internship_type = "onsite"
 
         return {
             "external_id": str(external_id or ""),
-            "title": external("title") or "",
-            "organization_name": external(
-                "organization_name", "company_name", "company"
-            ) or "",
-            "description": external("description", "summary") or "",
-            "category": external("category") or "",
-            "country": external("country") or "",
-            "city": external("city") or "",
-            "location_text": external(
-                "location_text", "location"
-            ) or "",
-            "internship_type": (
-                external("internship_type") or "onsite"
-            ),
+            "title": external("title", "job_title", "role") or "",
+            "organization_name": org_name,
+            "description": external("description", "job_description", "summary") or "",
+            "category": external("category", "job_category") or "",
+            "country": country,
+            "city": city,
+            "location_text": location_text,
+            "internship_type": internship_type,
             "work_type": (
                 external("work_type") or "full_time"
             ),
@@ -166,29 +225,27 @@ class APIAdapter(BaseAdapter):
                 external("compensation_type") or "unknown"
             ),
             "minimum_compensation": external(
-                "minimum_compensation"
+                "minimum_compensation", "job_min_salary"
             ),
             "maximum_compensation": external(
-                "maximum_compensation"
+                "maximum_compensation", "job_max_salary"
             ),
             "compensation_currency": external(
-                "compensation_currency"
+                "compensation_currency", "job_salary_currency"
             ) or "",
             "compensation_period": external(
-                "compensation_period"
+                "compensation_period", "job_salary_period"
             ) or "",
-            "required_skills": external(
-                "required_skills", "skills"
-            ) or [],
+            "required_skills": required_skills,
             "preferred_skills": external("preferred_skills") or [],
             "duration_min_weeks": external("duration_min_weeks"),
             "duration_max_weeks": external("duration_max_weeks"),
             "application_url": application_url or "",
             "source_url": source_url or "",
             "posted_at": external(
-                "posted_at", "posted_date", "posted"
+                "posted_at", "posted_date", "posted", "job_posted_at_datetime_utc", "publication_date"
             ),
             "application_deadline": external(
-                "application_deadline", "deadline", "due"
+                "application_deadline", "deadline", "due", "job_expiry_datetime_utc"
             ),
         }

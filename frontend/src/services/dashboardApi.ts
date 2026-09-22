@@ -60,6 +60,13 @@ export async function getRecommendationsCount(): Promise<number> {
   return response.data.count ?? 0
 }
 
+export async function getRecommendations(pageSize: number = 6): Promise<RecommendationsPage> {
+  const response = await api.get<RecommendationsPage>('/recommendations/', {
+    params: { page_size: pageSize },
+  })
+  return response.data
+}
+
 /**
  * Aggregate all dashboard data sources in parallel.
  * Uses Promise.allSettled so a single endpoint failure

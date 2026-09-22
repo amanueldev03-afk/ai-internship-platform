@@ -4,6 +4,23 @@ export interface ApplicationUrlValidationResult {
 }
 
 /**
+ * Normalizes an external application URL to ensure it has a valid protocol
+ * (defaulting to https://) and trimmed whitespace.
+ */
+export function normalizeApplicationUrl(url?: string | null): string | null {
+  if (!url) return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
+  }
+
+  // Prepend https:// if protocol is missing
+  return `https://${trimmed}`
+}
+
+/**
  * Validates an internship's application URL before redirection.
  * Enforces reachability, syntax, and flagging checks.
  */
@@ -34,13 +51,22 @@ export function validateApplicationUrl(internship?: {
     }
   }
 
-  // Syntax and protocol check
+  // Check for explicitly unsupported protocols
+  if (/^[a-zA-Z0-9+.-]+:/.test(rawUrl) && !/^https?:\/\//i.test(rawUrl)) {
+    return {
+      isValid: false,
+      error: 'Application URL is malformed or uses an unsupported protocol.',
+    }
+  }
+
+  // Syntax check
   try {
-    const parsed = new URL(rawUrl)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    const urlToParse = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`
+    const parsed = new URL(urlToParse)
+    if (!parsed.hostname || !parsed.hostname.includes('.')) {
       return {
         isValid: false,
-        error: 'Application URL is malformed or uses an unsupported protocol.',
+        error: 'Application URL is invalid or malformed.',
       }
     }
   } catch {
@@ -58,12 +84,12 @@ export function validateApplicationUrl(internship?: {
     }
   }
 
-  // Background URL validation results check
+  // Background URL validation results check - only fail if confirmed dead (404/410)
+  const appCheck = internship.url_validation?.application_url
   if (
     internship.url_validation &&
     (internship.url_validation.application_url_valid === false ||
-      internship.url_validation.status === 'dead' ||
-      internship.url_validation.status === 'unreachable')
+      (appCheck && appCheck.valid === false && (appCheck.status_code === 404 || appCheck.status_code === 410 || appCheck.error?.includes('404'))))
   ) {
     return {
       isValid: false,
@@ -84,3 +110,4 @@ export function validateApplicationUrl(internship?: {
     error: null,
   }
 }
+

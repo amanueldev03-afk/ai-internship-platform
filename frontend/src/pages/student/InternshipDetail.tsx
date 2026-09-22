@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { MapPin, Briefcase, Calendar, Heart, ExternalLink, AlertCircle, X, Building2, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { getInternshipDetail, getSavedInternships, saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
-import { validateApplicationUrl } from '@/utils/urlValidation'
+import { validateApplicationUrl, normalizeApplicationUrl } from '@/utils/urlValidation'
 import type { Internship } from '@/types'
 import { Button } from '@/components/ui/button'
 
@@ -83,22 +83,34 @@ export default function InternshipDetail() {
 
   const handleApply = () => {
     setApplyError(null)
+    if (!internship) return
 
-    const validation = validateApplicationUrl(internship ?? undefined)
+    const validation = validateApplicationUrl(internship)
     if (!validation.isValid) {
-      setApplyError(validation.error || 'The application link for this internship is unavailable or invalid.')
+      setApplyError(validation.error || 'Application URL not available')
       return
     }
 
-    if (internship) {
-      trackApplication(internship.id).catch((err) => {
-        console.warn('Background application tracking failed (non-blocking):', err)
-      })
+    const rawUrl = internship.application_url || internship.source_url
+    const targetUrl = normalizeApplicationUrl(rawUrl) || rawUrl
+
+    if (!targetUrl) {
+      setApplyError('Application URL not available')
+      return
     }
 
-    window.open(internship!.application_url!, '_blank', 'noopener,noreferrer')
+    console.log('Opening application URL:', targetUrl)
+
+    // Fire-and-forget background tracking (non-blocking with short timeout)
+    trackApplication(internship.id).catch((err) => {
+      console.warn('Background application tracking failed (non-blocking):', err)
+    })
+
+    // Immediately redirect student to external employer portal
+    window.open(targetUrl, '_blank', 'noopener,noreferrer')
     setIsApplied(true)
   }
+
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'No deadline specified'

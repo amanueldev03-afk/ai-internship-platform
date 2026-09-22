@@ -326,6 +326,14 @@ def normalize_listing(raw, source_type=None):
 
     data["description"] = strip_html(data.get("description") or "")
 
+    app_url = data.get("application_url") or ""
+    if app_url and not app_url.startswith(("http://", "https://")):
+        data["application_url"] = f"https://{app_url}"
+
+    src_url = data.get("source_url") or ""
+    if src_url and not src_url.startswith(("http://", "https://")):
+        data["source_url"] = f"https://{src_url}"
+
     country, city, location_text = _standardize_location(
         data.get("country") or "",
         data.get("city") or "",

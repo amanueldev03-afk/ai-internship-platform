@@ -21,12 +21,14 @@ import {
 import { useAppSelector } from '@/hooks/redux'
 import * as authApi from '@/services/authApi'
 import * as studentApi from '@/services/studentApi'
-import { fetchDashboardData } from '@/services/dashboardApi'
+import { fetchDashboardData, getRecommendations } from '@/services/dashboardApi'
 import { searchInternships } from '@/services/internshipApi'
 import type { DashboardData } from '@/services/dashboardApi'
 import type { User, Internship } from '@/types'
 import type { Skill, CareerInterest } from '@/services/studentApi'
 import { Button } from '@/components/ui/button'
+import { normalizeApplicationUrl } from '@/utils/urlValidation'
+
 
 function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
@@ -228,6 +230,7 @@ export default function StudentDashboard() {
   const [mySkills, setMySkills] = useState<Skill[]>([])
   const [myInterests, setMyInterests] = useState<CareerInterest[]>([])
   const [featuredInternships, setFeaturedInternships] = useState<Internship[]>([])
+  const [aiRecommendations, setAiRecommendations] = useState<Internship[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false)
@@ -254,18 +257,33 @@ export default function StudentDashboard() {
       
       if (skillsResult.status === 'fulfilled') setMySkills(skillsResult.value)
       if (interestsResult.status === 'fulfilled') setMyInterests(interestsResult.value)
-      if (internshipsResult.status === 'fulfilled') {
-        setFeaturedInternships(internshipsResult.value.results.slice(0, 6))
-      }
-
+      
       if (dashData.status === 'fulfilled') {
         setData(dashData.value)
         const d = dashData.value
         if (d.profileError && d.dashboardError && d.recommendationsError && d.resumeError) {
           setError('Failed to load dashboard data. Please try again.')
         }
+
+        // If profile is 100% complete, fetch AI recommendations
+        const completionPct = d.profile?.completion?.percent ?? 0
+        if (completionPct === 100 && !d.recommendationsError) {
+          try {
+            const recsResult = await getRecommendations(6)
+            const recInternships = recsResult.results.map((r: any) => r.internship)
+            setAiRecommendations(recInternships)
+            setFeaturedInternships(recInternships)
+          } catch (err) {
+            console.error('Failed to load AI recommendations:', err)
+          }
+        } else if (internshipsResult.status === 'fulfilled') {
+          setFeaturedInternships(internshipsResult.value.results.slice(0, 6))
+        }
       } else {
         setError('Failed to load dashboard data. Please try again.')
+        if (internshipsResult.status === 'fulfilled') {
+          setFeaturedInternships(internshipsResult.value.results.slice(0, 6))
+        }
       }
     } catch (err) {
       setError('An unexpected error occurred. Please try again.')
@@ -719,22 +737,37 @@ export default function StudentDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
-                Live Ingested Feed
-              </span>
+              {isComplete && aiRecommendations.length > 0 ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-500/10 text-primary-600 dark:text-primary-400">
+                  <Sparkles className="w-3 h-3 mr-1.5" />
+                  AI-Powered Matches
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1.5" />
+                  Live Ingested Feed
+                </span>
+              )}
               <span className="text-xs text-neutral-400 font-medium">
-                ({featuredInternships.length > 0 ? `${featuredInternships.length} of ${data?.recommendationsCount || '200+'} available` : 'Active positions'})
+                {isComplete && aiRecommendations.length > 0
+                  ? `Personalized for your profile (${aiRecommendations.length} matches)`
+                  : featuredInternships.length > 0
+                  ? `${featuredInternships.length} of ${data?.recommendationsCount || '200+'} available`
+                  : 'Active positions'}
               </span>
             </div>
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white mt-1">Latest Active Internships</h2>
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white mt-1">
+              {isComplete && aiRecommendations.length > 0 ? 'AI-Matched Internships' : 'Latest Active Internships'}
+            </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              Real-world positions continuously collected from verified industry data sources and career portals.
+              {isComplete && aiRecommendations.length > 0
+                ? 'AI-powered recommendations based on your skills, interests, and preferences.'
+                : 'Real-world positions continuously collected from verified industry data sources and career portals.'}
             </p>
           </div>
-          <Link to="/internships">
+          <Link to={isComplete && aiRecommendations.length > 0 ? "/recommendations" : "/internships"}>
             <Button size="sm" variant="default" className="rounded-xl text-xs font-bold shadow-soft">
-              Browse All Internships <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              {isComplete && aiRecommendations.length > 0 ? 'View All Matches' : 'Browse All Internships'} <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </Link>
         </div>
@@ -807,9 +840,9 @@ export default function StudentDashboard() {
                       Details
                     </Button>
                   </Link>
-                  {internship.application_url ? (
+                  {internship.application_url || internship.source_url ? (
                     <a
-                      href={internship.application_url}
+                      href={normalizeApplicationUrl(internship.application_url || internship.source_url) || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1"
@@ -825,6 +858,7 @@ export default function StudentDashboard() {
                       </Button>
                     </Link>
                   )}
+
                 </div>
               </div>
             ))}

@@ -95,10 +95,16 @@ THIRD_PARTY_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "django.contrib.sites",
-    "django_extensions",
     # Django storage backends (Section 7.7.2): filesystem in dev, S3 in prod
     "storages",
 ]
+
+try:
+    import django_extensions
+    THIRD_PARTY_APPS.append("django_extensions")
+except ImportError:
+    pass
+
 
 LOCAL_APPS = [
     "apps.accounts",
@@ -297,6 +303,7 @@ if STORAGE_BACKEND == "s3":
     }
     # Disable SSL verification for development to handle Backblaze B2 SSL issues
     AWS_S3_VERIFY = config("AWS_S3_VERIFY", default=not DEBUG, cast=bool)
+
     _STORAGES_DEFAULT = {
         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
         "OPTIONS": {
@@ -312,6 +319,7 @@ STORAGES = {
 }
 
 MEDIA_URL = "/media/"
+
 
 MEDIA_ROOT = BASE_DIR / "media"
 

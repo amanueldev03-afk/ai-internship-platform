@@ -17,6 +17,23 @@ import requests
 # satisfy — the fallback kicks in for these.
 HEAD_FALLBACK_STATUSES = {403, 405, 501}
 
+DEFAULT_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# Status codes from external company job sites that indicate the host/URL exists
+# but blocked non-browser scraping / requires user login.
+VALID_OR_PROTECTED_STATUSES = {200, 201, 202, 204, 301, 302, 303, 307, 308, 401, 403, 405, 429, 503}
+
 
 def validate_url(url, timeout=10):
     """
@@ -36,6 +53,9 @@ def validate_url(url, timeout=10):
             "error": "empty_url",
         }
 
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+
     last_error = None
 
     for method in ("HEAD", "GET"):
@@ -45,6 +65,7 @@ def validate_url(url, timeout=10):
                 url,
                 timeout=timeout,
                 allow_redirects=True,
+                headers=DEFAULT_BROWSER_HEADERS,
             )
             status_code = response.status_code
             try:
@@ -57,12 +78,18 @@ def validate_url(url, timeout=10):
             if method == "HEAD" and status_code in HEAD_FALLBACK_STATUSES:
                 continue
 
+            # A status code in VALID_OR_PROTECTED_STATUSES or < 400 is valid.
+            # 404 Not Found and 410 Gone are explicitly marked invalid.
+            is_valid = status_code < 400 or status_code in VALID_OR_PROTECTED_STATUSES
+            if status_code in (404, 410):
+                is_valid = False
+
             return {
                 "url": url,
-                "valid": status_code < 400,
+                "valid": is_valid,
                 "method": method,
                 "status_code": status_code,
-                "error": None,
+                "error": None if is_valid else f"HTTP {status_code}",
             }
 
         except requests.RequestException as exc:
@@ -76,6 +103,7 @@ def validate_url(url, timeout=10):
         "status_code": None,
         "error": last_error or "unreachable",
     }
+
 
 
 def validate_listing_urls(application_url, source_url="", timeout=10):

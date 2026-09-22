@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { MapPin, Briefcase, Calendar, Sparkles, Heart, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Recommendation } from '@/types'
 import { saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
-import { validateApplicationUrl } from '@/utils/urlValidation'
+import { validateApplicationUrl, normalizeApplicationUrl } from '@/utils/urlValidation'
 
 interface RecommendationCardProps {
   recommendation: Recommendation
@@ -70,23 +70,33 @@ export default function RecommendationCard({
     if (localApplied) return
     setError(null)
 
-    // 1. Validate application URL (syntax, protocol, flagging, dead links)
     const validation = validateApplicationUrl(internship)
     if (!validation.isValid) {
-      setError(validation.error || 'The application link for this internship is invalid or unavailable.')
+      setError(validation.error || 'Application URL not available')
       return
     }
 
-    // 2. Fire-and-forget background tracking (non-blocking with short timeout)
+    const rawUrl = internship.application_url || internship.source_url
+    const targetUrl = normalizeApplicationUrl(rawUrl) || rawUrl
+
+    if (!targetUrl) {
+      setError('Application URL not available')
+      return
+    }
+
+    console.log('Opening application URL:', targetUrl)
+
+    // Fire-and-forget background tracking (non-blocking with short timeout)
     trackApplication(internship.id).catch((err) => {
       console.warn('Background application tracking failed (non-blocking):', err)
     })
 
-    // 3. Immediately redirect student to external employer portal
-    window.open(internship.application_url!, '_blank', 'noopener,noreferrer')
+    // Immediately redirect student to external employer portal
+    window.open(targetUrl, '_blank', 'noopener,noreferrer')
     setLocalApplied(true)
     onApply?.(internship.id)
   }
+
 
   const getMatchScoreStyles = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-50/90 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800'
