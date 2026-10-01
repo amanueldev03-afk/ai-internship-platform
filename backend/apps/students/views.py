@@ -12,7 +12,7 @@ from drf_spectacular.utils import extend_schema
 from apps.internships.models import Skill
 from apps.internships.permissions import IsStudent
 from apps.administration.services import log_student_activity
-from .models import StudentProfile, CareerInterest, CV
+from .models import StudentProfile, CareerInterest, CV, Resume
 from .serializers import (
     StudentProfileSerializer,
     StudentMeSerializer,
@@ -23,7 +23,7 @@ from .serializers import (
     StudentInterestInputSerializer,
     StudentPreferencesSerializer,
 )
-from .tasks import process_cv, parse_resume, generate_student_embedding_task
+from .tasks import process_cv, parse_resume, generate_student_embedding_task, parse_resume_task
 from apps.recommendations.views import bust_recommendation_cache
 
 logger = logging.getLogger(__name__)
@@ -1018,3 +1018,123 @@ class CVStatusLatestView(CVStatusView):
     )
     def get(self, request, cv_id=None):
         return super().get(request, cv_id=None)
+
+
+class ResumeUploadView(GenericAPIView):
+    """
+    Task 2.2: Asynchronous resume upload endpoint.
+    POST /api/v1/students/resume/
+    Accepts PDF or DOCX file (max 5MB), validates MIME type via python-magic,
+    stores Resume record, dispatches parse_resume_task, and returns resume_id and 'PENDING'.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        tags=["Student Resumes"],
+        summary="Upload Resume for Asynchronous Extraction",
+        description="Upload a PDF or DOCX resume document (max 5MB). Returns resume_id and initial 'PENDING' status.",
+        responses={
+            201: {
+                "type": "object",
+                "properties": {
+                    "resume_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+            },
+            400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        },
+    )
+    def post(self, request):
+        file_obj = request.FILES.get("file")
+        if not file_obj:
+            return Response(
+                {"detail": "A resume file is required. Provide it as form-data with key 'file'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from ai_engine.parsers.cv_extractor import validate_resume_file
+        try:
+            validate_resume_file(file_obj)
+        except ValueError as err:
+            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create student profile
+        profile, _ = StudentProfile.objects.get_or_create(user=request.user)
+
+        resume = Resume.objects.create(
+            student=profile,
+            file=file_obj,
+            parsing_status=Resume.ParsingStatus.PENDING,
+            parsed_data={},
+        )
+
+        try:
+            transaction.on_commit(lambda: parse_resume_task.delay(resume.id))
+        except Exception as exc:
+            logger.warning(f"Could not queue parse_resume_task on commit: {exc}")
+            parse_resume_task.delay(resume.id)
+
+        return Response(
+            {
+                "resume_id": resume.id,
+                "status": resume.parsing_status,
+                "message": "Resume uploaded successfully and queued for extraction.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ResumeStatusView(GenericAPIView):
+    """
+    Task 2.2: Polls parsing status and returns extracted JSON data.
+    GET /api/v1/students/resume/status/<resume_id>/
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Student Resumes"],
+        summary="Get Resume Parsing Status and Extracted Data",
+        description="Polls extraction status ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED') and returns parsed entity JSON.",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "resume_id": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "parsed_data": {"type": "object"},
+                    "extracted_text": {"type": "string"},
+                    "uploaded_at": {"type": "string", "format": "date-time"},
+                },
+            },
+            404: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        },
+    )
+    def get(self, request, resume_id):
+        try:
+            resume = Resume.objects.select_related("student__user").get(id=resume_id)
+        except (Resume.DoesNotExist, ValueError):
+            return Response(
+                {"detail": f"Resume with ID '{resume_id}' not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Permission check: owner or staff/admin
+        if resume.student.user_id != request.user.id and not request.user.is_staff:
+            return Response(
+                {"detail": "You do not have permission to view this resume."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return Response(
+            {
+                "resume_id": resume.id,
+                "status": resume.parsing_status,
+                "parsed_data": resume.parsed_data,
+                "extracted_text": resume.extracted_text,
+                "uploaded_at": resume.uploaded_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+

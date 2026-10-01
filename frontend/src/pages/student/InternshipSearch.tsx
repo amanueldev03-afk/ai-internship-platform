@@ -26,7 +26,7 @@ export default function InternshipSearch() {
   const loadInternshipsRef = useRef<(excludeIds?: number[]) => Promise<void>>(() => Promise.resolve())
 
   useEffect(() => {
-    if (!isAuthenticated || role !== 'student') {
+    if (!isAuthenticated || role?.toLowerCase() !== 'student') {
       navigate('/login')
       return
     }
@@ -44,7 +44,7 @@ export default function InternshipSearch() {
   }, [])
 
   useEffect(() => {
-    if (isAuthenticated && role === 'student') {
+    if (isAuthenticated && role?.toLowerCase() === 'student') {
       loadSavedState()
     }
   }, [isAuthenticated, role, loadSavedState])
@@ -71,13 +71,13 @@ export default function InternshipSearch() {
   }, [loadInternships])
 
   useEffect(() => {
-    if (isAuthenticated && role === 'student') {
+    if (isAuthenticated && role?.toLowerCase() === 'student') {
       loadInternships()
     }
   }, [loadInternships, isAuthenticated, role])
 
   useEffect(() => {
-    if (!isAuthenticated || role !== 'student') return
+    if (!isAuthenticated || role?.toLowerCase() !== 'student') return
 
     const refreshEveryDay = window.setInterval(() => {
       loadInternshipsRef.current(currentInternshipIds.current)

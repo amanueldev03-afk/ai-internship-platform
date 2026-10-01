@@ -3,7 +3,7 @@ from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from .models import CV, StudentProfile
+from .models import CV, StudentProfile, Resume
 from .services.cv_extraction import extract_cv_text
 from .services.cv_analysis import analyze_cv                    # deterministic parser
 from .services.ai_cv_analysis import analyze_cv_intelligently   # AI merger
@@ -373,3 +373,135 @@ def generate_missing_student_embeddings(self):
     except Exception as exc:
         logger.error(f"Bulk embedding generation failed: {exc}", exc_info=True)
         raise
+
+
+@shared_task(bind=True, max_retries=3)
+def parse_resume_task(self, resume_id: int):
+    """
+    Task 2.2: Asynchronous resume extraction pipeline that parses entities
+    (GPA, GitHub/LinkedIn URLs, email, phone, education, skills) and
+    updates both the Resume record and empty fields on StudentProfile.
+    """
+    logger.info(f"parse_resume_task started — resume_id={resume_id}")
+
+    try:
+        resume = Resume.objects.select_related("student__user").get(id=resume_id)
+    except Resume.DoesNotExist:
+        logger.error(f"Resume {resume_id} not found — aborting task.")
+        return {"status": "not_found", "resume_id": resume_id}
+
+    # Mark PROCESSING
+    resume.parsing_status = Resume.ParsingStatus.PROCESSING
+    resume.save(update_fields=["parsing_status", "updated_at"])
+
+    # Extract text and entities
+    from ai_engine.parsers.cv_extractor import extract_resume_data
+    try:
+        resume.file.open("rb")
+        result = extract_resume_data(resume.file)
+        resume.file.close()
+    except Exception as exc:
+        logger.error(f"Resume {resume_id} extraction failed: {exc}", exc_info=True)
+        resume.parsing_status = Resume.ParsingStatus.FAILED
+        resume.parsed_data = {"error": str(exc)}
+        resume.save(update_fields=["parsing_status", "parsed_data", "updated_at"])
+        if self.request.retries >= self.max_retries:
+            return {"status": "failed", "resume_id": resume_id, "error": str(exc)}
+        raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))
+
+    text = result.get("text", "")
+    data = result.get("data", {})
+
+    resume.extracted_text = text
+    resume.parsed_data = data
+    resume.parsing_status = Resume.ParsingStatus.COMPLETED
+    resume.save(update_fields=["extracted_text", "parsed_data", "parsing_status", "updated_at"])
+    logger.info(f"Resume {resume_id} extraction completed successfully.")
+
+    # Populate empty fields on StudentProfile
+    profile = resume.student
+    if profile:
+        profile_fields_to_update = []
+
+        # Phone
+        extracted_phone = data.get("phone")
+        if extracted_phone and not profile.phone:
+            profile.phone = extracted_phone
+            profile_fields_to_update.append("phone")
+            if hasattr(profile.user, "phone_number") and not profile.user.phone_number:
+                profile.user.phone_number = extracted_phone
+                profile.user.save(update_fields=["phone_number"])
+
+        # Education: Institution / University
+        education_data = data.get("education") or {}
+        extracted_institution = education_data.get("institution")
+        if extracted_institution and not profile.university:
+            profile.university = extracted_institution
+            profile_fields_to_update.append("university")
+
+        # Education: Field of study
+        extracted_field = education_data.get("field_of_study")
+        if extracted_field and not profile.field_of_study:
+            canonical_field = extracted_field.lower().replace(" ", "_")
+            valid_codes = [c[0] for c in profile.FIELD_OF_STUDY_CHOICES]
+            if canonical_field in valid_codes:
+                profile.field_of_study = canonical_field
+            else:
+                profile.field_of_study = extracted_field
+            profile_fields_to_update.append("field_of_study")
+
+        # Also populate academic profile in accounts if present
+        try:
+            from apps.accounts.models import StudentProfile as AccountStudentProfile
+            account_profile = AccountStudentProfile.objects.filter(user=profile.user).first()
+            if account_profile:
+                acc_updates = []
+                if data.get("gpa") is not None and not account_profile.gpa:
+                    account_profile.gpa = data["gpa"]
+                    acc_updates.append("gpa")
+                if data.get("github_url") and not account_profile.github_url:
+                    account_profile.github_url = data["github_url"]
+                    acc_updates.append("github_url")
+                if extracted_institution and not account_profile.university_name:
+                    account_profile.university_name = extracted_institution
+                    acc_updates.append("university_name")
+                if extracted_field and not account_profile.department:
+                    account_profile.department = extracted_field
+                    acc_updates.append("department")
+                if acc_updates:
+                    account_profile.save(update_fields=acc_updates)
+        except Exception as e:
+            logger.warning(f"Could not update accounts.StudentProfile: {e}")
+
+        # Sync Skills
+        extracted_skills = data.get("skills", [])
+        if extracted_skills:
+            sync_cv_skills_to_profile(profile, extracted_skills, source="resume")
+            logger.info(f"Synced {len(extracted_skills)} skills to student profile {profile.id}")
+
+        if profile_fields_to_update:
+            profile_fields_to_update.append("updated_at")
+            profile.save(update_fields=profile_fields_to_update)
+            logger.info(f"Updated profile {profile.id} fields: {profile_fields_to_update}")
+
+        # Regenerate student vector embedding inline
+        try:
+            regenerate_student_embedding(profile)
+            logger.info(f"Student embedding regenerated for profile {profile.id}")
+        except Exception as exc:
+            logger.warning(f"Could not regenerate embedding for profile {profile.id}: {exc}")
+
+        # Invalidate recommendation cache
+        try:
+            from apps.recommendations.views import bust_recommendation_cache
+            bust_recommendation_cache(profile.user_id)
+            logger.info(f"Recommendation cache invalidated for user {profile.user_id}")
+        except Exception as exc:
+            logger.warning(f"Could not bust recommendation cache for user {profile.user_id}: {exc}")
+
+    return {
+        "status": "completed",
+        "resume_id": resume_id,
+        "parsed_data": data,
+    }
+

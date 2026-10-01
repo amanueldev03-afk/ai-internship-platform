@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, Briefcase, Database, Brain, Sparkles, LogOut, ChevronRight } from 'lucide-react'
+import { Users, Briefcase, Database, Brain, Sparkles, LogOut, ChevronRight, ShieldCheck, Check, Loader2 } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { logoutUser } from '@/features/auth/authSlice'
 import { getAdminAnalytics, type AdminAnalytics } from '@/services/adminAnalyticsApi'
+import api from '@/services/api'
 import { Button } from '@/components/ui/button'
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
@@ -24,6 +25,11 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Institutional Staff Approval Queue
+  const [pendingStaff, setPendingStaff] = useState<any[]>([])
+  const [isLoadingStaff, setIsLoadingStaff] = useState(false)
+  const [approvingStaffId, setApprovingStaffId] = useState<number | null>(null)
+
   useEffect(() => {
     let isCurrent = true
     getAdminAnalytics()
@@ -37,10 +43,37 @@ export default function AdminDashboard() {
         if (isCurrent) setIsLoading(false)
       })
 
+    fetchPendingStaff()
+
     return () => {
       isCurrent = false
     }
   }, [])
+
+  const fetchPendingStaff = async () => {
+    setIsLoadingStaff(true)
+    try {
+      const res = await api.get('/v1/auth/admin/pending-staff/')
+      setPendingStaff(Array.isArray(res.data) ? res.data : [])
+    } catch {
+      // silent
+    } finally {
+      setIsLoadingStaff(false)
+    }
+  }
+
+  const handleApproveStaff = async (staffId: number) => {
+    setApprovingStaffId(staffId)
+    try {
+      await api.post(`/v1/auth/admin/approve-staff/${staffId}/`)
+      alert('Institutional staff member approved successfully! Login access unlocked.')
+      setPendingStaff((prev) => prev.filter((s) => s.id !== staffId))
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Approval failed.')
+    } finally {
+      setApprovingStaffId(null)
+    }
+  }
 
   const handleLogout = async () => {
     await dispatch(logoutUser(localStorage.getItem('refresh_token')))
@@ -116,6 +149,89 @@ export default function AdminDashboard() {
             {error}
           </div>
         )}
+
+        {/* INSTITUTIONAL STAFF APPROVAL QUEUE */}
+        <section aria-labelledby="staff-approvals" className="card-gradient rounded-3xl p-6 sm:p-8 shadow-card border border-neutral-200/80 dark:border-neutral-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                <h2 id="staff-approvals" className="text-base font-bold text-neutral-900 dark:text-white">
+                  Institutional Staff Approval Queue
+                </h2>
+              </div>
+              <p className="text-xs text-neutral-500 mt-1">
+                Deans, UIL Officers, Student Union, and Dorm Admins require platform administrator verification before login access is granted.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchPendingStaff}
+              disabled={isLoadingStaff}
+              className="text-xs self-start sm:self-auto"
+            >
+              {isLoadingStaff ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+              Refresh Staff Queue
+            </Button>
+          </div>
+
+          {isLoadingStaff ? (
+            <div className="p-8 text-center text-xs text-neutral-400">Loading pending institutional staff...</div>
+          ) : pendingStaff.length === 0 ? (
+            <div className="p-6 text-center text-xs text-neutral-500 bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-200/60 dark:border-neutral-800">
+              <Check className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+              All institutional staff registrations are verified. No pending approvals.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-[11px] font-bold text-neutral-400 uppercase">
+                  <tr>
+                    <th className="py-3 px-4">Staff Member</th>
+                    <th className="py-3 px-4">Role</th>
+                    <th className="py-3 px-4">Department / Office</th>
+                    <th className="py-3 px-4">University</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {pendingStaff.map((staff) => (
+                    <tr key={staff.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/40">
+                      <td className="py-3 px-4">
+                        <span className="font-bold text-neutral-900 dark:text-white block">
+                          {staff.full_name || `${staff.first_name || ''} ${staff.last_name || ''}`}
+                        </span>
+                        <span className="text-[11px] text-neutral-400">{staff.email}</span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                          {staff.role}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-neutral-700 dark:text-neutral-300">
+                        {staff.department || 'General Administration'}
+                      </td>
+                      <td className="py-3 px-4 text-neutral-700 dark:text-neutral-300">
+                        {staff.university_name || 'Addis Ababa University'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          size="sm"
+                          disabled={approvingStaffId === staff.id}
+                          onClick={() => handleApproveStaff(staff.id)}
+                          className="text-xs h-7 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                        >
+                          {approvingStaffId === staff.id ? 'Approving...' : 'Approve Staff'}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         {analytics && !error && (
           <div className="space-y-8 animate-slide-up">

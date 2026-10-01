@@ -39,14 +39,14 @@ export default function HomePage() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isAuthenticated && role === 'student') {
+    if (isAuthenticated && role?.toLowerCase() === 'student') {
       navigate(`/internships${searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ''}`)
     } else {
       navigate(`/register`)
     }
   }
 
-  const destinationDashboard = role === 'admin' ? '/admin/dashboard' : '/dashboard'
+  const destinationDashboard = role?.toLowerCase() === 'admin' ? '/admin/dashboard' : '/dashboard'
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#09090b] text-neutral-900 dark:text-neutral-100 flex flex-col selection:bg-primary-500 selection:text-white transition-colors duration-300">

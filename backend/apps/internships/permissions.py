@@ -1,4 +1,7 @@
 from rest_framework.permissions import BasePermission
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class IsAdminRole(BasePermission):
@@ -15,14 +18,13 @@ class IsAdminRole(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        # Check if user is admin (role == admin, is_superuser, or is_staff)
-        is_admin = (
-            user.role == "admin" 
+        user_role = str(getattr(user, "role", "")).upper()
+        return (
+            user_role == User.Role.ADMIN
+            or user_role == "ADMIN"
             or user.is_superuser 
             or user.is_staff
         )
-
-        return is_admin
 
 
 class IsStudent(BasePermission):
@@ -39,4 +41,26 @@ class IsStudent(BasePermission):
         if not user or not user.is_authenticated:
             return False
 
-        return user.role == "student"
+        user_role = str(getattr(user, "role", "")).upper()
+        return user_role in (User.Role.STUDENT, "STUDENT")
+
+
+class IsCompanyHROrAdmin(BasePermission):
+    """
+    Allow access to Company HR or Administrators.
+    """
+
+    message = "Only Company HR or administrators can perform this action."
+
+    def has_permission(self, request, view):
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        user_role = str(getattr(user, "role", "")).upper()
+        return (
+            user_role in (User.Role.COMPANY_HR, "COMPANY_HR", User.Role.ADMIN, "ADMIN")
+            or user.is_superuser
+            or user.is_staff
+        )

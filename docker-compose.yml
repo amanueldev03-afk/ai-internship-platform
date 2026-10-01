@@ -1,138 +1,203 @@
 version: "3.9"
 
-# ---------------------------------------------------------------------------
-# Dev-only compose file.
-# Phase 12 will expand this with frontend, celery worker, celery beat, etc.
-# Usage:
-#   Start just infra:  docker-compose up db redis
-#   Start everything:  docker-compose up
-# ---------------------------------------------------------------------------
+# =============================================================================
+# SmartIntern-ET — Local Development Docker Compose Environment
+# =============================================================================
 
 services:
-
-  # -------------------------------------------------------------------------
-  # PostgreSQL 15
-  # -------------------------------------------------------------------------
-  db:
-    image: pgvector/pgvector:pg15   # postgres:15 + pgvector pre-installed
-    container_name: ai_internship_db
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 with pgvector extension for ML embeddings
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: smartintern_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ai_internship}
-      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_password}
-      # Auto-create the vector extension on first startup
+      POSTGRES_DB: ${POSTGRES_DB:-smartintern_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
       - ./backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5433:5432"   # host 5433 → container 5432 (avoids clash with native postgres)
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_user} -d ${POSTGRES_DB:-ai_internship}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-smartintern_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # -------------------------------------------------------------------------
-  # Redis 7
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Redis 7 Alpine cache and Celery broker
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: ai_internship_redis
+    container_name: smartintern_redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - redisdata:/data
     ports:
-      - "6380:6379"   # host 6380 → container 6379 (avoids clash with native redis)
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # -------------------------------------------------------------------------
-  # Django backend
-  # Depends on db + redis being healthy before starting.
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Django ASGI Backend (Daphne: HTTP & Channels WebSockets)
+  # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_internship_backend
+    container_name: smartintern_backend
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
     environment:
-      # Override DATABASE_URL to point at the compose db service
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-smartintern-secret-key-dev}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ETHIO_SMS_API_KEY: ${ETHIO_SMS_API_KEY:-}
+      STORAGE_BACKEND: filesystem
     volumes:
       - ./backend:/app
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: >
-      sh -c "python manage.py migrate --noinput &&
-             python manage.py runserver 0.0.0.0:8000"
+    command: daphne -b 0.0.0.0 -p 8000 config.asgi:application
 
-  # -------------------------------------------------------------------------
-  # Celery worker (Redis broker)
-  # -------------------------------------------------------------------------
-  celery:
+  # ---------------------------------------------------------------------------
+  # Django ASGI Backend (Daphne: WebSockets on port 8001 for Phase 16)
+  # ---------------------------------------------------------------------------
+  backend_asgi:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_internship_celery
+    container_name: smartintern_backend_asgi
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-smartintern-secret-key-dev}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ETHIO_SMS_API_KEY: ${ETHIO_SMS_API_KEY:-}
+      STORAGE_BACKEND: filesystem
     volumes:
       - ./backend:/app
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
+    ports:
+      - "8001:8001"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A config worker -l info
+    command: daphne -b 0.0.0.0 -p 8001 config.asgi:application
 
-  # -------------------------------------------------------------------------
-  # Celery beat scheduler
-  # -------------------------------------------------------------------------
-  celery-beat:
+  # ---------------------------------------------------------------------------
+  # Celery Background Worker
+  # ---------------------------------------------------------------------------
+  celery_worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_internship_celery_beat
+    container_name: smartintern_celery_worker
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-smartintern-secret-key-dev}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      STORAGE_BACKEND: filesystem
     volumes:
       - ./backend:/app
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A config beat -l info
+    command: celery -A config worker --loglevel=info -c 4
 
+  # ---------------------------------------------------------------------------
+  # Celery Beat Periodic Task Scheduler
+  # ---------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartintern_celery_beat
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DEBUG: "True"
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-smartintern-secret-key-dev}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+  # ---------------------------------------------------------------------------
+  # React 18 / Vite / Tailwind Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smartintern_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api
+      VITE_OAUTH_BASE_URL: http://localhost:8000
+    depends_on:
+      - backend
+
+# -----------------------------------------------------------------------------
+# Shared Volumes
+# -----------------------------------------------------------------------------
 volumes:
-  postgres_data:
-  redis_data:
+  pgdata:
+  redisdata:
+  ai_models_cache:
+  media_volume:
+

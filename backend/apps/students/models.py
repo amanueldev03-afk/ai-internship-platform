@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from apps.internships.models import Skill
 from apps.common.models import TimeStampedModel
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 
 
 class StudentProfile(TimeStampedModel):
@@ -85,7 +85,7 @@ class StudentProfile(TimeStampedModel):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="student_profile",
+        related_name="legacy_student_profile",
     )
 
     # ==========================================================
@@ -395,6 +395,15 @@ class StudentProfile(TimeStampedModel):
         ordering = ["-created_at"]
         verbose_name = "Student Profile"
         verbose_name_plural = "Student Profiles"
+        indexes = [
+            HnswIndex(
+                name="student_profile_emb_hnsw_idx",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
 
 
 
@@ -798,3 +807,48 @@ class StudentInterest(TimeStampedModel):
 
     def __str__(self):
         return f"{self.student.user.email} - {self.interest.name}"
+
+
+class Resume(TimeStampedModel):
+    """
+    Uploaded student resume document and asynchronous extraction pipeline state.
+    """
+
+    class ParsingStatus(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROCESSING = "PROCESSING", "Processing"
+        COMPLETED = "COMPLETED", "Completed"
+        FAILED = "FAILED", "Failed"
+
+    student = models.ForeignKey(
+        StudentProfile,
+        on_delete=models.CASCADE,
+        related_name="resumes",
+    )
+    file = models.FileField(
+        upload_to="resumes/%Y/%m/",
+    )
+    extracted_text = models.TextField(
+        blank=True,
+        default="",
+    )
+    parsing_status = models.CharField(
+        max_length=20,
+        choices=ParsingStatus.choices,
+        default=ParsingStatus.PENDING,
+    )
+    parsed_data = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+        verbose_name = "Resume"
+        verbose_name_plural = "Resumes"
+
+    def __str__(self):
+        return f"Resume {self.id} ({self.student.user.email}) - {self.parsing_status}"

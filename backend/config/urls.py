@@ -132,8 +132,12 @@ urlpatterns = [
         name="redoc",
     ),
     path(
+        "api/v1/auth/",
+        include("apps.accounts.urls"),
+    ),
+    path(
         "api/accounts/",
-        include("apps.accounts.urls")
+        include("apps.accounts.urls"),
     ),
     # Phase 2 Task 2.1 — canonical auth registration endpoint
     path(
@@ -179,7 +183,11 @@ urlpatterns = [
         "accounts/",
         include("allauth.urls")
     ),
-    # Student profile module (Phase 3) — single canonical prefix.
+    # Student profile module (Phase 3 & Task 2.2) — canonical prefixes.
+    path(
+        "api/v1/students/",
+        include("apps.students.urls"),
+    ),
     path(
         "api/students/",
         include("apps.students.urls"),
@@ -193,12 +201,61 @@ urlpatterns = [
         include("apps.recommendations.urls"),
     ),
     path(
+        "api/postings/",
+        include("apps.postings.urls"),
+    ),
+    path(
         "api/companies/",
         include("apps.companies.urls"),
     ),
     path(
         "api/applications/",
         include("apps.applications.urls"),
+    ),
+    # Projects & Weekly Logbooks (Task 2.3)
+    path(
+        "api/v1/projects/",
+        include("apps.projects.urls"),
+    ),
+    # Campus Logistics Clearance (Food & Housing)
+    path(
+        "api/v1/logistics/",
+        include("apps.logistics.urls"),
+    ),
+    path(
+        "api/logistics/",
+        include("apps.logistics.urls"),
+    ),
+    # University-Industry Linkage (UIL) Profiles & Workflows
+    path(
+        "api/v1/uil-profiles/",
+        include("apps.uil_profiles.urls"),
+    ),
+    path(
+        "api/uil-profiles/",
+        include("apps.uil_profiles.urls"),
+    ),
+    # Campus Software House Teams & Logbooks
+    path(
+        "api/v1/teams/",
+        include("apps.teams.urls"),
+    ),
+    path(
+        "api/teams/",
+        include("apps.teams.urls"),
+    ),
+    # Additional v1 API Aliases
+    path(
+        "api/v1/internships/",
+        include("apps.internships.urls"),
+    ),
+    path(
+        "api/v1/companies/",
+        include("apps.companies.urls"),
+    ),
+    path(
+        "api/v1/accounts/",
+        include("apps.accounts.urls"),
     ),
     # Task 5.10 — admin manual syncing of a single data source.
     # POST /api/admin/data-sources/<id>/sync-now/

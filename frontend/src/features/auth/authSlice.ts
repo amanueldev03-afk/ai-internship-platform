@@ -27,6 +27,11 @@ export const authInitialState: AuthState = {
   error: null,
 }
 
+const normalizeRole = (role?: string | null): UserRole | null => {
+  if (!role) return null
+  return role.toLowerCase() as UserRole
+}
+
 // Initialize auth state from stored tokens
 export const initializeAuth = createAsyncThunk(
   'auth/initialize',
@@ -44,9 +49,10 @@ export const initializeAuth = createAsyncThunk(
 
     try {
       const user = await authApi.getCurrentUser()
+      const normalizedRole = normalizeRole(user.role)
       return {
-        user,
-        role: user.role,
+        user: { ...user, role: normalizedRole || user.role },
+        role: normalizedRole,
         accessToken,
         refreshToken,
       }
@@ -90,6 +96,11 @@ export const register = createAsyncThunk(
       password: string
       password_confirm: string
       phone?: string
+      role?: string
+      organization_name?: string
+      department?: string
+      university_name?: string
+      auto_activate?: boolean
     },
     { rejectWithValue }
   ) => {
@@ -159,8 +170,9 @@ const authSlice = createSlice({
         }
       }
     ) => {
-      state.user = action.payload.user
-      state.role = action.payload.user.role
+      const normalizedRole = normalizeRole(action.payload.user?.role) || 'student'
+      state.user = { ...action.payload.user, role: normalizedRole }
+      state.role = normalizedRole
       state.accessToken = action.payload.accessToken
       state.refreshToken = action.payload.refreshToken
       state.isAuthenticated = true
@@ -200,14 +212,15 @@ const authSlice = createSlice({
         state.error = null
       })
       .addCase(login.fulfilled, (state, action) => {
+        const normalizedRole = normalizeRole(action.payload.user?.role) || 'student'
         const user: User = {
           id: action.payload.user.id,
           email: action.payload.user.email,
           username: action.payload.user.username,
-          role: action.payload.user.role,
+          role: normalizedRole,
         }
         state.user = user
-        state.role = user.role
+        state.role = normalizedRole
         state.accessToken = action.payload.access
         state.refreshToken = action.payload.refresh
         state.isAuthenticated = true
@@ -227,9 +240,27 @@ const authSlice = createSlice({
         state.isLoading = true
         state.error = null
       })
-      .addCase(register.fulfilled, (state) => {
+      .addCase(register.fulfilled, (state, action) => {
         state.isLoading = false
         state.error = null
+        if (action.payload?.access && action.payload?.refresh && action.payload?.user) {
+          const normalizedRole = normalizeRole(action.payload.user.role) || 'student'
+          const user: User = {
+            id: action.payload.user.id,
+            email: action.payload.user.email,
+            username: action.payload.user.username,
+            role: normalizedRole,
+          }
+          state.user = user
+          state.role = normalizedRole
+          state.accessToken = action.payload.access
+          state.refreshToken = action.payload.refresh
+          state.isAuthenticated = true
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('access_token', action.payload.access)
+            localStorage.setItem('refresh_token', action.payload.refresh)
+          }
+        }
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false

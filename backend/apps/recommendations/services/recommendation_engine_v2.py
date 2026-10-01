@@ -437,7 +437,9 @@ def _get_student_skills(profile):
     Returns a deduplicated list of lowercase-trimmed names.
     """
     skills = list(profile.skills.values_list("name", flat=True))
-    if hasattr(profile, "career_interests"):
+    if hasattr(profile, "interests"):
+        skills.extend(list(profile.interests.values_list("name", flat=True)))
+    elif hasattr(profile, "career_interests"):
         skills.extend(list(profile.career_interests.values_list("name", flat=True)))
 
     user = getattr(profile, "user", None)

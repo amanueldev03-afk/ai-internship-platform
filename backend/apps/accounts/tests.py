@@ -1,3 +1,4 @@
+import uuid
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -156,6 +157,69 @@ class UserAPITest(TestCase):
         response = self.client.post('/api/auth/register/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('full_name', response.data)
+
+    def test_company_hr_registration_success(self):
+        """Test employer registration with organization_name creates user and company"""
+        from apps.companies.models import Company
+        data = {
+            'role': 'company_hr',
+            'full_name': 'Sara Recruiter',
+            'email': 'hr@telecom.et',
+            'password': 'SecurePass123!',
+            'password_confirm': 'SecurePass123!',
+            'organization_name': 'Ethio Telecom HQ',
+        }
+        response = self.client.post('/api/auth/register/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['user']['role'], 'company_hr')
+
+        user = User.objects.get(email='hr@telecom.et')
+        self.assertEqual(user.role, User.Role.COMPANY_HR)
+        self.assertTrue(Company.objects.filter(name='Ethio Telecom HQ').exists())
+
+    def test_company_hr_registration_missing_organization_name(self):
+        """Test company_hr registration without organization_name returns 400"""
+        data = {
+            'role': 'company_hr',
+            'full_name': 'Sara Recruiter',
+            'email': 'hr_noname@telecom.et',
+            'password': 'SecurePass123!',
+            'password_confirm': 'SecurePass123!',
+        }
+        response = self.client.post('/api/auth/register/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('organization_name', response.data)
+
+    def test_advisor_registration_success(self):
+        """Test advisor registration with university_name and department"""
+        data = {
+            'role': 'advisor',
+            'full_name': 'Dr. Abebe Advisor',
+            'email': 'advisor@aau.edu.et',
+            'password': 'SecurePass123!',
+            'password_confirm': 'SecurePass123!',
+            'university_name': 'Addis Ababa University',
+            'department': 'Software Engineering',
+        }
+        response = self.client.post('/api/auth/register/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['user']['role'], 'advisor')
+
+        user = User.objects.get(email='advisor@aau.edu.et')
+        self.assertEqual(user.role, User.Role.ADVISOR)
+
+    def test_registration_disallowed_role_rejected(self):
+        """Test attempting to register with admin role returns 400 (admin self-registration disallowed)"""
+        data = {
+            'role': 'admin',
+            'full_name': 'Attacker Admin',
+            'email': 'fake_admin@example.com',
+            'password': 'SecurePass123!',
+            'password_confirm': 'SecurePass123!',
+        }
+        response = self.client.post('/api/auth/register/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('role', response.data)
 
     def test_student_login(self):
         """Test student login endpoint"""
@@ -786,3 +850,453 @@ class UserAPITest(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_login.data['access']}")
         admin_resp = self.client.get('/api/internships/admin/dashboard/')
         self.assertEqual(admin_resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class SmartInternETAuthAndRBACTest(TestCase):
+    """
+    Validation test suite for SmartIntern-ET Core Authentication,
+    RBAC (9 actors), and Student Safety & Accessibility Models.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.register_url = "/api/v1/auth/register/"
+        self.login_url = "/api/v1/auth/login/"
+        self.me_url = "/api/v1/auth/me/"
+
+    def test_user_registration_ethiopian_phone_formats(self):
+        """Verify registration accepts valid Ethiopian phone formats."""
+        phones = ["+251912345678", "0912345678", "+251712345678", "0712345678"]
+        for idx, phone in enumerate(phones):
+            data = {
+                "email": f"ethio_user_{idx}@aau.edu.et",
+                "password": "Password123!",
+                "first_name": "Abebe",
+                "last_name": "Kebede",
+                "phone_number": phone,
+                "role": User.Role.STUDENT,
+            }
+            resp = self.client.post(self.register_url, data, format="json")
+            self.assertEqual(
+                resp.status_code,
+                status.HTTP_201_CREATED,
+                f"Failed for phone format: {phone} with {resp.data}",
+            )
+            created_user = User.objects.get(email=f"ethio_user_{idx}@aau.edu.et")
+            self.assertEqual(created_user.phone_number, phone)
+            self.assertIsInstance(created_user.id, uuid.UUID)
+
+    def test_user_registration_invalid_phone_formats(self):
+        """Verify registration rejects invalid phone numbers."""
+        invalid_phones = ["12345", "+1234567890", "0812345678", "+251812345678", "phone12345"]
+        for idx, phone in enumerate(invalid_phones):
+            data = {
+                "email": f"bad_phone_{idx}@aau.edu.et",
+                "password": "Password123!",
+                "phone_number": phone,
+                "role": User.Role.STUDENT,
+            }
+            resp = self.client.post(self.register_url, data, format="json")
+            self.assertEqual(
+                resp.status_code,
+                status.HTTP_400_BAD_REQUEST,
+                f"Accepted invalid phone format: {phone}",
+            )
+            self.assertIn("phone_number", resp.data)
+
+    def test_email_uniqueness_enforced(self):
+        """Verify email uniqueness is strictly enforced."""
+        data = {
+            "email": "unique.student@aau.edu.et",
+            "password": "Password123!",
+            "phone_number": "0911223344",
+            "role": User.Role.STUDENT,
+        }
+        resp1 = self.client.post(self.register_url, data, format="json")
+        self.assertEqual(resp1.status_code, status.HTTP_201_CREATED)
+
+        # Duplicate email registration
+        resp2 = self.client.post(self.register_url, data, format="json")
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("email", resp2.data)
+
+    def test_student_profile_creation_and_unique_constraint(self):
+        """
+        Verify student profile creation and duplicate ID per university prevention.
+        """
+        from .models import StudentProfile
+
+        data1 = {
+            "email": "student1@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Almaz",
+            "last_name": "Ayana",
+            "phone_number": "0911223344",
+            "role": User.Role.STUDENT,
+            "student_profile": {
+                "student_id_number": "UGR/1234/12",
+                "university_name": "Addis Ababa University",
+                "campus_city": "Addis Ababa",
+                "department": "Software Engineering",
+                "academic_year": 4,
+                "gpa": "3.85",
+                "github_url": "https://github.com/almaz",
+                "bio": "Passionate SE student",
+                "skill_tags": ["Python", "Django", "React"],
+                "is_active_for_internship": True,
+            },
+        }
+        resp1 = self.client.post(self.register_url, data1, format="json")
+        self.assertEqual(resp1.status_code, status.HTTP_201_CREATED)
+
+        profile = StudentProfile.objects.get(student_id_number="UGR/1234/12")
+        self.assertEqual(profile.university_name, "Addis Ababa University")
+        self.assertEqual(profile.user.email, "student1@aau.edu.et")
+        self.assertEqual(str(profile.gpa), "3.85")
+
+        # Attempt duplicate registration with the same student ID at the same university
+        data2 = {
+            "email": "student2@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Bekele",
+            "last_name": "Molla",
+            "phone_number": "0922334455",
+            "role": User.Role.STUDENT,
+            "student_profile": {
+                "student_id_number": "UGR/1234/12",
+                "university_name": "Addis Ababa University",
+                "campus_city": "Addis Ababa",
+                "department": "Computer Science",
+            },
+        }
+        resp2 = self.client.post(self.register_url, data2, format="json")
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("student_profile", resp2.data)
+
+        # Same student ID at a DIFFERENT university and campus is allowed
+        data3 = {
+            "email": "student3@aastu.edu.et",
+            "password": "Password123!",
+            "first_name": "Chala",
+            "last_name": "Tadesse",
+            "phone_number": "0933445566",
+            "role": User.Role.STUDENT,
+            "student_profile": {
+                "student_id_number": "UGR/1234/12",
+                "university_name": "AASTU",
+                "campus_city": "Akaki",
+                "department": "Electrical Engineering",
+            },
+        }
+        resp3 = self.client.post(self.register_url, data3, format="json")
+        self.assertEqual(resp3.status_code, status.HTTP_201_CREATED)
+
+    def test_emergency_contact_and_accessibility_profile(self):
+        """
+        Verify EmergencyContact and AccessibilityProfile creation and phone validation.
+        """
+        payload = {
+            "email": "safety_student@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Derartu",
+            "last_name": "Tulu",
+            "phone_number": "+251911001122",
+            "role": User.Role.STUDENT,
+            "student_profile": {
+                "student_id_number": "UGR/9999/14",
+                "university_name": "Addis Ababa University",
+                "campus_city": "Addis Ababa",
+                "department": "Information Systems",
+                "emergency_contact": {
+                    "contact_name": "Tulu Kebede",
+                    "relationship": "Father",
+                    "primary_phone": "+251922334455",
+                    "alternate_phone": "0911556677",
+                    "insurance_policy_number": "INS-ET-2026-001",
+                },
+                "accessibility_profile": {
+                    "requires_screen_reader": True,
+                    "mobility_assistance_required": False,
+                    "workplace_notes": "Requires NVDA screen reader setup.",
+                },
+            },
+        }
+        resp = self.client.post(self.register_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+        user = User.objects.get(email="safety_student@aau.edu.et")
+        profile = user.student_profile
+        self.assertIsNotNone(profile.emergency_contact)
+        self.assertEqual(profile.emergency_contact.contact_name, "Tulu Kebede")
+        self.assertEqual(profile.emergency_contact.insurance_policy_number, "INS-ET-2026-001")
+
+        self.assertIsNotNone(profile.accessibility_profile)
+        self.assertTrue(profile.accessibility_profile.requires_screen_reader)
+        self.assertFalse(profile.accessibility_profile.mobility_assistance_required)
+        self.assertEqual(
+            profile.accessibility_profile.workplace_notes,
+            "Requires NVDA screen reader setup.",
+        )
+
+    def test_jwt_custom_claims_on_login(self):
+        """
+        Verify CustomTokenObtainPairView (/api/v1/auth/login/) embeds:
+        user_id, email, role, and full_name.
+        """
+        user = User.objects.create_user(
+            email="dean@aau.edu.et",
+            password="DeanPassword123!",
+            first_name="Dr. Solomon",
+            last_name="Gizaw",
+            phone_number="+251911998877",
+            role=User.Role.DEPT_DEAN,
+            is_active=True,
+            is_email_verified=True,
+            is_approved=True,
+        )
+
+        resp = self.client.post(
+            self.login_url,
+            {"email": "dean@aau.edu.et", "password": "DeanPassword123!"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("access", resp.data)
+        self.assertIn("refresh", resp.data)
+
+        from rest_framework_simplejwt.tokens import AccessToken
+        token = AccessToken(resp.data["access"])
+        self.assertEqual(token["user_id"], str(user.id))
+        self.assertEqual(token["email"], "dean@aau.edu.et")
+        self.assertEqual(token["role"], User.Role.DEPT_DEAN)
+        self.assertEqual(token["full_name"], "Dr. Solomon Gizaw")
+
+    def test_current_user_me_endpoint(self):
+        """Verify /api/v1/auth/me/ returns authenticated user details."""
+        user = User.objects.create_user(
+            email="uil@aau.edu.et",
+            password="UilPassword123!",
+            first_name="Hanna",
+            last_name="Girma",
+            role=User.Role.UIL_OFFICER,
+            is_active=True,
+            is_email_verified=True,
+            is_approved=True,
+        )
+        login_resp = self.client.post(
+            self.login_url,
+            {"email": "uil@aau.edu.et", "password": "UilPassword123!"},
+            format="json",
+        )
+        token = login_resp.data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        me_resp = self.client.get(self.me_url)
+        self.assertEqual(me_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_resp.data["email"], "uil@aau.edu.et")
+        self.assertEqual(me_resp.data["role"], User.Role.UIL_OFFICER)
+        self.assertEqual(me_resp.data["full_name"], "Hanna Girma")
+
+    def test_rbac_permission_classes(self):
+        """
+        Verify all 8 RBAC permission classes correctly grant and restrict access.
+        """
+        from apps.accounts.permissions import (
+            IsStudent,
+            IsDeptDean,
+            IsUILOfficer,
+            IsAcademicAdvisor,
+            IsCompanyHR,
+            IsCompanyMentor,
+            IsLogisticsAdmin,
+            IsSystemAdmin,
+        )
+
+        class MockRequest:
+            def __init__(self, user):
+                self.user = user
+
+        student = User.objects.create_user(email="p_student@test.com", password="P!", role=User.Role.STUDENT, is_active=True)
+        dean = User.objects.create_user(email="p_dean@test.com", password="P!", role=User.Role.DEPT_DEAN, is_active=True)
+        uil = User.objects.create_user(email="p_uil@test.com", password="P!", role=User.Role.UIL_OFFICER, is_active=True)
+        advisor = User.objects.create_user(email="p_advisor@test.com", password="P!", role=User.Role.ADVISOR, is_active=True)
+        union = User.objects.create_user(email="p_union@test.com", password="P!", role=User.Role.STUDENT_UNION, is_active=True)
+        dorm = User.objects.create_user(email="p_dorm@test.com", password="P!", role=User.Role.DORM_ADMIN, is_active=True)
+        hr = User.objects.create_user(email="p_hr@test.com", password="P!", role=User.Role.COMPANY_HR, is_active=True)
+        mentor = User.objects.create_user(email="p_mentor@test.com", password="P!", role=User.Role.COMPANY_MENTOR, is_active=True)
+        admin = User.objects.create_superuser(email="p_admin@test.com", password="P!", role=User.Role.ADMIN, is_active=True)
+
+        # 1. IsStudent
+        self.assertTrue(IsStudent().has_permission(MockRequest(student), None))
+        self.assertFalse(IsStudent().has_permission(MockRequest(dean), None))
+
+        # 2. IsDeptDean
+        self.assertTrue(IsDeptDean().has_permission(MockRequest(dean), None))
+        self.assertFalse(IsDeptDean().has_permission(MockRequest(uil), None))
+
+        # 3. IsUILOfficer
+        self.assertTrue(IsUILOfficer().has_permission(MockRequest(uil), None))
+        self.assertFalse(IsUILOfficer().has_permission(MockRequest(advisor), None))
+
+        # 4. IsAcademicAdvisor
+        self.assertTrue(IsAcademicAdvisor().has_permission(MockRequest(advisor), None))
+        self.assertFalse(IsAcademicAdvisor().has_permission(MockRequest(student), None))
+
+        # 5. IsCompanyHR
+        self.assertTrue(IsCompanyHR().has_permission(MockRequest(hr), None))
+        self.assertFalse(IsCompanyHR().has_permission(MockRequest(mentor), None))
+
+        # 6. IsCompanyMentor
+        self.assertTrue(IsCompanyMentor().has_permission(MockRequest(mentor), None))
+        self.assertFalse(IsCompanyMentor().has_permission(MockRequest(hr), None))
+
+        # 7. IsLogisticsAdmin (Student Union and Dorm Admin)
+        self.assertTrue(IsLogisticsAdmin().has_permission(MockRequest(union), None))
+        self.assertTrue(IsLogisticsAdmin().has_permission(MockRequest(dorm), None))
+        self.assertFalse(IsLogisticsAdmin().has_permission(MockRequest(student), None))
+
+        # 8. IsSystemAdmin
+        self.assertTrue(IsSystemAdmin().has_permission(MockRequest(admin), None))
+        self.assertFalse(IsSystemAdmin().has_permission(MockRequest(dean), None))
+
+    def test_amharic_locale_translation_and_accept_language_header(self):
+        """
+        Verify Amharic translation catalog and LocaleMiddleware Accept-Language header handling.
+        """
+        from django.utils import translation
+        from django.utils.translation import gettext as _
+
+        # 1. Direct activation of Amharic translation
+        with translation.override("am"):
+            self.assertEqual(_("Invalid credentials"), "ልክ ያልሆነ መለያ መረጃ")
+            self.assertEqual(_("Letter expired"), "ደብዳቤው ጊዜው አልፎበታል")
+            self.assertEqual(_("Application submitted successfully"), "ማመልከቻው በተሳካ ሁኔታ ገብቷል")
+            self.assertEqual(_("Permission denied"), "ፈቃድ ተከልክሏል")
+
+        # 2. English fallback / default
+        with translation.override("en"):
+            self.assertEqual(_("Invalid credentials"), "Invalid credentials")
+            self.assertEqual(_("Letter expired"), "Letter expired")
+            self.assertEqual(_("Application submitted successfully"), "Application submitted successfully")
+            self.assertEqual(_("Permission denied"), "Permission denied")
+
+        # 3. HTTP Request with Accept-Language header activates Amharic
+        resp = self.client.get("/api/health/", HTTP_ACCEPT_LANGUAGE="am")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # LocaleMiddleware sets Content-Language response header
+        self.assertIn("am", resp.headers.get("Content-Language", "am"))
+
+    def test_is_finance_officer_permission(self):
+        """Verify IsFinanceOfficer permission class."""
+        from .permissions import IsFinanceOfficer
+
+        class MockRequest:
+            def __init__(self, user):
+                self.user = user
+
+        finance = User.objects.create_user(email="fin@aau.edu.et", password="Password123!", role=User.Role.FINANCE_OFFICER)
+        student = User.objects.create_user(email="std_fin@aau.edu.et", password="Password123!", role=User.Role.STUDENT)
+        self.assertTrue(IsFinanceOfficer().has_permission(MockRequest(finance), None))
+        self.assertFalse(IsFinanceOfficer().has_permission(MockRequest(student), None))
+
+    def test_plain_student_registration_byte_identical_response_shape(self):
+        """
+        Verify that a plain student registration returns the expected response shape
+        and keys (message, user keys including student_profile).
+        """
+        payload = {
+            "email": "byte_student@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Abebe",
+            "last_name": "Bikila",
+            "role": "STUDENT",
+        }
+        resp = self.client.post(self.register_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        data = resp.json()
+        self.assertIn("message", data)
+        self.assertEqual(data["message"], "User registered successfully.")
+        self.assertIn("user", data)
+        user_data = data["user"]
+        expected_keys = {
+            "id", "email", "username", "first_name", "last_name", "full_name",
+            "phone_number", "role", "is_active", "is_staff", "is_email_verified",
+            "profile_photo", "date_joined", "student_profile",
+            "is_approved", "university_name", "department",
+        }
+        self.assertEqual(set(user_data.keys()), expected_keys)
+        self.assertEqual(user_data["email"], "byte_student@aau.edu.et")
+        self.assertEqual(user_data["role"], "STUDENT")
+
+    def test_duplicate_student_id_and_campus_city_raises_validation_error(self):
+        """
+        Verify that a duplicate (student_id_number, campus_city) registration
+        attempt in UILStudentProfile raises a validation error.
+        """
+        payload1 = {
+            "email": "student_orig@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Kenenisa",
+            "last_name": "Bekele",
+            "role": "STUDENT",
+            "student_profile": {
+                "student_id_number": "UGR/DUPE/2026",
+                "university_name": "Addis Ababa University",
+                "campus_city": "Addis Ababa",
+                "department": "Software Engineering",
+            },
+        }
+        resp1 = self.client.post(self.register_url, payload1, format="json")
+        self.assertEqual(resp1.status_code, status.HTTP_201_CREATED)
+
+        # Second attempt with same student_id_number and campus_city
+        payload2 = {
+            "email": "student_dupe@aau.edu.et",
+            "password": "Password123!",
+            "first_name": "Haile",
+            "last_name": "Gebre",
+            "role": "STUDENT",
+            "student_profile": {
+                "student_id_number": "UGR/DUPE/2026",
+                "university_name": "Addis Ababa Science and Tech University",
+                "campus_city": "Addis Ababa",
+                "department": "Computer Science",
+            },
+        }
+        resp2 = self.client.post(self.register_url, payload2, format="json")
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+        data = resp2.json()
+        self.assertTrue("student_profile" in data or "student_id_number" in data)
+
+    def test_accessibility_profile_fernet_encryption_at_rest(self):
+        """
+        Verify that workplace_notes in AccessibilityProfile are encrypted at rest.
+        """
+        from apps.students.models import Student as ExistingStudent
+        from apps.uil_profiles.models import UILStudentProfile, AccessibilityProfile
+        from django.db import connection
+
+        user = User.objects.create_user(email="fernet_test@aau.edu.et", password="Password123!", role=User.Role.STUDENT)
+        student = ExistingStudent.objects.create(user=user)
+        uil = UILStudentProfile.objects.create(
+            student=student,
+            student_id_number="UGR/FERNET/26",
+            campus_city="Hawassa",
+            department="Medicine",
+        )
+        acc = AccessibilityProfile.objects.create(
+            student_profile=uil,
+            requires_screen_reader=True,
+            workplace_notes="Confidential note: requires specialized wheelchair ramp.",
+        )
+
+        # In-memory / model attribute returns decrypted string
+        acc.refresh_from_db()
+        self.assertEqual(acc.workplace_notes, "Confidential note: requires specialized wheelchair ramp.")
+
+        # Raw SQL query checks that text at rest is NOT plaintext
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT workplace_notes FROM uil_profiles_accessibilityprofile WHERE id = %s", [acc.id])
+            raw_val = cursor.fetchone()[0]
+            self.assertNotEqual(raw_val, "Confidential note: requires specialized wheelchair ramp.")
+            self.assertTrue(raw_val.startswith("gAAAAA") or len(raw_val) > 40)

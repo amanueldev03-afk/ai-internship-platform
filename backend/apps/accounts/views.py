@@ -14,6 +14,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
+from django.contrib.auth import get_user_model
+User = get_user_model()
 from .jwt import LoginSerializer
 from .serializers import (
     EmailVerificationSerializer,
@@ -24,7 +26,11 @@ from .serializers import (
     ResendVerificationSerializer,
     ForgotPasswordSerializer,
     ResetPasswordSerializer,
-    ChangePasswordSerializer
+    ChangePasswordSerializer,
+    CustomTokenObtainPairSerializer,
+    RegisterSerializer,
+    UserDetailSerializer,
+    StudentProfileSerializer,
 )
 
 
@@ -96,20 +102,38 @@ class StudentRegistrationView(generics.CreateAPIView):
             filter(None, [user.first_name, user.last_name])
         )
 
-        return Response(
-            {
-                "message": (
-                    "Registration successful. "
-                    "Please check your email "
-                    "to verify your account."
-                ),
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "username": user.username,
-                    "full_name": full_name,
-                },
+        role_str = str(user.role).upper()
+        if role_str == User.Role.ADMIN:
+            msg = "Administrator account registered successfully. You can now log in."
+        elif role_str == User.Role.ADVISOR:
+            msg = "Registration successful. Please verify your email. Note: Your academic advisor account requires UIL Officer approval before sign-in."
+        elif role_str in (User.Role.DEPT_DEAN, User.Role.UIL_OFFICER, User.Role.STUDENT_UNION, User.Role.DORM_ADMIN, User.Role.FINANCE_OFFICER):
+            msg = "Registration successful. Please verify your email. Note: Your institutional staff account requires Administrator approval before sign-in."
+        else:
+            msg = "Registration successful. Please check your email to verify your account."
+
+        resp_data = {
+            "message": msg,
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "full_name": full_name,
+                "role": str(user.role).lower(),
             },
+        }
+
+        if user.is_active and getattr(user, "is_approved", True):
+            from rest_framework_simplejwt.tokens import RefreshToken
+            refresh = RefreshToken.for_user(user)
+            refresh["role"] = str(user.role).lower()
+            refresh["email"] = user.email
+            refresh["full_name"] = full_name
+            resp_data["access"] = str(refresh.access_token)
+            resp_data["refresh"] = str(refresh)
+
+        return Response(
+            resp_data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -162,11 +186,11 @@ class LogoutView(GenericAPIView):
 
 class CurrentUserView(GenericAPIView):
     """
-    Return the currently authenticated user.
+    Return the currently authenticated user with complete profile, safety, and accessibility details.
     """
 
     permission_classes = [IsAuthenticated]
-    serializer_class = UserSerializer
+    serializer_class = UserDetailSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @extend_schema(
@@ -174,24 +198,21 @@ class CurrentUserView(GenericAPIView):
         operation_id="get_current_user",
         summary="Get Current User",
         description="Retrieve account details and role information of the currently authenticated user",
-        responses={200: UserSerializer}
+        responses={200: UserDetailSerializer}
     )
     def get(self, request):
-
         serializer = self.get_serializer(request.user)
-
         return Response(serializer.data)
 
     @extend_schema(
         tags=["Authentication"],
         operation_id="update_current_user",
         summary="Update Current User",
-        description="Update the current user's profile (e.g. profile photo).",
+        description="Update the current user's profile (e.g. profile photo, name).",
         request=UserProfileUpdateSerializer,
-        responses={200: UserSerializer},
+        responses={200: UserDetailSerializer},
     )
     def patch(self, request):
-
         update_serializer = UserProfileUpdateSerializer(
             request.user,
             data=request.data,
@@ -200,9 +221,45 @@ class CurrentUserView(GenericAPIView):
         update_serializer.is_valid(raise_exception=True)
         update_serializer.save()
 
-        serializer = UserSerializer(request.user)
-
+        serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+
+    def put(self, request):
+        return self.patch(request)
+
+
+@extend_schema(tags=["Authentication"])
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    SmartIntern-ET custom JWT login endpoint returning claims: user_id, email, role, full_name.
+    """
+    serializer_class = CustomTokenObtainPairSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+
+@extend_schema(tags=["Authentication"])
+class RegisterView(generics.CreateAPIView):
+    """
+    Register a user for any SmartIntern-ET role with optional student safety profile creation.
+    Enforces email uniqueness, Ethiopian phone regex, and unique (student_id_number, university_name).
+    """
+    serializer_class = RegisterSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        user_data = UserDetailSerializer(user).data
+        return Response(
+            {
+                "message": "User registered successfully.",
+                "user": user_data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class LoginView(APIView):
@@ -288,12 +345,21 @@ class LoginView(APIView):
                     },
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            if getattr(serializer, "outcome", "invalid") == "unapproved":
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             return Response(
                 serializer.errors,
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
         user = serializer.validated_data["user"]
+        role_val = serializer.validated_data.get(
+            "role_val",
+            str(user.role).lower()
+        )
 
         return Response(
             {
@@ -303,7 +369,7 @@ class LoginView(APIView):
                     "id": user.id,
                     "email": user.email,
                     "username": user.username,
-                    "role": user.role,
+                    "role": role_val,
                 },
             },
             status=status.HTTP_200_OK,
@@ -619,3 +685,94 @@ class ChangePasswordView(GenericAPIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# =============================================================================
+# Track 1 Institutional Staff & Academic Advisor Approval Views
+# =============================================================================
+
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from .permissions import IsSystemAdmin, IsUILOfficer
+
+
+@extend_schema(tags=["Administration"])
+class AdminPendingStaffListView(APIView):
+    """
+    List institutional staff users pending administrator approval.
+    """
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def get(self, request):
+        pending_roles = [
+            User.Role.DEPT_DEAN,
+            User.Role.UIL_OFFICER,
+            User.Role.STUDENT_UNION,
+            User.Role.DORM_ADMIN,
+            User.Role.FINANCE_OFFICER,
+        ]
+        users = User.objects.filter(role__in=pending_roles, is_approved=False).order_by("-created_at")
+        serializer = UserDetailSerializer(users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Administration"])
+class AdminApproveStaffView(APIView):
+    """
+    Approve an institutional staff member.
+    """
+    permission_classes = [IsAuthenticated, IsSystemAdmin]
+
+    def post(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
+        user.is_approved = True
+        user.approved_by = request.user
+        user.approved_at = timezone.now()
+        user.is_active = True
+        user.is_email_verified = True
+        user.save()
+        return Response(
+            {
+                "message": f"Staff user {user.email} approved successfully.",
+                "user": UserDetailSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(tags=["UIL"])
+class UILPendingAdvisorsListView(APIView):
+    """
+    List academic advisor users pending UIL Officer approval.
+    """
+    permission_classes = [IsAuthenticated, IsUILOfficer]
+
+    def get(self, request):
+        advisors = User.objects.filter(role=User.Role.ADVISOR, is_approved=False).order_by("-created_at")
+        serializer = UserDetailSerializer(advisors, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["UIL"])
+class UILApproveAdvisorView(APIView):
+    """
+    Approve an academic advisor user.
+    """
+    permission_classes = [IsAuthenticated, IsUILOfficer]
+
+    def post(self, request, user_id):
+        user = get_object_or_404(User, id=user_id, role=User.Role.ADVISOR)
+        user.is_approved = True
+        user.approved_by = request.user
+        user.approved_at = timezone.now()
+        user.is_active = True
+        user.is_email_verified = True
+        user.save()
+        return Response(
+            {
+                "message": f"Academic Advisor {user.email} approved successfully.",
+                "user": UserDetailSerializer(user).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+

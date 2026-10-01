@@ -1,18 +1,217 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
-import { Loader2, AlertCircle, Lock, Mail } from 'lucide-react'
+import { useNavigate, useLocation, useSearchParams, Link } from 'react-router-dom'
+import {
+  Loader2,
+  AlertCircle,
+  Clock,
+  Lock,
+  Mail,
+  GraduationCap,
+  Building2,
+  Building,
+  School,
+  Award,
+  Cpu,
+  Utensils,
+  KeyRound,
+  CreditCard,
+  ShieldCheck,
+} from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { login, clearError } from '@/features/auth/authSlice'
 import { getGoogleOAuthUrl } from '@/services/authApi'
 import { Button } from '@/components/ui/button'
+import { getDashboardPathForRole } from '@/routes/routeUtils'
+
+export type LoginRoleTab =
+  | 'student'
+  | 'company_hr'
+  | 'company_mentor'
+  | 'advisor'
+  | 'dept_dean'
+  | 'uil_officer'
+  | 'student_union'
+  | 'dorm_admin'
+  | 'finance_officer'
+  | 'admin'
+
+export interface RoleTabOption {
+  id: LoginRoleTab
+  title: string
+  portalName: string
+  subtitle: string
+  badge: string
+  icon: typeof GraduationCap
+  registerParam: string
+  registerLabel: string
+}
+
+export const ROLE_TABS: RoleTabOption[] = [
+  {
+    id: 'student',
+    title: 'Student',
+    portalName: 'Student Portal',
+    subtitle: 'Sign in to access AI recommendations & track applications',
+    badge: 'Intern',
+    icon: GraduationCap,
+    registerParam: 'student',
+    registerLabel: 'Student / Intern',
+  },
+  {
+    id: 'company_hr',
+    title: 'Company HR',
+    portalName: 'Employer Portal',
+    subtitle: 'Sign in to post listings & review student applicants',
+    badge: 'Recruiter',
+    icon: Building2,
+    registerParam: 'company_hr',
+    registerLabel: 'Company / Employer',
+  },
+  {
+    id: 'company_mentor',
+    title: 'Mentor',
+    portalName: 'Company Mentor Portal',
+    subtitle: 'Sign in to supervise squads & evaluate intern performance',
+    badge: 'Mentor',
+    icon: Building,
+    registerParam: 'company_mentor',
+    registerLabel: 'Company Mentor',
+  },
+  {
+    id: 'advisor',
+    title: 'Advisor',
+    portalName: 'Academic Advisor Portal',
+    subtitle: 'Sign in to supervise student internships & verify logbooks',
+    badge: 'Faculty',
+    icon: School,
+    registerParam: 'advisor',
+    registerLabel: 'Academic Advisor',
+  },
+  {
+    id: 'dept_dean',
+    title: 'Dean',
+    portalName: 'Department Dean Portal',
+    subtitle: 'Sign in to verify student eligibility & issue signed rosters',
+    badge: 'Leadership',
+    icon: Award,
+    registerParam: 'dept_dean',
+    registerLabel: 'Department Dean',
+  },
+  {
+    id: 'uil_officer',
+    title: 'UIL Officer',
+    portalName: 'UIL Head Officer Portal',
+    subtitle: 'Sign in to balance technical squads & manage company quotas',
+    badge: 'Institutional',
+    icon: Cpu,
+    registerParam: 'uil_officer',
+    registerLabel: 'UIL Head Officer',
+  },
+  {
+    id: 'student_union',
+    title: 'Union',
+    portalName: 'Student Union Portal',
+    subtitle: 'Sign in to manage dining appointments & digital meal cards',
+    badge: 'Campus Life',
+    icon: Utensils,
+    registerParam: 'student_union',
+    registerLabel: 'Student Union',
+  },
+  {
+    id: 'dorm_admin',
+    title: 'Dorm Admin',
+    portalName: 'Dormitory Admin Portal',
+    subtitle: 'Sign in to assign rooms, beds & scan QR clearance passes',
+    badge: 'Housing',
+    icon: KeyRound,
+    registerParam: 'dorm_admin',
+    registerLabel: 'Dormitory Admin',
+  },
+  {
+    id: 'finance_officer',
+    title: 'Finance',
+    portalName: 'Finance Officer Portal',
+    subtitle: 'Sign in to verify student stipends & budget disbursements',
+    badge: 'Finance',
+    icon: CreditCard,
+    registerParam: 'finance_officer',
+    registerLabel: 'Finance Officer',
+  },
+  {
+    id: 'admin',
+    title: 'Admin',
+    portalName: 'System Administrator Portal',
+    subtitle: 'Sign in to approve staff accounts & manage system platform',
+    badge: 'Administrator',
+    icon: ShieldCheck,
+    registerParam: 'admin',
+    registerLabel: 'System Administrator',
+  },
+]
+
+export function mapRoleParamToLoginRole(param?: string | null): LoginRoleTab {
+  const p = (param || '').toLowerCase().trim()
+  switch (p) {
+    case 'company_hr':
+    case 'company':
+    case 'employer':
+      return 'company_hr'
+    case 'company_mentor':
+    case 'mentor':
+      return 'company_mentor'
+    case 'advisor':
+      return 'advisor'
+    case 'dept_dean':
+    case 'dean':
+      return 'dept_dean'
+    case 'uil_officer':
+    case 'uil':
+      return 'uil_officer'
+    case 'student_union':
+    case 'union':
+      return 'student_union'
+    case 'dorm_admin':
+    case 'dorm':
+      return 'dorm_admin'
+    case 'finance_officer':
+    case 'finance':
+      return 'finance_officer'
+    case 'admin':
+    case 'administrator':
+      return 'admin'
+    case 'student':
+    default:
+      return 'student'
+  }
+}
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const dispatch = useAppDispatch()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { isLoading, error, isAuthenticated, user, role, isInitialized } = useAppSelector(
     (state) => state.auth
   )
+
+  const roleParam = searchParams.get('role')?.toLowerCase()
+  const initialRole: LoginRoleTab = mapRoleParamToLoginRole(roleParam)
+
+  const [activeRole, setActiveRole] = useState<LoginRoleTab>(initialRole)
+
+  useEffect(() => {
+    if (roleParam) {
+      setActiveRole(mapRoleParamToLoginRole(roleParam))
+    }
+  }, [roleParam])
+
+  const handleRoleChange = (roleId: LoginRoleTab) => {
+    setActiveRole(roleId)
+    setSearchParams({ role: roleId }, { replace: true })
+  }
+
+  const activeRoleConfig = ROLE_TABS.find((t) => t.id === activeRole) || ROLE_TABS[0]
+  const ActiveIcon = activeRoleConfig.icon
 
   const [formData, setFormData] = useState({
     email: '',
@@ -22,7 +221,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (isInitialized && isAuthenticated) {
-      const currentRole = role || user?.role
+      const rawRole = role || user?.role || ''
+      const currentRole = rawRole.toLowerCase()
       const fromState = (location.state as { from?: { pathname?: string; search?: string } })?.from
       const from = fromState?.pathname
         ? `${fromState.pathname}${fromState.search || ''}`
@@ -30,10 +230,8 @@ export default function LoginPage() {
 
       if (from && !from.startsWith('/login') && !from.startsWith('/register')) {
         navigate(from, { replace: true })
-      } else if (currentRole === 'admin') {
-        navigate('/admin/dashboard', { replace: true })
       } else {
-        navigate('/dashboard', { replace: true })
+        navigate(getDashboardPathForRole(currentRole), { replace: true })
       }
     }
   }, [isAuthenticated, user, role, isInitialized, navigate, location])
@@ -61,17 +259,16 @@ export default function LoginPage() {
     }
 
     const result = await dispatch(login({ email: formData.email.trim(), password: formData.password }))
-    
+
     if (login.fulfilled.match(result)) {
-      const currentRole = result.payload.user?.role || role
+      const rawRole = result.payload.user?.role || role || ''
+      const currentRole = rawRole.toLowerCase()
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname
 
       if (from && from !== '/login' && from !== '/register') {
         navigate(from, { replace: true })
-      } else if (currentRole === 'admin') {
-        navigate('/admin/dashboard', { replace: true })
       } else {
-        navigate('/dashboard', { replace: true })
+        navigate(getDashboardPathForRole(currentRole), { replace: true })
       }
     }
   }
@@ -90,11 +287,17 @@ export default function LoginPage() {
   const isUnverifiedAccount =
     error && (error.toLowerCase().includes('verify your email') || error.toLowerCase().includes('inactive'))
 
+  const isPendingStaffApproval =
+    error && error.toLowerCase().includes('institutional administrator approval')
+
+  const isPendingAdvisorApproval =
+    error && error.toLowerCase().includes('pending approval by the uil officer')
+
   const googleOAuthUrl = getGoogleOAuthUrl()
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 animate-fade-in">
-      <div className="max-w-md w-full space-y-6 card-gradient p-8 sm:p-10 rounded-3xl shadow-glow border border-neutral-200/80 dark:border-neutral-800 animate-slide-up">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8 animate-fade-in bg-gradient-to-br from-neutral-50 via-slate-50 to-primary-50/20 dark:from-[#09090b] dark:via-neutral-900/60 dark:to-neutral-900">
+      <div className="max-w-xl w-full space-y-6 card-gradient p-8 sm:p-10 rounded-3xl shadow-glow border border-neutral-200/80 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/90 animate-slide-up">
         {/* Brand & Heading */}
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center gap-2 mb-2 group">
@@ -109,10 +312,63 @@ export default function LoginPage() {
             Sign In to your account
           </h1>
           <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-            Access your AI recommendation pipeline & applications
+            Select your actor portal below to sign in to your dashboard
           </p>
         </div>
 
+        {/* Selected Role Active Card */}
+        <div className="p-3.5 rounded-2xl border-2 border-primary-500/40 bg-primary-50/50 dark:bg-primary-950/20 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <ActiveIcon className="w-5 h-5 text-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs sm:text-sm font-extrabold text-neutral-900 dark:text-white truncate">
+                {activeRoleConfig.portalName}
+              </h2>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-600/10 text-primary-700 dark:text-primary-300 shrink-0">
+                {activeRoleConfig.badge}
+              </span>
+            </div>
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+              {activeRoleConfig.subtitle}
+            </p>
+          </div>
+        </div>
+
+        {/* Role Selector Grid (All 10 Actors) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-bold text-neutral-500 uppercase tracking-wider px-1">
+            <span>Select Actor Portal ({ROLE_TABS.length} Actors)</span>
+            <span className="text-primary-600 dark:text-primary-400 normal-case font-semibold">
+              {activeRoleConfig.title}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1.5 bg-neutral-100/90 dark:bg-neutral-800/90 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60">
+            {ROLE_TABS.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeRole === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleRoleChange(tab.id)}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+                    isActive
+                      ? 'bg-white dark:bg-neutral-900 text-primary-600 dark:text-primary-400 shadow-sm border border-neutral-200/60 dark:border-neutral-700/80'
+                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200'
+                  }`}
+                  title={tab.portalName}
+                >
+                  <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400'}`} />
+                  <span className="truncate">{tab.title}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Unverified Email Warning */}
         {isUnverifiedAccount && (
           <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 border border-amber-200 dark:border-amber-800 animate-scale-in" role="alert">
             <div className="flex items-start gap-3">
@@ -120,7 +376,7 @@ export default function LoginPage() {
               <div>
                 <h3 className="text-xs font-bold text-amber-800 dark:text-amber-300">Email verification required</h3>
                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                  Please verify your email address to activate your account.
+                  Please verify your email address to activate your account before logging in.
                 </p>
                 <Link
                   to="/verify-email"
@@ -133,7 +389,38 @@ export default function LoginPage() {
           </div>
         )}
 
-        {(clientError || (error && !isUnverifiedAccount)) && (
+        {/* Institutional Staff Approval Pending Warning */}
+        {isPendingStaffApproval && (
+          <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 border border-amber-200 dark:border-amber-800 animate-scale-in" role="alert">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="text-xs font-bold text-amber-800 dark:text-amber-300">Staff Account Approval Pending</h3>
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                  Your institutional staff account has been registered and verified, but requires approval by a System Administrator before you can sign in. Please contact your institution's administrator.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Academic Advisor Approval Pending Warning */}
+        {isPendingAdvisorApproval && (
+          <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 border border-amber-200 dark:border-amber-800 animate-scale-in" role="alert">
+            <div className="flex items-start gap-3">
+              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="text-xs font-bold text-amber-800 dark:text-amber-300">Advisor Account Approval Pending</h3>
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                  Your academic advisor account is pending approval by the UIL (University-Industry Linkage) Officer. You will be able to sign in once your appointment is verified.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* General Error Alert */}
+        {(clientError || (error && !isUnverifiedAccount && !isPendingStaffApproval && !isPendingAdvisorApproval)) && (
           <div className="rounded-2xl bg-error-50 dark:bg-error-950/40 p-4 border border-error-200 dark:border-error-800 animate-scale-in" role="alert">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-error-600 dark:text-error-400 shrink-0" />
@@ -183,21 +470,27 @@ export default function LoginPage() {
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
           <div>
             <label htmlFor="email" className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
-              Email address
+              {activeRole === 'admin' ? 'Username or Email address' : 'Email address'}
             </label>
             <div className="relative flex items-center">
               <Mail className="w-4 h-4 text-neutral-400 absolute left-4 pointer-events-none" />
               <input
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
+                type={activeRole === 'admin' ? 'text' : 'email'}
+                autoComplete={activeRole === 'admin' ? 'username' : 'email'}
                 required
                 value={formData.email}
                 onChange={handleChange}
                 disabled={isLoading}
                 className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 border-2 border-neutral-200/80 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all"
-                placeholder="you@example.com"
+                placeholder={
+                  activeRole === 'company_hr' || activeRole === 'company_mentor'
+                    ? 'user@company.com'
+                    : activeRole === 'admin'
+                    ? 'admin1 or admin1@smartintern.et'
+                    : 'user@university.edu.et'
+                }
               />
             </div>
           </div>
@@ -242,18 +535,51 @@ export default function LoginPage() {
                 Signing in...
               </>
             ) : (
-              'Sign In'
+              `Sign In to ${activeRoleConfig.title} Portal`
             )}
           </Button>
 
-          <div className="text-center pt-2">
-            <span className="text-xs text-neutral-500 font-medium">Don't have an account? </span>
-            <Link
-              to="/register"
-              className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
-            >
-              Sign up free
-            </Link>
+          <div className="text-center pt-2 space-y-2">
+            {activeRole === 'admin' ? (
+              <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 text-left space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                  <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  Administrator Credentials
+                </div>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  Username: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">admin1</code> | Password: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">Admin@1234</code>
+                </p>
+                <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Administrator accounts are pre-provisioned and cannot be registered publicly.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <span className="text-xs text-neutral-500 font-medium">Don't have an account? </span>
+                <Link
+                  to={`/register?role=${activeRoleConfig.registerParam}`}
+                  className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  Sign up as {activeRoleConfig.registerLabel}
+                </Link>
+              </div>
+            )}
+            <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800/80">
+              <span className="block text-[11px] font-semibold text-neutral-400 mb-1.5">
+                Quick register as another actor:
+              </span>
+              <div className="flex items-center justify-center flex-wrap gap-1.5 text-[11px]">
+                {ROLE_TABS.filter((t) => t.id !== activeRole && t.id !== 'admin').map((t) => (
+                  <Link
+                    key={t.id}
+                    to={`/register?role=${t.registerParam}`}
+                    className="px-2 py-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/40 transition-colors"
+                  >
+                    {t.title}
+                  </Link>
+                ))}
+              </div>
+            </div>
           </div>
         </form>
       </div>

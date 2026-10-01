@@ -34,3 +34,37 @@ class CompanySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+from .models import CompanyStudentInvitation
+
+
+class CompanyStudentInvitationSerializer(serializers.ModelSerializer):
+    internship_title = serializers.CharField(source="internship.title", read_only=True)
+    company_name = serializers.CharField(source="company.name", read_only=True)
+    student_id_number = serializers.CharField(source="student.student_id_number", read_only=True)
+    student_name = serializers.SerializerMethodField()
+    student_department = serializers.CharField(source="student.department", read_only=True)
+
+    class Meta:
+        model = CompanyStudentInvitation
+        fields = [
+            "id",
+            "internship",
+            "internship_title",
+            "company",
+            "company_name",
+            "student",
+            "student_id_number",
+            "student_name",
+            "student_department",
+            "requirements_note",
+            "status",
+            "created_at",
+            "responded_at",
+        ]
+        read_only_fields = ["id", "created_at", "responded_at"]
+
+    def get_student_name(self, obj):
+        user = getattr(obj.student, "user", None)
+        return user.full_name if user else obj.student.student_id_number

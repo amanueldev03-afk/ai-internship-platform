@@ -57,6 +57,13 @@ from apps.administration.services import log_student_activity
 User = get_user_model()
 
 
+def is_student_user(user) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+    role_str = str(getattr(user, "role", "")).upper()
+    return role_str in (User.Role.STUDENT, "STUDENT")
+
+
 class InternshipPagination(PageNumberPagination):
     """
     Custom pagination for internship listings.
@@ -183,6 +190,7 @@ class InternshipListView(generics.ListAPIView):
                 status=Internship.STATUS_ACTIVE,
                 is_verified=True,
                 needs_review=False,
+                is_published=True,
             )
             .filter(
                 Q(application_deadline__isnull=True)
@@ -683,7 +691,7 @@ class InternshipSaveUnsaveView(APIView):
         },
     )
     def post(self, request, pk=None):
-        if request.user.role != "student":
+        if not is_student_user(request.user):
             raise PermissionDenied("Only students can save internships.")
 
         try:
@@ -717,7 +725,7 @@ class InternshipSaveUnsaveView(APIView):
             pass
 
         # Phase 9 — record a lightweight save in the activity log.
-        if created and request.user.role == "student":
+        if created and is_student_user(request.user):
             log_student_activity(
                 student=request.user,
                 action="internship_save",
@@ -747,7 +755,7 @@ class InternshipSaveUnsaveView(APIView):
         },
     )
     def delete(self, request, pk=None):
-        if request.user.role != "student":
+        if not is_student_user(request.user):
             raise PermissionDenied(
                 "Only students can save or unsave internships.")
 
@@ -798,7 +806,7 @@ class StudentSaveInternshipView(
 
     def perform_create(self, serializer):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             raise PermissionDenied(
                 "Only students can save internships."
             )
@@ -858,7 +866,7 @@ class StudentSavedInternshipListView(
 
     def get_queryset(self):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             return SavedInternship.objects.none()
 
         return (
@@ -899,7 +907,7 @@ class StudentUnsaveInternshipView(
 
     def get_queryset(self):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             return SavedInternship.objects.none()
 
         return SavedInternship.objects.filter(
@@ -953,7 +961,7 @@ class StudentApplicationCreateView(
 
     def perform_create(self, serializer):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             raise PermissionDenied(
                 "Only students can track internship applications."
             )
@@ -1016,7 +1024,7 @@ class StudentApplicationListView(
 
     def get_queryset(self):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             return InternshipApplication.objects.none()
 
         return (
@@ -1059,7 +1067,7 @@ class StudentApplicationDetailView(
 
     def get_queryset(self):
 
-        if self.request.user.role != "student":
+        if not is_student_user(self.request.user):
             return InternshipApplication.objects.none()
 
         return InternshipApplication.objects.filter(
@@ -1652,7 +1660,7 @@ class StudentDashboardView(GenericAPIView):
     )
     def get(self, request):
 
-        if request.user.role != "student":
+        if not is_student_user(request.user):
             raise PermissionDenied(
                 "Only students can access the "
                 "student dashboard."
@@ -2025,3 +2033,57 @@ class AdminSkillDetailView(
     @extend_schema(tags=["Admin Internships"], summary="Admin: Delete skill")
     def delete(self, request, *args, **kwargs):
         return super().delete(request, *args, **kwargs)
+
+
+from django.shortcuts import get_object_or_404
+
+
+@extend_schema(tags=["Admin Internships"])
+class AdminInternshipPublishView(APIView):
+    """
+    Publish or reject a company internship posting.
+    POST /api/internships/admin/<id>/publish/
+    Body: {"publish": true} or {"publish": false, "rejection_reason": "..."}
+    """
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def post(self, request, pk):
+        internship = get_object_or_404(Internship, pk=pk)
+        publish = request.data.get("publish", True)
+        if publish:
+            internship.is_published = True
+            internship.status = Internship.STATUS_ACTIVE
+            internship.is_verified = True
+            internship.needs_review = False
+            internship.published_at = timezone.now()
+            internship.published_by = request.user
+            internship.save()
+            return Response({
+                "message": f"Internship '{internship.title}' published successfully.",
+                "internship": InternshipSerializer(internship).data,
+            }, status=status.HTTP_200_OK)
+        else:
+            reason = request.data.get("rejection_reason", "Does not meet platform guidelines.")
+            internship.is_published = False
+            internship.status = Internship.STATUS_REJECTED
+            internship.rejection_reason = reason
+            internship.save()
+            return Response({
+                "message": f"Internship '{internship.title}' rejected.",
+                "internship": InternshipSerializer(internship).data,
+            }, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Admin Internships"])
+class AdminPendingInternshipsListView(generics.ListAPIView):
+    """
+    List internships pending admin publication.
+    GET /api/internships/admin/pending/
+    """
+    serializer_class = InternshipSerializer
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    pagination_class = InternshipPagination
+
+    def get_queryset(self):
+        return Internship.objects.filter(is_published=False).exclude(status=Internship.STATUS_REJECTED).order_by("-created_at")
+

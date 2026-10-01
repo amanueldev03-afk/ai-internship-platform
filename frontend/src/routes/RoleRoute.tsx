@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/redux'
+import { getDashboardPathForRole } from './routeUtils'
 
 interface RoleRouteProps {
   children: React.ReactNode
@@ -27,15 +28,20 @@ export default function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  const currentRole = role || user?.role
+  const rawRole = role || user?.role || ''
+  const currentRole = rawRole.toLowerCase()
+  const normalizedAllowedRoles = allowedRoles.map((r) => r.toLowerCase())
+
+  // Check explicit role match
+  const isPermitted = normalizedAllowedRoles.includes(currentRole)
 
   // Check if user has required role
-  if (!currentRole || !allowedRoles.includes(currentRole)) {
-    // Redirect to default dashboard based on user's actual role
-    if (currentRole === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />
+  if (!currentRole || !isPermitted) {
+    const targetDashboard = getDashboardPathForRole(currentRole)
+    if (location.pathname !== targetDashboard) {
+      return <Navigate to={targetDashboard} replace />
     }
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/" replace />
   }
 
   return <>{children}</>

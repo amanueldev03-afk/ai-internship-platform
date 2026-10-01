@@ -42,7 +42,8 @@ class LoginSerializer(serializers.Serializer):
             )
 
         # Admin, staff, and superuser accounts bypass email verification and ensure active status
-        if user.role == User.Role.ADMIN or user.is_superuser or user.is_staff:
+        role_upper = str(user.role).upper()
+        if role_upper == User.Role.ADMIN or user.is_superuser or user.is_staff:
             updated = False
             if not user.is_active:
                 user.is_active = True
@@ -50,11 +51,26 @@ class LoginSerializer(serializers.Serializer):
             if not user.is_email_verified:
                 user.is_email_verified = True
                 updated = True
+            if not getattr(user, "is_approved", True):
+                user.is_approved = True
+                updated = True
             if user.role != User.Role.ADMIN and (user.is_superuser or user.is_staff):
                 user.role = User.Role.ADMIN
                 updated = True
             if updated:
                 user.save()
+
+        # Institutional staff and advisor approval verification
+        if not getattr(user, "is_approved", True):
+            self.outcome = "unapproved"
+            if str(user.role).upper() == User.Role.ADVISOR:
+                raise serializers.ValidationError(
+                    {"detail": "Your academic advisor account is pending approval by the UIL Officer."}
+                )
+            else:
+                raise serializers.ValidationError(
+                    {"detail": "Your staff account is pending institutional administrator approval."}
+                )
 
         # Account is dormant until the email is verified (Task 2.1 / 2.2).
         # This is the alternate path in Figure 5.1 -> HTTP 403.
@@ -66,12 +82,14 @@ class LoginSerializer(serializers.Serializer):
 
         # Embed the role claim so the frontend can route without a lookup.
         refresh = RefreshToken.for_user(user)
-        refresh["role"] = user.role
+        role_val = str(user.role).lower()
+        refresh["role"] = role_val
         refresh["email"] = user.email
 
         self.outcome = "ok"
 
         attrs["user"] = user
+        attrs["role_val"] = role_val
         attrs["refresh"] = str(refresh)
         attrs["access"] = str(refresh.access_token)
 
@@ -90,7 +108,8 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
 
         # Custom JWT claims
-        token["role"] = user.role
+        role_val = str(user.role).lower()
+        token["role"] = role_val
         token["email"] = user.email
 
         return token
@@ -118,7 +137,7 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Check if user is admin (role == admin, is_superuser, or is_staff)
         is_admin = (
-            user.role == "admin" 
+            str(user.role).lower() == "admin" 
             or user.is_superuser 
             or user.is_staff
         )
@@ -137,6 +156,7 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Generate tokens
         refresh = self.get_token(user)
+        role_val = str(user.role).lower()
 
         data = {
             "refresh": str(refresh),
@@ -146,7 +166,7 @@ class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):
                 "id": user.id,
                 "email": user.email,
                 "username": user.username,
-                "role": user.role,
+                "role": role_val,
                 "is_superuser": user.is_superuser,
                 "is_staff": user.is_staff,
             }
@@ -165,7 +185,8 @@ class StudentTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
 
         # Custom JWT claims
-        token["role"] = user.role
+        role_val = str(user.role).lower()
+        token["role"] = role_val
         token["email"] = user.email
 
         return token
@@ -185,12 +206,13 @@ class StudentTokenObtainPairSerializer(TokenObtainPairSerializer):
             )
 
         data["message"] = "Student login successful."
+        role_val = str(self.user.role).lower()
 
         data["user"] = {
             "id": self.user.id,
             "email": self.user.email,
             "username": self.user.username,
-            "role": self.user.role,
+            "role": role_val,
         }
 
         return data

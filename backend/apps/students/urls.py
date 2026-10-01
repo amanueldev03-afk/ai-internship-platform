@@ -13,6 +13,8 @@ from .views import (
     CVStatusLatestView,
     StudentSkillCatalogueView,
     StudentInterestCatalogueView,
+    ResumeUploadView,
+    ResumeStatusView,
 )
 
 urlpatterns = [
@@ -118,5 +120,20 @@ urlpatterns = [
         "cv/<int:cv_id>/status/",
         CVStatusView.as_view(),
         name="cv-status",
+    ),
+    # ----------------------------------------------------------------
+    # Task 2.2 — Automated CV/Resume Parser Pipeline
+    # POST /api/v1/students/resume/
+    # GET  /api/v1/students/resume/status/<resume_id>/
+    # ----------------------------------------------------------------
+    path(
+        "resume/",
+        ResumeUploadView.as_view(),
+        name="resume-upload",
+    ),
+    path(
+        "resume/status/<str:resume_id>/",
+        ResumeStatusView.as_view(),
+        name="resume-status",
     ),
 ]

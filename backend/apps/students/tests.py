@@ -1620,3 +1620,248 @@ class StudentCatalogueEndpointTest(TestCase):
                 'skill_id': self.active_skill.id,
             })
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+class ResumeExtractionPipelineTest(TestCase):
+    """
+    Task 2.2: Automated CV/Resume Parser Pipeline test suite.
+    Verifies:
+      - Valid PDF/DOCX resume upload
+      - Asynchronous parse_resume_task execution
+      - Entity extraction: GPA, GitHub, LinkedIn, email, phone, education, skills
+      - StudentProfile automatic field population and skill syncing
+      - Polling status endpoint
+      - File size and MIME type security validations
+    """
+
+    def setUp(self):
+        from apps.students.models import StudentProfile, Resume
+        from apps.internships.models import Skill
+        from rest_framework.test import APIClient
+
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='teststudent_resume@aau.edu.et',
+            username='teststudent_resume',
+            password='Password123!',
+            role=User.Role.STUDENT,
+        )
+        self.profile = StudentProfile.objects.create(user=self.user)
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        # Seed canonical skills
+        for skill_name in ['Python', 'Django', 'React', 'Docker', 'PostgreSQL']:
+            Skill.objects.get_or_create(name=skill_name, defaults={'is_active': True})
+
+    @staticmethod
+    def _create_test_pdf_bytes(text: str) -> bytes:
+        escaped = text.replace("(", "\\(").replace(")", "\\)")
+        stream_content = f"BT /F1 12 Tf 50 750 Td ({escaped}) Tj ET".encode("latin-1")
+        stream_len = len(stream_content)
+        return (
+            b"%PDF-1.4\n"
+            b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+            b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n"
+            b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+            b"5 0 obj<</Length " + str(stream_len).encode("ascii") + b">>\nstream\n"
+            + stream_content +
+            b"\nendstream\nendobj\n"
+            b"xref\n0 6\n0000000000 65535 f \n0000000010 00000 n \n0000000059 00000 n \n0000000115 00000 n \n0000000227 00000 n \n0000000295 00000 n \n"
+            b"trailer<</Size 6/Root 1 0 R>>\nstartxref\n400\n%%EOF\n"
+        )
+
+    def test_resume_upload_endpoint_success(self):
+        """Upload valid PDF resume returns 201 with resume_id and status PENDING."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from unittest.mock import patch
+        from apps.students.models import Resume
+
+        sample_text = (
+            "Jane Doe | email: jane.doe@aau.edu.et | phone: +251 91 122 3344 | "
+            "GPA: 3.85 / 4.0 | github.com/janedoe | Addis Ababa University | "
+            "Bachelor of Science in Software Engineering | Skills: Python, Django, React, Docker"
+        )
+        pdf_bytes = self._create_test_pdf_bytes(sample_text)
+        uploaded_file = SimpleUploadedFile("resume.pdf", pdf_bytes, content_type="application/pdf")
+
+        with patch('apps.students.tasks.parse_resume_task.delay') as mock_delay:
+            response = self.client.post('/api/v1/students/resume/', {'file': uploaded_file}, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('resume_id', response.data)
+        self.assertEqual(response.data['status'], 'PENDING')
+
+        resume = Resume.objects.get(id=response.data['resume_id'])
+        self.assertEqual(resume.student, self.profile)
+        self.assertEqual(resume.parsing_status, Resume.ParsingStatus.PENDING)
+
+    def test_parse_resume_task_extracts_entities_and_populates_profile(self):
+        """parse_resume_task extracts GPA, GitHub, phone, education, skills and updates profile."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.students.models import Resume
+        from apps.students.tasks import parse_resume_task
+
+        sample_text = (
+            "Jane Doe | email: jane.doe@aau.edu.et | phone: 0911223344 | "
+            "GPA: 3.85 / 4.0 | github.com/janedoe | linkedin.com/in/janedoe | "
+            "Addis Ababa University | Bachelor of Science in Software Engineering | "
+            "Skills: Python, Django, React, Docker"
+        )
+        pdf_bytes = self._create_test_pdf_bytes(sample_text)
+        uploaded_file = SimpleUploadedFile("candidate_resume.pdf", pdf_bytes, content_type="application/pdf")
+
+        resume = Resume.objects.create(
+            student=self.profile,
+            file=uploaded_file,
+            parsing_status=Resume.ParsingStatus.PENDING,
+        )
+
+        # Run extraction task
+        result = parse_resume_task(resume.id)
+        self.assertEqual(result['status'], 'completed')
+
+        resume.refresh_from_db()
+        self.assertEqual(resume.parsing_status, Resume.ParsingStatus.COMPLETED)
+        self.assertEqual(resume.parsed_data['gpa'], 3.85)
+        self.assertEqual(resume.parsed_data['github_url'], 'https://github.com/janedoe')
+        self.assertEqual(resume.parsed_data['linkedin_url'], 'https://linkedin.com/in/janedoe')
+        self.assertEqual(resume.parsed_data['phone'], '+251911223344')
+        self.assertEqual(resume.parsed_data['email'], 'jane.doe@aau.edu.et')
+        self.assertEqual(resume.parsed_data['education']['institution'], 'Addis Ababa University')
+        self.assertEqual(resume.parsed_data['education']['degree'], 'Bachelor of Science')
+        self.assertEqual(resume.parsed_data['education']['field_of_study'], 'Software Engineering')
+
+        # Check extracted skills
+        extracted_skills = resume.parsed_data['skills']
+        self.assertIn('Python', extracted_skills)
+        self.assertIn('Django', extracted_skills)
+        self.assertIn('React', extracted_skills)
+        self.assertIn('Docker', extracted_skills)
+
+        # Assert StudentProfile was automatically populated
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.phone, '+251911223344')
+        self.assertEqual(self.profile.university, 'Addis Ababa University')
+        self.assertEqual(self.profile.field_of_study, 'software_engineering')
+
+        # Assert skills are synced in profile.skills
+        profile_skills = list(self.profile.skills.values_list('name', flat=True))
+        self.assertIn('Python', profile_skills)
+        self.assertIn('Django', profile_skills)
+        self.assertIn('React', profile_skills)
+
+    def test_parse_docx_resume_task_extracts_entities(self):
+        """parse_resume_task supports DOCX format and extracts all entities."""
+        import docx
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.students.models import Resume
+        from apps.students.tasks import parse_resume_task
+
+        doc = docx.Document()
+        doc.add_paragraph("Abebe Molla")
+        doc.add_paragraph("Email: abebe.molla@aau.edu.et")
+        doc.add_paragraph("Phone: +251 71 234 5678")
+        doc.add_paragraph("GitHub: https://github.com/abebemolla")
+        doc.add_paragraph("Education: Bachelor of Science in Computer Science from Addis Ababa University")
+        doc.add_paragraph("Cumulative GPA: 3.75 / 4.0")
+        doc.add_paragraph("Skills: Python, React, PostgreSQL")
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        uploaded_file = SimpleUploadedFile(
+            "resume.docx",
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+        resume = Resume.objects.create(
+            student=self.profile,
+            file=uploaded_file,
+            parsing_status=Resume.ParsingStatus.PENDING,
+        )
+
+        result = parse_resume_task(resume.id)
+        self.assertEqual(result['status'], 'completed')
+
+        resume.refresh_from_db()
+        self.assertEqual(resume.parsing_status, Resume.ParsingStatus.COMPLETED)
+        self.assertEqual(resume.parsed_data['email'], 'abebe.molla@aau.edu.et')
+        self.assertEqual(resume.parsed_data['phone'], '+251712345678')
+        self.assertEqual(resume.parsed_data['github_url'], 'https://github.com/abebemolla')
+        self.assertEqual(resume.parsed_data['gpa'], 3.75)
+        self.assertEqual(resume.parsed_data['education']['field_of_study'], 'Computer Science')
+        self.assertIn('Python', resume.parsed_data['skills'])
+        self.assertIn('PostgreSQL', resume.parsed_data['skills'])
+
+    def test_resume_status_endpoint(self):
+        """Polling status endpoint returns parsing status and extracted data."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.students.models import Resume
+
+        pdf_bytes = self._create_test_pdf_bytes("Sample Resume Content")
+        uploaded_file = SimpleUploadedFile("resume.pdf", pdf_bytes, content_type="application/pdf")
+
+        resume = Resume.objects.create(
+            student=self.profile,
+            file=uploaded_file,
+            parsing_status=Resume.ParsingStatus.COMPLETED,
+            parsed_data={"gpa": 3.9, "skills": ["Python", "Django"]},
+            extracted_text="Sample Resume Content",
+        )
+
+        response = self.client.get(f'/api/v1/students/resume/status/{resume.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'COMPLETED')
+        self.assertEqual(response.data['parsed_data']['gpa'], 3.9)
+        self.assertEqual(response.data['extracted_text'], 'Sample Resume Content')
+
+    def test_resume_status_forbidden_for_other_student(self):
+        """A student cannot access another student's resume status."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.students.models import StudentProfile, Resume
+
+        User = get_user_model()
+        other_user = User.objects.create_user(
+            email='other_student@aau.edu.et',
+            username='other_student',
+            password='Password123!',
+            role=User.Role.STUDENT,
+        )
+        other_profile = StudentProfile.objects.create(user=other_user)
+
+        pdf_bytes = self._create_test_pdf_bytes("Other Student Content")
+        uploaded_file = SimpleUploadedFile("resume.pdf", pdf_bytes, content_type="application/pdf")
+
+        other_resume = Resume.objects.create(
+            student=other_profile,
+            file=uploaded_file,
+            parsing_status=Resume.ParsingStatus.PENDING,
+        )
+
+        response = self.client.get(f'/api/v1/students/resume/status/{other_resume.id}/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_resume_upload_rejects_oversized_file(self):
+        """Files exceeding 5MB are rejected with 400 Bad Request."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        # Create 5.5 MB payload
+        large_content = b"%PDF-1.4\n" + b"0" * (6 * 1024 * 1024)
+        large_file = SimpleUploadedFile("large_resume.pdf", large_content, content_type="application/pdf")
+
+        response = self.client.post('/api/v1/students/resume/', {'file': large_file}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('5MB limit', response.data['detail'])
+
+    def test_resume_upload_rejects_invalid_mime(self):
+        """Executable / text file disguised as PDF is rejected with 400 Bad Request."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        fake_pdf = SimpleUploadedFile("fake.pdf", b"This is plain text without pdf header", content_type="application/pdf")
+        response = self.client.post('/api/v1/students/resume/', {'file': fake_pdf}, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Unsupported file format', response.data['detail'])
+

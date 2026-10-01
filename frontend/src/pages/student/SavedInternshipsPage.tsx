@@ -33,7 +33,7 @@ export default function SavedInternshipsPage() {
   }, [])
 
   useEffect(() => {
-    if (!isAuthenticated || role !== 'student') {
+    if (!isAuthenticated || role?.toLowerCase() !== 'student') {
       navigate('/login')
       return
     }
@@ -75,7 +75,7 @@ export default function SavedInternshipsPage() {
     }
   }
 
-  if (!isAuthenticated || role !== 'student') {
+  if (!isAuthenticated || role?.toLowerCase() !== 'student') {
     return null
   }
 

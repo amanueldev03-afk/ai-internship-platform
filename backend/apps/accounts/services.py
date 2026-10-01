@@ -51,6 +51,35 @@ def create_student_user(*, email, password, username=None,
 
     return user
 
+
+def create_user_with_role(*, email, password, role=User.Role.STUDENT, username=None,
+                          first_name="", last_name="", phone=None, department="", university_name="", auto_activate=False):
+    """
+    Create a new user account with any assigned role (Student, Company HR, Advisor, Dean, UIL, Union, Dorm, Admin).
+    The user starts inactive and unverified until email confirmation is completed,
+    unless they are an Administrator or auto_activate=True is requested.
+    """
+    is_admin = role == User.Role.ADMIN
+    is_active_flag = is_admin or auto_activate
+    user = User.objects.create(
+        email=email,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+        phone_number=phone or None,
+        role=role,
+        department=department or "",
+        university_name=university_name or "",
+        is_active=is_active_flag,
+        is_email_verified=is_active_flag,
+        is_staff=is_admin,
+        is_superuser=is_admin,
+        is_approved=is_active_flag,
+    )
+    user.set_password(password)
+    user.save()
+    return user
+
 def get_live_frontend_url():
     url = getattr(settings, "FRONTEND_URL", "").strip()
     if url:

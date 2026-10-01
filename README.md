@@ -1,6 +1,6 @@
-# AI Internship Platform
+# SmartIntern-ET
 
-An AI-powered platform that matches students with internships using semantic embeddings, skill matching, and weighted scoring. Students receive ranked, explained recommendations based on their profile and CV.
+An AI-powered internship recommendation, clearance, and assessment management system for Ethiopian higher education. Students receive ranked, explained recommendations based on their profile, skills, and CV across three distinct tracks (Campus Track, Official Company Track, and Direct Company Placement).
 
 ## Overview
 
@@ -41,7 +41,7 @@ The project combines a Django REST API backend, an AI recommendation engine, and
 ## Repository structure
 
 ```text
-ai-internship-platform/
+SmartIntern-ET/
 ├── backend/
 │   ├── ai_engine/
 │   ├── apps/

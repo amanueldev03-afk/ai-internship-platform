@@ -21,7 +21,8 @@ class ApplicationHistoryListView(ListAPIView):
     pagination_class = RecommendationPagination
 
     def get_queryset(self):
-        if self.request.user.role != "student":
+        user_role = str(getattr(self.request.user, "role", "")).upper()
+        if user_role != "STUDENT":
             return ApplicationHistory.objects.none()
 
         return (
@@ -58,7 +59,8 @@ class TrackApplicationView(APIView):
         ],
     )
     def post(self, request, *args, **kwargs):
-        if request.user.role != "student":
+        user_role = str(getattr(request.user, "role", "")).upper()
+        if user_role != "STUDENT":
             raise PermissionDenied("Only students can track applications.")
 
         internship_id = request.data.get(

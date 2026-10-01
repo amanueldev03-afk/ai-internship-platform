@@ -52,6 +52,10 @@
     @apply bg-slate-50 text-neutral-900 antialiased dark:bg-[#09090b] dark:text-neutral-100;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  html.large-text {
+    font-size: 115%;
+  }
 }
 
 @layer utilities {

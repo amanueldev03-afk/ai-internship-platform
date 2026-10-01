@@ -27,6 +27,8 @@ from .views import (
     AdminDashboardView,
     AdminSkillListCreateView,
     AdminSkillDetailView,
+    AdminInternshipPublishView,
+    AdminPendingInternshipsListView,
 )
 
 
@@ -59,6 +61,18 @@ urlpatterns = [
         "admin/<int:pk>/",
         AdminInternshipDetailView.as_view(),
         name="admin-internship-detail",
+    ),
+
+    path(
+        "admin/pending/",
+        AdminPendingInternshipsListView.as_view(),
+        name="admin-internship-pending",
+    ),
+
+    path(
+        "admin/<int:pk>/publish/",
+        AdminInternshipPublishView.as_view(),
+        name="admin-internship-publish",
     ),
 
     path(

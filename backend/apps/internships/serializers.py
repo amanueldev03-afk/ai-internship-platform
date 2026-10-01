@@ -117,6 +117,8 @@ class InternshipSerializer(serializers.ModelSerializer):
             "is_verified",
             "is_expired",
             "is_flagged",
+            "is_published",
+            "published_at",
             "url_validation",
             "status",
             "embedding_status",

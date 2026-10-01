@@ -73,4 +73,12 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=4, minute=0),
         'args': ('career_site',),
     },
+
+    # ==========================================================
+    # CAMPUS LOGISTICS (Track 1 food & housing expiration)
+    # ==========================================================
+    'expire-campus-logistics-sweep-daily': {
+        'task': 'apps.logistics.tasks.expire_campus_logistics_sweep',
+        'schedule': crontab(hour=0, minute=0),  # Daily at midnight UTC
+    },
 }

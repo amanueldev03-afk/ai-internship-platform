@@ -85,7 +85,14 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
 ]
+
+try:
+    import daphne
+    DJANGO_APPS.insert(0, "daphne")
+except ImportError:
+    pass
 
 THIRD_PARTY_APPS = [
     "rest_framework",
@@ -106,6 +113,12 @@ THIRD_PARTY_APPS = [
 ]
 
 try:
+    import channels
+    THIRD_PARTY_APPS.append("channels")
+except ImportError:
+    pass
+
+try:
     import django_extensions
     THIRD_PARTY_APPS.append("django_extensions")
 except ImportError:
@@ -124,6 +137,12 @@ LOCAL_APPS = [
     "apps.data_sources",
     "apps.administration",
     "apps.common",
+    "apps.projects",
+    "apps.universities",
+    "apps.logistics",
+    "apps.uil_profiles",
+    "apps.postings",
+    "apps.teams",
 ]
 
 INSTALLED_APPS = (
@@ -142,6 +161,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -209,6 +229,7 @@ else:
         and "localhost" not in _DATABASE_URL
         and "127.0.0.1" not in _DATABASE_URL
         and "@db:" not in _DATABASE_URL
+        and "@postgres:" not in _DATABASE_URL
         and "internal" not in _DATABASE_URL
     )
 
@@ -255,7 +276,16 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # --------------------------------------------------
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "en"
+
+LANGUAGES = [
+    ("en", "English"),
+    ("am", "Amharic"),
+]
+
+LOCALE_PATHS = [
+    BASE_DIR / "locale",
+]
 
 TIME_ZONE = config("TIME_ZONE", default="UTC")
 
@@ -467,16 +497,14 @@ CORS_ALLOW_METHODS = [
 ]
 
 SIMPLE_JWT = {
-
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-
     "ROTATE_REFRESH_TOKENS": True,
-
     "BLACKLIST_AFTER_ROTATION": True,
-
     "UPDATE_LAST_LOGIN": True,
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+    "SIGNING_KEY": config("JWT_SECRET", default=SECRET_KEY),
 }
 
 EMAIL_BACKEND = config(
@@ -616,12 +644,25 @@ if _redis_url and not _redis_url.startswith("locmem"):
             "LOCATION": _redis_url,
         }
     }
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [_redis_url],
+            },
+        },
+    }
 else:
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "ai-internship-locmem-cache",
         }
+    }
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
     }
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"

@@ -14,11 +14,14 @@ export interface LoginResponse {
 
 export interface RegisterResponse {
   message: string
+  access?: string
+  refresh?: string
   user: {
-    id: number
+    id: number | string
     email: string
     username: string
     full_name: string
+    role?: string
   }
 }
 
@@ -68,6 +71,11 @@ export async function register(data: {
   password: string
   password_confirm: string
   phone?: string
+  role?: string
+  organization_name?: string
+  department?: string
+  university_name?: string
+  auto_activate?: boolean
 }): Promise<RegisterResponse> {
   const response = await api.post<RegisterResponse>('/auth/register/', data)
   return response.data

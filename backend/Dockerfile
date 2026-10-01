@@ -1,32 +1,42 @@
 # ---------------------------------------------------------------------------
-# AI Internship Platform — Backend
-# Python 3.12 slim image, matches the project's .venv Python version.
+# SmartIntern-ET — Backend Dockerfile
+# Python 3.12 slim image for ASGI, Celery workers, and ML embeddings.
 # ---------------------------------------------------------------------------
 
 FROM python:3.12-slim
 
-# Prevents Python from writing .pyc files and enables stdout/stderr logging
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Prevents Python from writing .pyc files and enables unbuffered stdout/stderr logging
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Install system-level build deps needed by psycopg, Pillow, etc.
+# Install required system packages:
+# gcc, build-essential, libpq-dev: native compilation for psycopg, C extensions
+# libmagic1: file type detection for uploaded CVs/documents
+# gettext: internationalization (Amharic / English translation compiling)
+# python3-opencv: CV/image processing capabilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
     build-essential \
     libpq-dev \
+    libmagic1 \
+    gettext \
+    python3-opencv \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies first (layer-cached separately from source code)
+# Install Python dependencies first for Docker layer caching
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Copy project source
+# Copy project source code
 COPY . .
 
-RUN chmod +x /app/entrypoint.prod.sh
+# Ensure entrypoint script is executable if used
+RUN if [ -f /app/entrypoint.prod.sh ]; then chmod +x /app/entrypoint.prod.sh; fi
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
-ENTRYPOINT ["/app/entrypoint.prod.sh"]
-CMD ["gunicorn", "--config", "/app/gunicorn.conf.py", "config.wsgi:application"]
+# Default command: Daphne ASGI server for HTTP & WebSockets
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

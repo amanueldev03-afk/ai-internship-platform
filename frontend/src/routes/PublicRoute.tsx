@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/redux'
+import { getDashboardPathForRole } from './routeUtils'
 
 interface PublicRouteProps {
   children: React.ReactNode
@@ -23,14 +24,12 @@ export default function PublicRoute({ children, redirectTo }: PublicRouteProps) 
 
   // Redirect authenticated users away from public auth pages to their role dashboard
   if (isAuthenticated) {
-    const currentRole = role || user?.role
+    const rawRole = role || user?.role || ''
+    const currentRole = rawRole.toLowerCase()
     if (redirectTo) {
       return <Navigate to={redirectTo} replace />
     }
-    if (currentRole === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />
-    }
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={getDashboardPathForRole(currentRole)} replace />
   }
 
   return <>{children}</>

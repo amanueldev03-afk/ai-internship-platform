@@ -69,7 +69,7 @@ export default function StudentRecommendations() {
   const totalPages = Math.max(1, Math.ceil(pagination.count / 10))
 
   useEffect(() => {
-    if (!isAuthenticated || role !== 'student') {
+    if (!isAuthenticated || role?.toLowerCase() !== 'student') {
       navigate('/login')
       return
     }
@@ -107,7 +107,7 @@ export default function StudentRecommendations() {
       .sort((a, b) => b.match_score - a.match_score)
   }, [recommendations, minMatchThreshold, searchFilter])
 
-  if (!isAuthenticated || role !== 'student') {
+  if (!isAuthenticated || role?.toLowerCase() !== 'student') {
     return null
   }
 

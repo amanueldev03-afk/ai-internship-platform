@@ -1,39 +1,23 @@
 # ---------------------------------------------------------------------------
-# AI Internship Platform — Frontend Production Dockerfile
-# Stage 1: Build React/Vite SPA
-# Stage 2: Serve with Nginx
+# SmartIntern-ET — Frontend Dockerfile
+# Node 20 Alpine environment for React 18 / Vite / Tailwind SPA.
 # ---------------------------------------------------------------------------
 
-# Stage 1: Build
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies first (layer-cached)
-COPY package.json package-lock.json ./
-RUN npm ci
+# Copy dependency specifications first to leverage Docker layer caching
+COPY package*.json ./
 
-# Copy frontend source code
+# Install npm dependencies
+RUN npm install
+
+# Copy source code
 COPY . .
 
-# Build production bundle to /app/dist
-RUN npm run build
+EXPOSE 5173
 
-# Stage 2: Production Web Server
-FROM nginx:alpine AS runner
+# Bind Vite server to 0.0.0.0 so it is accessible outside container
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
-# Remove default Nginx website
-RUN rm -rf /usr/share/nginx/html/*
-
-# Copy compiled SPA assets from builder stage
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy Nginx server configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
-
-CMD ["nginx", "-g", "daemon off;"]

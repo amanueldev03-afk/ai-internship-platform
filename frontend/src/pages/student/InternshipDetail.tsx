@@ -22,7 +22,7 @@ export default function InternshipDetail() {
   const [isApplied, setIsApplied] = useState(false)
 
   useEffect(() => {
-    if (!isAuthenticated || role !== 'student') {
+    if (!isAuthenticated || role?.toLowerCase() !== 'student') {
       navigate('/login')
       return
     }

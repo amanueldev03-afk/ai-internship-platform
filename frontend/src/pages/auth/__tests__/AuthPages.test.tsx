@@ -122,6 +122,37 @@ describe('Authentication Pages', () => {
         })
       })
     })
+
+    it('switches role tabs and updates registration link target', async () => {
+      const store = createStore()
+      const user = userEvent.setup()
+
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/login']}>
+            <LoginPage />
+          </MemoryRouter>
+        </Provider>
+      )
+
+      expect(screen.getByRole('button', { name: /^student$/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /company hr/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^advisor$/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^dean$/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /uil officer/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^union$/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /dorm admin/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^finance$/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^admin$/i })).toBeInTheDocument()
+
+      expect(screen.getByRole('link', { name: /sign up as student/i })).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /company hr/i }))
+      expect(screen.getByRole('link', { name: /sign up as company/i })).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /^advisor$/i }))
+      expect(screen.getByRole('link', { name: /sign up as academic advisor/i })).toBeInTheDocument()
+    })
   })
 
   describe('RegisterPage', () => {
@@ -140,7 +171,7 @@ describe('Authentication Pages', () => {
       expect(screen.getByLabelText(/phone number/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/^password/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /create .* account/i })).toBeInTheDocument()
     })
 
     it('validates password mismatch on client side', async () => {
@@ -159,9 +190,53 @@ describe('Authentication Pages', () => {
       await user.type(screen.getByLabelText(/email address/i), 'jane@example.com')
       await user.type(screen.getByLabelText(/^password/i), 'Password123!')
       await user.type(screen.getByLabelText(/confirm password/i), 'DifferentPassword!')
-      await user.click(screen.getByRole('button', { name: /create account/i }))
+      await user.click(screen.getByRole('button', { name: /create .* account/i }))
 
       expect(await screen.findByText(/passwords do not match/i)).toBeInTheDocument()
+    })
+
+    it('switches to employer role and validates company name', async () => {
+      const store = createStore()
+      const user = userEvent.setup()
+
+      render(
+        <Provider store={store}>
+          <MemoryRouter>
+            <RegisterPage />
+          </MemoryRouter>
+        </Provider>
+      )
+
+      const employerCard = screen.getByRole('button', { name: /company hr/i })
+      await user.click(employerCard)
+
+      expect(screen.getByLabelText(/company \/ organization name/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /create company hr account/i })).toBeInTheDocument()
+
+      await user.type(screen.getByLabelText(/full name/i), 'Recruiter Name')
+      await user.type(screen.getByLabelText(/email address/i), 'hr@company.com')
+      await user.type(screen.getByLabelText(/^password/i), 'SecurePass123!')
+      await user.type(screen.getByLabelText(/confirm password/i), 'SecurePass123!')
+
+      await user.click(screen.getByRole('button', { name: /create company hr account/i }))
+      expect(await screen.findByText(/company \/ organization name is required/i)).toBeInTheDocument()
+    })
+
+    it('preselects role from URL query parameter', () => {
+      const store = createStore()
+
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/register?role=advisor']}>
+            <RegisterPage />
+          </MemoryRouter>
+        </Provider>
+      )
+
+      expect(screen.getByLabelText(/email address/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/university \/ college/i)).toBeInTheDocument()
+      expect(screen.getByLabelText(/department/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /create academic advisor account/i })).toBeInTheDocument()
     })
 
     it('displays success state after registration succeeds', async () => {
@@ -185,10 +260,42 @@ describe('Authentication Pages', () => {
       await user.type(screen.getByLabelText(/email address/i), 'student@example.com')
       await user.type(screen.getByLabelText(/^password/i), 'SecurePass123!')
       await user.type(screen.getByLabelText(/confirm password/i), 'SecurePass123!')
-      await user.click(screen.getByRole('button', { name: /create account/i }))
+      await user.click(screen.getByRole('button', { name: /create student \/ intern account/i }))
 
       expect(await screen.findByText(/registration successful!/i)).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: /go to login/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /go to student \/ intern login/i })).toBeInTheDocument()
+    })
+
+    it('auto-logs in and redirects to dashboard when registration returns tokens', async () => {
+      const store = createStore()
+      const user = userEvent.setup()
+
+      vi.spyOn(authApi, 'register').mockResolvedValueOnce({
+        message: 'Registration successful',
+        access: 'mock-access-token',
+        refresh: 'mock-refresh-token',
+        user: { id: 1, email: 'student@example.com', username: 'student1', full_name: 'Student User', role: 'student' },
+      })
+
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/register']}>
+            <Routes>
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/dashboard" element={<div>Mock Student Dashboard</div>} />
+            </Routes>
+          </MemoryRouter>
+        </Provider>
+      )
+
+      await user.type(screen.getByLabelText(/full name/i), 'Student User')
+      await user.type(screen.getByLabelText(/email address/i), 'student@example.com')
+      await user.type(screen.getByLabelText(/^password/i), 'SecurePass123!')
+      await user.type(screen.getByLabelText(/confirm password/i), 'SecurePass123!')
+      await user.click(screen.getByRole('button', { name: /create student \/ intern account/i }))
+
+      expect(await screen.findByText('Mock Student Dashboard')).toBeInTheDocument()
+      expect(store.getState().auth.isAuthenticated).toBe(true)
     })
   })
 

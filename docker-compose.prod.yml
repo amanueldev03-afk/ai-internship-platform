@@ -1,44 +1,48 @@
 version: "3.9"
 
+# =============================================================================
+# SmartIntern-ET — Production Containerized Docker Compose Environment
+# =============================================================================
+
 services:
-  # -------------------------------------------------------------------------
-  # PostgreSQL 15 + pgvector
-  # -------------------------------------------------------------------------
-  db:
-    image: pgvector/pgvector:pg15
-    container_name: ai_internship_prod_db
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 with pgvector extension for ML embeddings
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: smartintern_prod_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ai_internship}
-      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-smartintern_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
       - ./backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U $${POSTGRES_USER:-ai_user} -d $${POSTGRES_DB:-ai_internship}",
+          "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-smartintern_db}",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 5s
     networks:
-      - app_network
+      - smartintern_prod_network
 
-  # -------------------------------------------------------------------------
-  # Redis 7 (Broker / Cache)
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Redis 7 Alpine cache and Celery broker
+  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: ai_internship_prod_redis
+    container_name: smartintern_prod_redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,181 +50,212 @@ services:
       retries: 10
       start_period: 5s
     networks:
-      - app_network
+      - smartintern_prod_network
 
-  # -------------------------------------------------------------------------
-  # Django Backend (Gunicorn)
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Django WSGI Backend (Gunicorn: HTTP API, Admin, Allauth)
+  # ---------------------------------------------------------------------------
   backend:
-    image: ai-internship-platform_backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ai_internship_prod_backend
+    container_name: smartintern_prod_backend
     restart: unless-stopped
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       DJANGO_ENV: production
       DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_internship}
-      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: db
+      SECRET_KEY: ${SECRET_KEY:-smartintern-prod-secret-key-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-smartintern_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:8080}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-https://*.trycloudflare.com,http://localhost,http://127.0.0.1,http://localhost:8080}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:80}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost,http://127.0.0.1}
       SITE_BASE_URL: ${SITE_BASE_URL:-http://localhost}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-filesystem}
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
-      EMAIL_HOST: ${EMAIL_HOST:-localhost}
-      EMAIL_PORT: ${EMAIL_PORT:-25}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-""}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-""}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-False}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@ai-internship.local}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-357646631503-tlo2lmfh1psb5n2glrgu0fr9rh6l5h3o.apps.googleusercontent.com}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-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}
-      GUNICORN_BIND: ${GUNICORN_BIND:-0.0.0.0:8000}
-      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-4}
-      GUNICORN_WORKER_CLASS: ${GUNICORN_WORKER_CLASS:-sync}
-      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
-      GUNICORN_GRACEFUL_TIMEOUT: ${GUNICORN_GRACEFUL_TIMEOUT:-30}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ETHIO_SMS_API_KEY: ${ETHIO_SMS_API_KEY:-}
     volumes:
       - staticfiles_data:/app/staticfiles
-      - media_data:/app/media
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: /app/entrypoint.prod.sh gunicorn --config /app/gunicorn.conf.py config.wsgi:application
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --config /app/gunicorn.conf.py config.wsgi:application"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/')\" || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/')\" || exit 1",
+        ]
       interval: 15s
       timeout: 30s
       retries: 5
-      start_period: 60s
+      start_period: 30s
     networks:
-      - app_network
+      - smartintern_prod_network
 
-  # -------------------------------------------------------------------------
-  # Celery Worker
-  # -------------------------------------------------------------------------
-  celery:
-    image: ai-internship-platform_backend:latest
-    container_name: ai_internship_prod_celery
+  # ---------------------------------------------------------------------------
+  # Django ASGI Backend (Daphne: WebSocket Chat & Channels)
+  # ---------------------------------------------------------------------------
+  backend_asgi:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartintern_prod_backend_asgi
     restart: unless-stopped
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       DJANGO_ENV: production
       DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_internship}
-      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: db
+      SECRET_KEY: ${SECRET_KEY:-smartintern-prod-secret-key-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-smartintern_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1,http://localhost:80}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost,http://127.0.0.1}
       SITE_BASE_URL: ${SITE_BASE_URL:-http://localhost}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-filesystem}
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
-      EMAIL_HOST: ${EMAIL_HOST:-localhost}
-      EMAIL_PORT: ${EMAIL_PORT:-25}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-""}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-""}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-False}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@ai-internship.local}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-357646631503-tlo2lmfh1psb5n2glrgu0fr9rh6l5h3o.apps.googleusercontent.com}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-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}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ETHIO_SMS_API_KEY: ${ETHIO_SMS_API_KEY:-}
     volumes:
-      - media_data:/app/media
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       backend:
         condition: service_healthy
-    command: celery -A config worker -l info
+    command: daphne -b 0.0.0.0 -p 8001 config.asgi:application
     networks:
-      - app_network
+      - smartintern_prod_network
 
-  # -------------------------------------------------------------------------
-  # Celery Beat (Periodic task scheduler)
-  # -------------------------------------------------------------------------
-  celery-beat:
-    image: ai-internship-platform_backend:latest
-    container_name: ai_internship_prod_celery_beat
+  # ---------------------------------------------------------------------------
+  # Celery Background Worker
+  # ---------------------------------------------------------------------------
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartintern_prod_celery_worker
     restart: unless-stopped
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       DJANGO_ENV: production
       DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY}
-      POSTGRES_DB: ${POSTGRES_DB:-ai_internship}
-      POSTGRES_USER: ${POSTGRES_USER:-ai_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ai_internship}
-      REDIS_URL: redis://redis:6379/1
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-smartintern-prod-secret-key-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
-      SITE_BASE_URL: ${SITE_BASE_URL:-http://localhost}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-filesystem}
-      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
-      EMAIL_HOST: ${EMAIL_HOST:-localhost}
-      EMAIL_PORT: ${EMAIL_PORT:-25}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-""}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-""}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-False}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@ai-internship.local}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-357646631503-tlo2lmfh1psb5n2glrgu0fr9rh6l5h3o.apps.googleusercontent.com}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-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}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+    volumes:
+      - media_volume:/app/media
+      - ai_models_cache:/root/.cache/huggingface
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       backend:
         condition: service_healthy
-    command: celery -A config beat -l info
+    command: celery -A config worker --loglevel=info -c 4
     networks:
-      - app_network
+      - smartintern_prod_network
 
-  # -------------------------------------------------------------------------
-  # React Frontend (Nginx)
-  # -------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Celery Beat Scheduler
+  # ---------------------------------------------------------------------------
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartintern_prod_celery_beat
+    restart: unless-stopped
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_ENV: production
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:-smartintern-prod-secret-key-change-me}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-smartintern_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    networks:
+      - smartintern_prod_network
+
+  # ---------------------------------------------------------------------------
+  # React 18 Frontend
+  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: ai_internship_prod_frontend
+    container_name: smartintern_prod_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: /api
+    networks:
+      - smartintern_prod_network
+
+  # ---------------------------------------------------------------------------
+  # Nginx Reverse Proxy (SSL, Static/Media, WebSockets, SPA Routing)
+  # ---------------------------------------------------------------------------
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: smartintern_prod_nginx
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${PORT:-80}:80"
     volumes:
-      - staticfiles_data:/var/www/static:ro
-      - media_data:/var/www/media:ro
+      - staticfiles_data:/app/staticfiles:ro
+      - media_volume:/app/media:ro
     depends_on:
       backend:
         condition: service_healthy
+      backend_asgi:
+        condition: service_started
+      frontend:
+        condition: service_started
     healthcheck:
       test:
         [
@@ -236,14 +271,22 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - app_network
+      - smartintern_prod_network
 
+# -----------------------------------------------------------------------------
+# Named Volumes
+# -----------------------------------------------------------------------------
 volumes:
-  postgres_data:
-  redis_data:
+  pgdata:
+  redisdata:
   staticfiles_data:
-  media_data:
+  media_volume:
+  ai_models_cache:
 
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
 networks:
-  app_network:
+  smartintern_prod_network:
     driver: bridge
+

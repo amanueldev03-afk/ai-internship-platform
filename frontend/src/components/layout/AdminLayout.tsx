@@ -1,5 +1,6 @@
 import * as React from "react"
 import { Outlet, Link, useLocation } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { 
   LayoutDashboard, 
   Users, 
@@ -13,20 +14,22 @@ import {
   Shield
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-const navigation = [
-  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-  { name: "Users", href: "/admin/users", icon: Users },
-  { name: "Companies", href: "/admin/companies", icon: Building2 },
-  { name: "Internships", href: "/admin/internships", icon: Briefcase },
-  { name: "Data Sources", href: "/admin/sources", icon: Database },
-  { name: "AI Monitor", href: "/admin/ai-monitoring", icon: Brain },
-  { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-]
+import { LanguageSwitcher } from "@/components/common/LanguageSwitcher"
 
 export function AdminLayout() {
+  const { t } = useTranslation()
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
   const location = useLocation()
+
+  const navigation = [
+    { name: t("nav.dashboard", "Dashboard"), href: "/admin/dashboard", icon: LayoutDashboard },
+    { name: t("nav.users", "Users"), href: "/admin/users", icon: Users },
+    { name: t("nav.companies", "Companies"), href: "/admin/companies", icon: Building2 },
+    { name: t("nav.internships", "Internships"), href: "/admin/internships", icon: Briefcase },
+    { name: t("nav.dataSources", "Data Sources"), href: "/admin/sources", icon: Database },
+    { name: t("nav.aiMonitoring", "AI Monitor"), href: "/admin/ai-monitoring", icon: Brain },
+    { name: t("nav.analytics", "Analytics"), href: "/admin/analytics", icon: BarChart3 },
+  ]
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-dark-bg dark:to-neutral-900/30">
@@ -121,6 +124,7 @@ export function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-4">
+            <LanguageSwitcher />
             <div className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-600 shadow-glow">
                 <Shield className="h-4 w-4 text-white" />

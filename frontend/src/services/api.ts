@@ -86,11 +86,20 @@ function isPublicAuthEndpoint(url?: string): boolean {
   return PUBLIC_AUTH_PATHS.some((path) => url.includes(path))
 }
 
-// Attach JWT access token to every request if present
+export function setApiLanguage(lang: string) {
+  api.defaults.headers.common['Accept-Language'] = lang
+  rawApi.defaults.headers.common['Accept-Language'] = lang
+}
+
+// Attach JWT access token and language header to every request if present
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('access_token')
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  const currentLang = localStorage.getItem('i18nextLng') || 'en'
+  if (config.headers && !config.headers['Accept-Language']) {
+    config.headers['Accept-Language'] = currentLang
   }
   if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
     delete config.headers['Content-Type']

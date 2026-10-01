@@ -37,7 +37,7 @@ def get_recommendation_cache_key(user_id: int) -> str:
 
 
 def bust_recommendation_cache(user_id: int) -> None:
-    """Delete cached recommendations for a user and refresh embedding."""
+    """Delete cached recommendations for a user, refresh embedding, and queue match recalculation."""
     cache.delete(get_recommendation_cache_key(user_id))
     try:
         from apps.students.models import StudentProfile
@@ -45,6 +45,11 @@ def bust_recommendation_cache(user_id: int) -> None:
         profile = StudentProfile.objects.filter(user_id=user_id).first()
         if profile:
             update_student_embedding(profile)
+            try:
+                from apps.recommendations.tasks import recalculate_student_matches_task
+                recalculate_student_matches_task.delay(profile.id)
+            except Exception as task_exc:
+                logger.debug(f"Could not queue recalculate_student_matches_task for user {user_id}: {task_exc}")
     except Exception as e:
         logger.warning(f"Could not refresh student embedding on cache bust for user {user_id}: {e}")
 
@@ -131,7 +136,7 @@ class StudentRecommendationView(APIView):
         },
     )
     def get(self, request):
-        if request.user.role != "student":
+        if str(request.user.role).lower() != "student":
             raise PermissionDenied(
                 "Only students can receive recommendations.")
 
@@ -197,7 +202,7 @@ class StudentRecommendationView(APIView):
         else:
             active_internships = (
                 Internship.objects
-                .filter(status="active", is_verified=True, needs_review=False)
+                .filter(status="active", is_verified=True, needs_review=False, is_published=True)
                 .prefetch_related("required_skills")
                 .order_by("-created_at")
             )
@@ -293,11 +298,7 @@ class RecommendationHistoryListView(ListAPIView):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        if self.request.user.role != "student":
-            return Recommendation.objects.none()
-
-        profile = StudentProfile.objects.filter(user=self.request.user).first()
-        if not profile:
+        if str(self.request.user.role).lower() != "student":
             return Recommendation.objects.none()
 
         return (
@@ -326,7 +327,7 @@ class RecommendationFeedbackView(GenericAPIView):
         ),
     )
     def post(self, request, internship_id):
-        if request.user.role != "student":
+        if str(request.user.role).lower() != "student":
             raise PermissionDenied(
                 "Only students can provide recommendation feedback.")
 

@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
-from pgvector.django import VectorField
+from pgvector.django import HnswIndex, VectorField
 from apps.common.models import TimeStampedModel
 
 
@@ -442,6 +442,25 @@ class Internship(TimeStampedModel):
         blank=True,
     )
 
+    is_published = models.BooleanField(
+        default=True,
+        db_index=True,
+        help_text="Requires admin publishing approval for company postings before visibility to students.",
+    )
+
+    published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="published_internships",
+    )
+
     def is_expired(self):
         """
         Return True when the application deadline has passed.
@@ -543,6 +562,13 @@ class Internship(TimeStampedModel):
             ),
             models.Index(
                 fields=["application_deadline"],
+            ),
+            HnswIndex(
+                name="internship_emb_hnsw_idx",
+                fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
             ),
         ]
 
