@@ -3,6 +3,28 @@ export interface ApplicationUrlValidationResult {
   error: string | null
 }
 
+const DUMMY_DOMAINS = [
+  'example.com',
+  'example.org',
+  'example.net',
+  'placeholder.com',
+  'test.com',
+  'localhost',
+  '127.0.0.1',
+]
+
+export function isPlaceholderUrl(url?: string | null): boolean {
+  if (!url) return true
+  const trimmed = url.trim()
+  if (!trimmed) return true
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`)
+    return DUMMY_DOMAINS.some(domain => parsed.hostname.toLowerCase() === domain || parsed.hostname.toLowerCase().endsWith('.' + domain))
+  } catch {
+    return true
+  }
+}
+
 /**
  * Normalizes an external application URL to ensure it has a valid protocol
  * (defaulting to https://) and trimmed whitespace.
@@ -48,6 +70,14 @@ export function validateApplicationUrl(internship?: {
     return {
       isValid: false,
       error: 'Application URL is missing for this internship.',
+    }
+  }
+
+  // Check for dummy / placeholder domains (e.g., example.com)
+  if (isPlaceholderUrl(rawUrl)) {
+    return {
+      isValid: false,
+      error: 'External employer link is unavailable (placeholder link). Please apply directly on platform.',
     }
   }
 

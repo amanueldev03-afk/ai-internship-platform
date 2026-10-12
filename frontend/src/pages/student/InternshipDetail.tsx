@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { MapPin, Briefcase, Calendar, Heart, ExternalLink, AlertCircle, X, Building2, CheckCircle2, ArrowLeft } from 'lucide-react'
+import { MapPin, Briefcase, Calendar, Heart, ExternalLink, AlertCircle, X, Building2, CheckCircle2, ArrowLeft, Send } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { getInternshipDetail, getSavedInternships, saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
-import { validateApplicationUrl, normalizeApplicationUrl } from '@/utils/urlValidation'
+import { validateApplicationUrl, normalizeApplicationUrl, isPlaceholderUrl } from '@/utils/urlValidation'
 import type { Internship } from '@/types'
 import { Button } from '@/components/ui/button'
+import DirectApplyModal from '@/components/internships/DirectApplyModal'
 
 export default function InternshipDetail() {
   const { id } = useParams<{ id: string }>()
@@ -20,6 +21,7 @@ export default function InternshipDetail() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
   const [isApplied, setIsApplied] = useState(false)
+  const [showDirectApply, setShowDirectApply] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated || role?.toLowerCase() !== 'student') {
@@ -85,21 +87,23 @@ export default function InternshipDetail() {
     setApplyError(null)
     if (!internship) return
 
+    const rawUrl = internship.application_url || internship.source_url
+    if (!rawUrl || isPlaceholderUrl(rawUrl)) {
+      setShowDirectApply(true)
+      return
+    }
+
     const validation = validateApplicationUrl(internship)
     if (!validation.isValid) {
-      setApplyError(validation.error || 'Application URL not available')
+      setShowDirectApply(true)
       return
     }
 
-    const rawUrl = internship.application_url || internship.source_url
     const targetUrl = normalizeApplicationUrl(rawUrl) || rawUrl
-
     if (!targetUrl) {
-      setApplyError('Application URL not available')
+      setShowDirectApply(true)
       return
     }
-
-    console.log('Opening application URL:', targetUrl)
 
     // Fire-and-forget background tracking (non-blocking with short timeout)
     trackApplication(internship.id).catch((err) => {
@@ -272,27 +276,35 @@ export default function InternshipDetail() {
 
           {/* Bottom Action Footer */}
           <div className="p-6 sm:p-10 bg-neutral-50/70 dark:bg-neutral-900/50 flex flex-wrap items-center justify-between gap-4">
-            {hasApplicationUrl ? (
-              <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <Button
+                onClick={() => setShowDirectApply(true)}
+                disabled={isApplied}
+                size="lg"
+                className="w-full sm:w-auto rounded-2xl shadow-glow text-sm font-bold bg-primary-600 hover:bg-primary-700"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                {isApplied ? 'Application Submitted ✓' : 'Apply Directly On Platform'}
+              </Button>
+
+              {hasApplicationUrl && !isPlaceholderUrl(internship.application_url) && (
                 <Button
                   onClick={handleApply}
+                  variant="outline"
                   size="lg"
-                  className="w-full sm:w-auto rounded-2xl shadow-glow text-sm font-bold"
+                  className="w-full sm:w-auto rounded-2xl text-sm font-bold"
                 >
                   <ExternalLink className="w-4 h-4 mr-2" />
-                  {isApplied ? 'Applied ✓' : 'Apply on Employer Portal'}
+                  Apply on External Portal
                 </Button>
-                {isApplied && (
-                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-4 h-4" /> Application tracked
-                  </span>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-neutral-500 font-medium">
-                Application URL not available. Please check back later.
-              </p>
-            )}
+              )}
+
+              {isApplied && (
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-4 h-4" /> Application tracked
+                </span>
+              )}
+            </div>
 
             <Link to="/internships">
               <Button variant="ghost" size="sm" className="rounded-xl text-xs font-bold">
@@ -302,6 +314,14 @@ export default function InternshipDetail() {
           </div>
         </div>
       </div>
+
+      {showDirectApply && internship && (
+        <DirectApplyModal
+          internship={internship}
+          onClose={() => setShowDirectApply(false)}
+          onSuccess={() => setIsApplied(true)}
+        />
+      )}
     </div>
   )
 }

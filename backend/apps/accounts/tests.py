@@ -989,7 +989,7 @@ class SmartInternETAuthAndRBACTest(TestCase):
             },
         }
         resp3 = self.client.post(self.register_url, data3, format="json")
-        self.assertEqual(resp3.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(resp3.status_code, status.HTTP_201_CREATED, resp3.data)
 
     def test_emergency_contact_and_accessibility_profile(self):
         """
@@ -1222,7 +1222,7 @@ class SmartInternETAuthAndRBACTest(TestCase):
             "id", "email", "username", "first_name", "last_name", "full_name",
             "phone_number", "role", "is_active", "is_staff", "is_email_verified",
             "profile_photo", "date_joined", "student_profile",
-            "is_approved", "university_name", "department",
+            "is_approved", "university_name", "department", "staff_id_number",
         }
         self.assertEqual(set(user_data.keys()), expected_keys)
         self.assertEqual(user_data["email"], "byte_student@aau.edu.et")
@@ -1300,3 +1300,72 @@ class SmartInternETAuthAndRBACTest(TestCase):
             raw_val = cursor.fetchone()[0]
             self.assertNotEqual(raw_val, "Confidential note: requires specialized wheelchair ramp.")
             self.assertTrue(raw_val.startswith("gAAAAA") or len(raw_val) > 40)
+
+    def test_register_dorm_admin_and_student_union_success_and_validation(self):
+        """
+        Verify registration for dorm_admin and student_union with university_name and unique staff_id_number.
+        Also verifies that is_approved is False pending administrator approval.
+        """
+        # 1. Successful dorm_admin registration
+        payload_dorm = {
+            "full_name": "Abebe Dormitory Admin",
+            "email": "dorm_admin_reg@aau.edu.et",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": "dorm_admin",
+            "university_name": "Addis Ababa University",
+            "staff_id_number": "AAU-DORM-REG-01",
+        }
+        resp = self.client.post("/api/auth/register/", payload_dorm, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        dorm_user = User.objects.get(email="dorm_admin_reg@aau.edu.et")
+        self.assertEqual(dorm_user.role, User.Role.DORM_ADMIN)
+        self.assertEqual(dorm_user.university_name, "Addis Ababa University")
+        self.assertEqual(dorm_user.staff_id_number, "AAU-DORM-REG-01")
+        self.assertFalse(dorm_user.is_approved)
+
+        # 2. Duplicate staff_id_number at same university should be rejected
+        payload_dupe = {
+            "full_name": "Second Dorm Admin",
+            "email": "dorm_dupe@aau.edu.et",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": "dorm_admin",
+            "university_name": "Addis Ababa University",
+            "staff_id_number": "AAU-DORM-REG-01",
+        }
+        resp_dupe = self.client.post("/api/auth/register/", payload_dupe, format="json")
+        self.assertEqual(resp_dupe.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("staff_id_number", resp_dupe.json())
+
+        # 3. Successful student_union registration
+        payload_union = {
+            "full_name": "Sara Student Dean",
+            "email": "union_dean_reg@aau.edu.et",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": "student_union",
+            "university_name": "Addis Ababa University",
+            "staff_id_number": "AAU-UNION-REG-01",
+        }
+        resp_union = self.client.post("/api/auth/register/", payload_union, format="json")
+        self.assertEqual(resp_union.status_code, status.HTTP_201_CREATED)
+        union_user = User.objects.get(email="union_dean_reg@aau.edu.et")
+        self.assertEqual(union_user.role, User.Role.STUDENT_UNION)
+        self.assertEqual(union_user.university_name, "Addis Ababa University")
+        self.assertEqual(union_user.staff_id_number, "AAU-UNION-REG-01")
+        self.assertFalse(union_user.is_approved)
+
+        # 4. Missing staff_id_number for dorm_admin is rejected
+        payload_no_staff_id = {
+            "full_name": "Missing Staff ID Admin",
+            "email": "no_staff_id@aau.edu.et",
+            "password": "Password123!",
+            "password_confirm": "Password123!",
+            "role": "dorm_admin",
+            "university_name": "Addis Ababa University",
+            "staff_id_number": "",
+        }
+        resp_no_id = self.client.post("/api/auth/register/", payload_no_staff_id, format="json")
+        self.assertEqual(resp_no_id.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("staff_id_number", resp_no_id.json())

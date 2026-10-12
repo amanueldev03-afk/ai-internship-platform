@@ -15,6 +15,7 @@ import { logoutUser } from '@/features/auth/authSlice'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useLargeText } from '@/contexts/AccessibilityContext'
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher'
+import { NotificationBell } from '@/components/common/NotificationBell'
 import { Button } from '@/components/ui/button'
 
 interface NavbarProps {
@@ -160,6 +161,7 @@ export default function Navbar({ className = '' }: NavbarProps) {
             {/* User Profile info or Sign In */}
             {isAuthenticated ? (
               <div className="flex items-center gap-2">
+                <NotificationBell />
                 <Link
                   to="/profile"
                   className="hidden sm:flex items-center gap-2 p-1.5 pr-3 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 hover:bg-primary-50 dark:hover:bg-neutral-700/80 border border-neutral-200/70 dark:border-neutral-700/60 transition-all duration-200"

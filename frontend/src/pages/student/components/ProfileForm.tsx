@@ -66,6 +66,7 @@ export function Input({
   onChange,
   error,
   disabled,
+  placeholder,
 }: {
   id?: string
   name?: string
@@ -76,6 +77,7 @@ export function Input({
   ) => void
   error?: string | undefined
   disabled?: boolean
+  placeholder?: string
 }) {
   return (
     <input
@@ -85,6 +87,7 @@ export function Input({
       value={value}
       onChange={onChange}
       disabled={disabled}
+      placeholder={placeholder}
       className={error ? errorClassName : inputClassName}
     />
   )

@@ -48,11 +48,47 @@ class InHouseCohort(models.Model):
         verbose_name="Is Open",
         help_text="Whether this cohort is actively accepting applications or open for team formation.",
     )
+    title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Cohort Title",
+    )
+    department = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        verbose_name="Target Department",
+    )
+    requirements = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Cohort Requirements",
+    )
+    opportunities = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Opportunities Offered",
+    )
+    min_gpa = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        default=Decimal("2.50"),
+        verbose_name="Minimum GPA Requirement",
+    )
     accepted_students = models.ManyToManyField(
         "uil_profiles.UILStudentProfile",
         related_name="inhouse_cohorts",
         blank=True,
         verbose_name="Accepted Student Profiles",
+    )
+    invited_students = models.ManyToManyField(
+        "uil_profiles.UILStudentProfile",
+        related_name="invited_inhouse_cohorts",
+        blank=True,
+        verbose_name="Invited Student Profiles",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -606,6 +642,7 @@ class TeamChannelMessage(models.Model):
         SQUAD_ADVISOR = "SQUAD_ADVISOR", "Squad + Academic Advisor"
         STUDENT_COMPANY = "STUDENT_COMPANY", "Student + Company Direct"
         STUDENT_DEAN = "STUDENT_DEAN", "Student + Department Dean Direct"
+        STUDENT_UIL = "STUDENT_UIL", "Student + UIL Officer Direct"
 
     id = models.UUIDField(
         primary_key=True,
@@ -647,6 +684,16 @@ class TeamChannelMessage(models.Model):
         upload_to="channel_attachments/%Y/%m/",
         null=True,
         blank=True,
+    )
+    is_read = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Is Read / Seen",
+    )
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Read At Timestamp",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

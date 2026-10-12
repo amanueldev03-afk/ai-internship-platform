@@ -1,6 +1,7 @@
 from rest_framework import (
     generics,
-    status
+    status,
+    serializers,
 )
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import (
@@ -346,12 +347,18 @@ class LoginView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
             if getattr(serializer, "outcome", "invalid") == "unapproved":
+                detail_val = serializer.errors.get("detail", "Your staff account is pending institutional administrator approval.")
+                if isinstance(detail_val, list):
+                    detail_val = detail_val[0]
                 return Response(
-                    serializer.errors,
+                    {"detail": str(detail_val)},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            detail_val = serializer.errors.get("detail", "Invalid email or password.")
+            if isinstance(detail_val, list):
+                detail_val = detail_val[0]
             return Response(
-                serializer.errors,
+                {"detail": str(detail_val)},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -412,7 +419,24 @@ class EmailVerificationLinkView(GenericAPIView):
             },
         },
     )
+    def perform_content_negotiation(self, request, force=False):
+        try:
+            return super().perform_content_negotiation(request, force=force)
+        except Exception:
+            from rest_framework.renderers import JSONRenderer
+            return (JSONRenderer(), "application/json")
+
     def get(self, request, uid, token):
+        from django.http import HttpResponseRedirect
+        from urllib.parse import quote
+        from django.utils.http import urlsafe_base64_decode
+        from .services import get_live_frontend_url
+
+        is_html = (
+            "text/html" in request.headers.get("Accept", "")
+            or "text/html" in request.META.get("HTTP_ACCEPT", "")
+        )
+        frontend_url = get_live_frontend_url()
 
         serializer = self.get_serializer(
             data={
@@ -421,18 +445,52 @@ class EmailVerificationLinkView(GenericAPIView):
             }
         )
 
-        serializer.is_valid(
-            raise_exception=True
-        )
+        try:
+            serializer.is_valid(raise_exception=True)
+            user = serializer.save()
+        except serializers.ValidationError as exc:
+            # Check if this user was already verified
+            try:
+                user_id = urlsafe_base64_decode(uid).decode()
+                user = User.objects.filter(pk=user_id).first()
+            except Exception:
+                user = None
 
-        user = serializer.save()
+            if user and user.is_email_verified:
+                role_str = str(user.role).lower()
+                if is_html:
+                    return HttpResponseRedirect(
+                        f"{frontend_url}/login?verified=true&email={quote(user.email)}&role={quote(role_str)}"
+                    )
+                return Response(
+                    {
+                        "detail": "Email has already been verified.",
+                        "user": {
+                            "id": user.id,
+                            "email": user.email,
+                            "username": user.username,
+                            "role": user.role,
+                        },
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if is_html:
+                return HttpResponseRedirect(f"{frontend_url}/verify-email?error=invalid_token")
+            raise exc
+
+        role_str = str(user.role).lower()
+        if is_html:
+            return HttpResponseRedirect(
+                f"{frontend_url}/login?verified=true&email={quote(user.email)}&role={quote(role_str)}"
+            )
+
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
 
         return Response(
             {
-                "message": "Email verified successfully. "
-                           "Your account is now active.",
+                "message": "Email verified successfully. Your account is now active.",
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
                 "user": {
@@ -699,7 +757,8 @@ from .permissions import IsSystemAdmin, IsUILOfficer
 @extend_schema(tags=["Administration"])
 class AdminPendingStaffListView(APIView):
     """
-    List institutional staff users pending administrator approval.
+    List institutional staff users for administrator review and verification.
+    Returns all institutional staff (UIL Officer, Department Dean, Student Union, Dorm Admin, Finance Officer).
     """
     permission_classes = [IsAuthenticated, IsSystemAdmin]
 
@@ -711,7 +770,15 @@ class AdminPendingStaffListView(APIView):
             User.Role.DORM_ADMIN,
             User.Role.FINANCE_OFFICER,
         ]
-        users = User.objects.filter(role__in=pending_roles, is_approved=False).order_by("-created_at")
+        queryset = User.objects.filter(role__in=pending_roles)
+        status_param = request.query_params.get("status", "").strip().lower()
+        if status_param == "pending":
+            queryset = queryset.filter(is_approved=False)
+        elif status_param == "approved":
+            queryset = queryset.filter(is_approved=True)
+
+        # Pending unapproved accounts (is_approved=False) appear first, ordered by newest created
+        users = queryset.order_by("is_approved", "-created_at")
         serializer = UserDetailSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -719,7 +786,7 @@ class AdminPendingStaffListView(APIView):
 @extend_schema(tags=["Administration"])
 class AdminApproveStaffView(APIView):
     """
-    Approve an institutional staff member.
+    Approve and verify an institutional staff member.
     """
     permission_classes = [IsAuthenticated, IsSystemAdmin]
 
@@ -731,9 +798,37 @@ class AdminApproveStaffView(APIView):
         user.is_active = True
         user.is_email_verified = True
         user.save()
+
+        # In-app verification alert notification for approved actor
+        try:
+            from apps.notifications.services import create_notification
+            from apps.notifications.models import Notification
+            role_title = dict(User.Role.choices).get(user.role, user.role)
+            create_notification(
+                recipient=user,
+                actor=request.user,
+                title="Institutional Account Verified & Approved",
+                message=(
+                    f"Your institutional account as {role_title} at {user.university_name or 'your university'} "
+                    f"has been officially verified and approved by the Platform Administrator. "
+                    f"You now have full institutional operational authority."
+                ),
+                notification_type=Notification.NotificationType.VERIFICATION,
+                link=f"/{str(user.role).lower().replace('_', '')}/dashboard",
+                metadata={
+                    "approved_by": request.user.email,
+                    "approved_at": timezone.now().isoformat(),
+                    "role": user.role,
+                    "university": user.university_name,
+                },
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to create verification notification: %s", exc)
+
         return Response(
             {
-                "message": f"Staff user {user.email} approved successfully.",
+                "message": f"Staff user {user.email} verified and approved successfully.",
                 "user": UserDetailSerializer(user).data,
             },
             status=status.HTTP_200_OK,

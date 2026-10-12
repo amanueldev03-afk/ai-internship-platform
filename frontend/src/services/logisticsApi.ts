@@ -22,6 +22,8 @@ export interface CampusLogisticsItem {
   meal_card_issued_at: string | null
   meal_card_issued_by: string | null
   meal_card_issued_by_name: string
+  student_union_signature_hash?: string
+  student_union_qr_code?: string
   dorm_block: string
   dorm_room: string
   dorm_bed_number: string
@@ -105,3 +107,35 @@ export async function deanSignOff(id: string): Promise<CampusLogisticsItem> {
   const response = await api.post<CampusLogisticsItem>(`/v1/logistics/${id}/dean-sign/`)
   return response.data
 }
+
+export interface ForwardedLetterItem {
+  student_id: string
+  student_id_number: string
+  student_name: string
+  student_email: string
+  department: string
+  university_name: string
+  academic_year: number
+  dean_title: string
+  dean_verified_at: string | null
+  dean_signature_hash: string
+  letter_title: string
+  letter_notes: string
+  allow_dorm?: boolean
+  allow_food?: boolean
+  valid_from: string | null
+  valid_until: string | null
+  qr_code: string | null
+  forwarded_at: string | null
+}
+
+export async function getDormForwardedLetters(): Promise<ForwardedLetterItem[]> {
+  const response = await api.get<ForwardedLetterItem[]>('/v1/uil-profiles/dorm/forwarded-letters/')
+  return response.data
+}
+
+export async function getStudentDeanForwardedLetters(): Promise<ForwardedLetterItem[]> {
+  const response = await api.get<ForwardedLetterItem[]>('/v1/uil-profiles/student-dean/forwarded-letters/')
+  return response.data
+}
+

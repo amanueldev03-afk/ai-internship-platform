@@ -53,14 +53,25 @@ def create_student_user(*, email, password, username=None,
 
 
 def create_user_with_role(*, email, password, role=User.Role.STUDENT, username=None,
-                          first_name="", last_name="", phone=None, department="", university_name="", auto_activate=False):
+                          first_name="", last_name="", phone=None, department="", university_name="", staff_id_number="", auto_activate=False, is_approved=None):
     """
     Create a new user account with any assigned role (Student, Company HR, Advisor, Dean, UIL, Union, Dorm, Admin).
     The user starts inactive and unverified until email confirmation is completed,
     unless they are an Administrator or auto_activate=True is requested.
+    Institutional staff (Dorm Admin, Student Union, Dean, UIL, Advisor) require administrator approval.
     """
     is_admin = role == User.Role.ADMIN
     is_active_flag = is_admin or auto_activate
+    if is_approved is not None:
+        approved_flag = is_approved
+    else:
+        if is_admin:
+            approved_flag = True
+        elif role in (User.Role.DORM_ADMIN, User.Role.STUDENT_UNION, User.Role.DEPT_DEAN, User.Role.UIL_OFFICER, User.Role.ADVISOR, User.Role.FINANCE_OFFICER):
+            approved_flag = False
+        else:
+            approved_flag = is_active_flag
+
     user = User.objects.create(
         email=email,
         username=username,
@@ -70,11 +81,12 @@ def create_user_with_role(*, email, password, role=User.Role.STUDENT, username=N
         role=role,
         department=department or "",
         university_name=university_name or "",
+        staff_id_number=staff_id_number or "",
         is_active=is_active_flag,
         is_email_verified=is_active_flag,
         is_staff=is_admin,
         is_superuser=is_admin,
-        is_approved=is_active_flag,
+        is_approved=approved_flag,
     )
     user.set_password(password)
     user.save()

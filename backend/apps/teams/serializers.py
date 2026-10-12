@@ -3,10 +3,18 @@ from apps.teams.models import InHouseCohort, ProjectTeam, TeamMember, WeeklyLogb
 
 
 class InHouseCohortSerializer(serializers.ModelSerializer):
+    invited_count = serializers.SerializerMethodField(read_only=True)
+    accepted_count = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = InHouseCohort
         fields = [
             "id",
+            "title",
+            "department",
+            "requirements",
+            "opportunities",
+            "min_gpa",
             "university_name",
             "academic_year",
             "start_date",
@@ -14,7 +22,18 @@ class InHouseCohortSerializer(serializers.ModelSerializer):
             "capacity_k",
             "enrolled_count",
             "is_open",
+            "invited_count",
+            "accepted_count",
+            "created_at",
+            "updated_at",
         ]
+        read_only_fields = ["id", "enrolled_count", "created_at", "updated_at"]
+
+    def get_invited_count(self, obj) -> int:
+        return obj.invited_students.count()
+
+    def get_accepted_count(self, obj) -> int:
+        return obj.accepted_students.count()
 
 
 class TeamMemberSerializer(serializers.ModelSerializer):

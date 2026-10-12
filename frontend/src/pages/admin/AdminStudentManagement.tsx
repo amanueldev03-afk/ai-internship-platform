@@ -49,7 +49,7 @@ export default function AdminStudentManagement() {
   const [selectedStudent, setSelectedStudent] = useState<AdminStudent | null>(null)
   const [activity, setActivity] = useState<StudentActivityResponse | null>(null)
   const [activityLoading, setActivityLoading] = useState(false)
-  const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | number | null>(null)
 
   const fetchStudents = useCallback(async () => {
     setIsLoading(true)

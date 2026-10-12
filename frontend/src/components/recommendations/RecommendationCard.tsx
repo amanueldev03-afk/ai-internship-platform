@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { MapPin, Briefcase, Calendar, Sparkles, Heart, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Recommendation } from '@/types'
 import { saveInternship, unsaveInternship, trackApplication } from '@/services/internshipApi'
-import { validateApplicationUrl, normalizeApplicationUrl } from '@/utils/urlValidation'
+import { validateApplicationUrl, normalizeApplicationUrl, isPlaceholderUrl } from '@/utils/urlValidation'
+import DirectApplyModal from '@/components/internships/DirectApplyModal'
 
 interface RecommendationCardProps {
   recommendation: Recommendation
@@ -28,6 +29,7 @@ export default function RecommendationCard({
   const [localApplied, setLocalApplied] = useState(isApplied)
   const [error, setError] = useState<string | null>(null)
   const [isExplanationExpanded, setIsExplanationExpanded] = useState(true)
+  const [showDirectApply, setShowDirectApply] = useState(false)
 
   useEffect(() => {
     setLocalSaved(isSaved)
@@ -70,28 +72,30 @@ export default function RecommendationCard({
     if (localApplied) return
     setError(null)
 
+    const rawUrl = internship.application_url || internship.source_url
+    if (!rawUrl || isPlaceholderUrl(rawUrl)) {
+      setShowDirectApply(true)
+      return
+    }
+
     const validation = validateApplicationUrl(internship)
     if (!validation.isValid) {
-      setError(validation.error || 'Application URL not available')
+      setShowDirectApply(true)
       return
     }
 
-    const rawUrl = internship.application_url || internship.source_url
     const targetUrl = normalizeApplicationUrl(rawUrl) || rawUrl
-
     if (!targetUrl) {
-      setError('Application URL not available')
+      setShowDirectApply(true)
       return
     }
-
-    console.log('Opening application URL:', targetUrl)
 
     // Fire-and-forget background tracking (non-blocking with short timeout)
     trackApplication(internship.id).catch((err) => {
       console.warn('Background application tracking failed (non-blocking):', err)
     })
 
-    // Immediately redirect student to external employer portal
+    // Redirect student to external employer portal
     window.open(targetUrl, '_blank', 'noopener,noreferrer')
     setLocalApplied(true)
     onApply?.(internship.id)
@@ -247,6 +251,17 @@ export default function RecommendationCard({
           )}
         </button>
       </div>
+
+      {showDirectApply && (
+        <DirectApplyModal
+          internship={internship}
+          onClose={() => setShowDirectApply(false)}
+          onSuccess={() => {
+            setLocalApplied(true)
+            onApply?.(internship.id)
+          }}
+        />
+      )}
     </div>
   )
 }

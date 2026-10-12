@@ -76,10 +76,20 @@ export const login = createAsyncThunk(
     } catch (error: any) {
       const detail = error.response?.data?.detail
       if (detail) {
-        return rejectWithValue(detail)
+        if (Array.isArray(detail)) {
+          return rejectWithValue(detail.map((d: any) => String(d)).join(', '))
+        }
+        if (typeof detail === 'object') {
+          return rejectWithValue(JSON.stringify(detail))
+        }
+        return rejectWithValue(String(detail))
       }
       const errors = error.response?.data
       if (errors && typeof errors === 'object') {
+        const firstVal = Object.values(errors)[0]
+        if (Array.isArray(firstVal) && firstVal.length > 0) {
+          return rejectWithValue(String(firstVal[0]))
+        }
         return rejectWithValue(JSON.stringify(errors))
       }
       return rejectWithValue('Login failed. Please check your credentials.')
@@ -100,6 +110,7 @@ export const register = createAsyncThunk(
       organization_name?: string
       department?: string
       university_name?: string
+      staff_id_number?: string
       auto_activate?: boolean
     },
     { rejectWithValue }
@@ -246,7 +257,7 @@ const authSlice = createSlice({
         if (action.payload?.access && action.payload?.refresh && action.payload?.user) {
           const normalizedRole = normalizeRole(action.payload.user.role) || 'student'
           const user: User = {
-            id: action.payload.user.id,
+            id: typeof action.payload.user.id === 'number' ? action.payload.user.id : (parseInt(String(action.payload.user.id), 10) || 0),
             email: action.payload.user.email,
             username: action.payload.user.username,
             role: normalizedRole,

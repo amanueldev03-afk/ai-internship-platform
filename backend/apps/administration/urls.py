@@ -16,17 +16,17 @@ urlpatterns = [
         name="admin-student-list",
     ),
     path(
-        "<int:pk>/deactivate/",
+        "<str:pk>/deactivate/",
         AdminStudentDeactivateView.as_view(),
         name="admin-student-deactivate",
     ),
     path(
-        "<int:pk>/activate/",
+        "<str:pk>/activate/",
         AdminStudentActivateView.as_view(),
         name="admin-student-activate",
     ),
     path(
-        "<int:pk>/activity/",
+        "<str:pk>/activity/",
         AdminStudentActivityView.as_view(),
         name="admin-student-activity",
     ),

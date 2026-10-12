@@ -33,6 +33,8 @@ const emptyForm = {
   current_year: '',
   field_of_study: '',
   university: '',
+  student_id_number: '',
+  gpa: '',
 }
 
 type FormState = typeof emptyForm
@@ -50,6 +52,20 @@ export default function PersonalEducationSection({
   const [errors, setErrors] = useState<ReturnType<typeof mapApiErrors> | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  function normalizeChoice(val: string | null | undefined, choices: Record<string, string>): string {
+    if (!val) return ''
+    const trimmed = val.trim()
+    if (choices[trimmed]) return trimmed
+    const lower = trimmed.toLowerCase()
+    if (choices[lower]) return lower
+    for (const [code, label] of Object.entries(choices)) {
+      if (label.toLowerCase() === lower || code.toLowerCase() === lower.replace(/ /g, '_')) {
+        return code
+      }
+    }
+    return trimmed
+  }
+
   useEffect(() => {
     let cancelled = false
     Promise.all([
@@ -58,16 +74,25 @@ export default function PersonalEducationSection({
     ])
       .then(([studentData, userData]) => {
         if (cancelled) return
+        const initialUni = studentData.university || userData?.university_name || ''
+        const initialPhone = studentData.phone || userData?.phone_number || ''
+        const initialDob = studentData.date_of_birth ? studentData.date_of_birth.split('T')[0] : ''
+        const initialYear = normalizeChoice(studentData.current_year, CURRENT_YEAR_LABELS)
+        const initialEdu = normalizeChoice(studentData.education_level, EDUCATION_LEVEL_LABELS)
+        const initialFos = normalizeChoice(studentData.field_of_study, FIELD_OF_STUDY_LABELS)
+
         setForm({
-          phone: studentData.phone ?? '',
-          country: studentData.country ?? '',
+          phone: initialPhone,
+          country: studentData.country || 'Ethiopia',
           city: studentData.city ?? '',
-          date_of_birth: studentData.date_of_birth ?? '',
+          date_of_birth: initialDob,
           bio: studentData.bio ?? '',
-          education_level: studentData.education_level ?? '',
-          current_year: studentData.current_year ?? '',
-          field_of_study: studentData.field_of_study ?? '',
-          university: studentData.university ?? '',
+          education_level: initialEdu,
+          current_year: initialYear,
+          field_of_study: initialFos,
+          university: initialUni,
+          student_id_number: studentData.student_id_number ?? '',
+          gpa: studentData.gpa !== null && studentData.gpa !== undefined ? String(studentData.gpa) : '',
         })
         setUser(userData)
       })
@@ -92,21 +117,44 @@ export default function PersonalEducationSection({
   }
 
   const handleSave = async () => {
-    setIsSaving(true)
+    if (isSaving) return
     setErrors(null)
     setSuccess(null)
+
+    // Validate GPA if provided
+    if (form.gpa) {
+      const gpaNum = parseFloat(form.gpa)
+      if (isNaN(gpaNum) || gpaNum < 0 || gpaNum > 4.0) {
+        setErrors({
+          fieldErrors: { gpa: ['Cumulative GPA must be a valid number between 0.00 and 4.00.'] },
+          nonFieldErrors: [],
+        })
+        return
+      }
+    }
+
+    setIsSaving(true)
     try {
-      await studentApi.updateStudentMe({
+      const payload: studentApi.StudentMeInput = {
         phone: form.phone,
         country: form.country,
         city: form.city,
-        date_of_birth: form.date_of_birth ? form.date_of_birth : null,
+        date_of_birth: form.date_of_birth ? form.date_of_birth.split('T')[0] : null,
         bio: form.bio,
         education_level: form.education_level,
         current_year: form.current_year,
         field_of_study: form.field_of_study,
         university: form.university,
-      })
+      }
+      if (form.student_id_number && form.student_id_number.trim()) {
+        payload.student_id_number = form.student_id_number.trim()
+      }
+      if (form.gpa !== '') {
+        const gpaVal = parseFloat(form.gpa)
+        payload.gpa = !isNaN(gpaVal) ? gpaVal : null
+      }
+
+      await studentApi.updateStudentMe(payload)
       setSuccess('Personal and education details saved.')
       onSaved()
     } catch (error) {
@@ -303,6 +351,27 @@ export default function PersonalEducationSection({
             value={form.university}
             onChange={handleChange}
             error={firstFieldError(errors, 'university')}
+          />
+        </FormField>
+        <FormField label="University ID Number *" htmlFor="me-student-id" error={firstFieldError(errors, 'student_id_number')}>
+          <Input
+            id="me-student-id"
+            name="student_id_number"
+            value={form.student_id_number}
+            onChange={handleChange}
+            placeholder="e.g. UGR/1234/14"
+            error={firstFieldError(errors, 'student_id_number')}
+          />
+        </FormField>
+        <FormField label="Cumulative GPA (0.00 - 4.00)" htmlFor="me-gpa" error={firstFieldError(errors, 'gpa')}>
+          <Input
+            id="me-gpa"
+            name="gpa"
+            type="number"
+            value={form.gpa}
+            onChange={handleChange}
+            placeholder="e.g. 3.75"
+            error={firstFieldError(errors, 'gpa')}
           />
         </FormField>
         <div className="sm:col-span-2">

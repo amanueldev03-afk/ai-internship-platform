@@ -157,6 +157,23 @@ class StudentProfile(TimeStampedModel):
         blank=True,
     )
 
+    student_id_number = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Student University ID Number",
+        help_text="Official university student identification number (e.g. UGR/1234/14).",
+    )
+
+    gpa = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Cumulative GPA",
+        help_text="Cumulative Grade Point Average (0.00 - 4.00).",
+    )
+
     # ==========================================================
     # SKILLS & EXPERIENCE
     # ==========================================================
@@ -374,16 +391,21 @@ class StudentProfile(TimeStampedModel):
                 "than or equal to minimum duration."
             )
 
-        # Availability window invariant (Task 3.3)
-        if (
-            self.availability_start is not None
-            and self.availability_end is not None
-            and self.availability_end < self.availability_start
-        ):
-            errors["availability_end"] = (
-                "Availability end date must be on or after the availability "
-                "start date."
-            )
+        # Unique student ID per university invariant
+        if self.student_id_number and self.university:
+            try:
+                from apps.uil_profiles.utils import universities_match
+                existing = StudentProfile.objects.filter(
+                    student_id_number__iexact=self.student_id_number.strip(),
+                ).exclude(id=self.id)
+                for ex in existing:
+                    if universities_match(ex.university, self.university):
+                        errors["student_id_number"] = (
+                            f"A student with ID '{self.student_id_number.strip()}' already exists for {self.university.strip()}."
+                        )
+                        break
+            except Exception:
+                pass
 
         if errors:
             raise ValidationError(errors)

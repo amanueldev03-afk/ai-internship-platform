@@ -1,6 +1,7 @@
 import logging
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -427,6 +428,13 @@ class DormAssignmentView(generics.GenericAPIView):
         if not logistics.meal_card_active or not logistics.meal_card_number:
             return Response(
                 {"detail": "Cannot assign dormitory room or issue keys before Student Union has issued and activated the student's meal card."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        today = timezone.now().date()
+        if logistics.valid_until and logistics.valid_until < today:
+            return Response(
+                {"detail": f"Logistics clearance window has expired on {logistics.valid_until}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

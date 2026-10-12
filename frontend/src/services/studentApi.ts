@@ -81,6 +81,8 @@ export interface StudentProfile {
   education_level: string | null
   field_of_study: string | null
   university: string | null
+  student_id_number?: string | null
+  gpa?: string | number | null
   skills: number[]
   interests: number[]
   experience: string | null
@@ -118,6 +120,8 @@ export interface StudentMeData {
   current_year: string | null
   field_of_study: string | null
   university: string | null
+  student_id_number?: string | null
+  gpa?: string | number | null
   completion: ProfileCompletion
   created_at: string
   updated_at: string
@@ -225,8 +229,9 @@ export async function getStudentSkills(): Promise<Skill[]> {
   return response.data
 }
 
-export async function addStudentSkill(skillId: number): Promise<Skill> {
-  const response = await api.post<Skill>('/students/me/skills/', { skill_id: skillId })
+export async function addStudentSkill(skill: number | string): Promise<Skill> {
+  const payload = typeof skill === 'number' ? { skill_id: skill } : { name: skill }
+  const response = await api.post<Skill>('/students/me/skills/', payload)
   return response.data
 }
 
@@ -249,10 +254,9 @@ export async function getStudentInterests(): Promise<CareerInterest[]> {
   return response.data
 }
 
-export async function addStudentInterest(interestId: number): Promise<CareerInterest> {
-  const response = await api.post<CareerInterest>('/students/me/interests/', {
-    interest_id: interestId,
-  })
+export async function addStudentInterest(interest: number | string): Promise<CareerInterest> {
+  const payload = typeof interest === 'number' ? { interest_id: interest } : { name: interest }
+  const response = await api.post<CareerInterest>('/students/me/interests/', payload)
   return response.data
 }
 

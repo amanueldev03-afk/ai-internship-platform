@@ -244,6 +244,15 @@ urlpatterns = [
         "api/teams/",
         include("apps.teams.urls"),
     ),
+    # Notification Center (Universal in-app alerts)
+    path(
+        "api/v1/notifications/",
+        include("apps.notifications.urls"),
+    ),
+    path(
+        "api/notifications/",
+        include("apps.notifications.urls"),
+    ),
     # Additional v1 API Aliases
     path(
         "api/v1/internships/",

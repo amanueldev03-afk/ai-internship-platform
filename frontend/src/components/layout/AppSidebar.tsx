@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Award,
   ShieldCheck,
+  Calendar,
   Cpu,
   Utensils,
   CreditCard,
@@ -32,6 +33,7 @@ import {
   Menu,
   X,
   Type,
+  UserCheck,
 } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { logoutUser } from '@/features/auth/authSlice'
@@ -124,9 +126,9 @@ export default function AppSidebar({
       case 'dept_dean':
       case 'dean':
         return [
-          { label: 'Dean Clearance Queue', path: '/dean/dashboard?tab=all', icon: Award },
-          { label: 'Pending Sign-Off', path: '/dean/dashboard?tab=pending', icon: Clock },
-          { label: 'Digitally Signed', path: '/dean/dashboard?tab=approved', icon: ShieldCheck },
+          { label: 'Dashboard', path: '/dean/dashboard?tab=overview', icon: LayoutDashboard },
+          { label: 'Student Clearance & QR', path: '/dean/dashboard?tab=students', icon: Award },
+          { label: 'Defense & Composite Grading', path: '/dean/dashboard?tab=defense', icon: Calendar },
         ]
       case 'uil_officer':
       case 'uil':
@@ -149,15 +151,16 @@ export default function AppSidebar({
       case 'student':
       default:
         return [
-          { label: 'Overview', path: '/dashboard?tab=overview', icon: LayoutDashboard },
-          { label: 'Track 1 Software House', path: '/dashboard?tab=track1', icon: Cpu },
-          { label: 'Campus Logistics Pass', path: '/dashboard?tab=logistics', icon: ShieldCheck },
-          { label: 'Advisor & Squad Channel', path: '/dashboard?tab=channel', icon: MessagesSquare },
-          { label: 'Discover Jobs', path: '/internships', icon: Search },
-          { label: 'AI Matches', path: '/recommendations', icon: Sparkles, badge: 'AI' },
-          { label: 'Applications', path: '/applications/history', icon: Send },
-          { label: 'Saved', path: '/saved', icon: Bookmark },
-          { label: 'My Profile', path: '/profile', icon: User },
+          { label: 'Operations Dashboard', path: '/dashboard?tab=overview', icon: LayoutDashboard },
+          { label: 'Track 1 In-House Software House', path: '/dashboard?tab=track1', icon: Cpu },
+          { label: 'Campus Clearance & Logistics', path: '/dashboard?tab=logistics', icon: ShieldCheck },
+          { label: 'Squad & Advisor Channel', path: '/dashboard?tab=channel', icon: MessagesSquare },
+          { label: 'Industry Opportunities', path: '/internships', icon: Search },
+          { label: 'AI Skill Matching', path: '/recommendations', icon: Sparkles, badge: 'AI' },
+          { label: 'Application Tracking', path: '/applications/history', icon: Send },
+          { label: 'Saved Opportunities', path: '/saved', icon: Bookmark },
+          { label: 'Personal & Education Dossier', path: '/profile?tab=personal', icon: UserCheck },
+          { label: 'Professional Profile & CV', path: '/profile', icon: User },
         ]
     }
   }
@@ -185,7 +188,7 @@ export default function AppSidebar({
           '/dashboard': 'overview',
           '/advisor/dashboard': 'squads',
           '/company/dashboard': 'listings',
-          '/dean/dashboard': 'all',
+          '/dean/dashboard': 'overview',
           '/uil/dashboard': 'cohorts',
         }
         return defaultTabs[targetPath] === targetTab
@@ -213,10 +216,10 @@ export default function AppSidebar({
   const sidebarContent = (
     <div className="flex flex-col h-full select-none">
       {/* Brand Header */}
-      <div className="p-4 flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800/80">
+      <div className={`p-4 flex items-center ${isCollapsed ? 'flex-col gap-2.5 justify-center' : 'justify-between'} border-b border-neutral-200/80 dark:border-neutral-800/80`}>
         <Link
           to={getDashboardPathForRole(currentRole)}
-          className="flex items-center gap-3 group overflow-hidden"
+          className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} group overflow-hidden`}
         >
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-primary-600 via-primary-500 to-secondary-500 text-white flex items-center justify-center font-black text-base shadow-glow group-hover:rotate-6 transition-all duration-300 flex-shrink-0">
             SI
@@ -254,7 +257,7 @@ export default function AppSidebar({
       )}
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1.5 scrollbar-thin">
+      <nav className={`flex-1 overflow-y-auto ${isCollapsed ? 'px-2 py-4 space-y-2' : 'px-3 py-4 space-y-1.5'} scrollbar-thin`}>
         {navItems.map((item) => {
           const active = isItemActive(item.path)
           const Icon = item.icon
@@ -264,17 +267,19 @@ export default function AppSidebar({
               key={item.label}
               to={item.path}
               title={isCollapsed ? item.label : undefined}
-              className={`group flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-bold transition-all duration-200 relative ${
+              className={`group flex items-center ${
+                isCollapsed ? 'justify-center w-12 h-12 mx-auto p-0 rounded-2xl' : 'gap-3 px-3 py-2.5 rounded-2xl'
+              } text-xs font-bold transition-all duration-200 relative ${
                 active
                   ? 'bg-gradient-to-r from-primary-600/10 via-primary-500/10 to-transparent text-primary-600 dark:text-primary-400 shadow-sm border border-primary-500/20'
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100/80 dark:hover:bg-neutral-800/60'
               }`}
             >
               {active && (
-                <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-primary-600 dark:bg-primary-400 shadow-glow" />
+                <div className={`absolute ${isCollapsed ? 'left-0.5 top-2.5 bottom-2.5 w-1' : 'left-0 top-2 bottom-2 w-1.5'} rounded-r-full bg-primary-600 dark:bg-primary-400 shadow-glow`} />
               )}
               <Icon
-                className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
                   active ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 group-hover:text-neutral-700 dark:group-hover:text-neutral-200'
                 }`}
               />
@@ -292,10 +297,10 @@ export default function AppSidebar({
       </nav>
 
       {/* Bottom Section: Controls & Profile */}
-      <div className="p-3 border-t border-neutral-200/80 dark:border-neutral-800/80 space-y-3 bg-neutral-50/50 dark:bg-[#09090b]/50">
+      <div className={`p-3 border-t border-neutral-200/80 dark:border-neutral-800/80 space-y-3 bg-neutral-50/50 dark:bg-[#09090b]/50 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
         {/* Utilities: Theme, Large Text & Language */}
         <div className={`flex items-center ${isCollapsed ? 'flex-col gap-2' : 'justify-between'}`}>
-          <div className="flex items-center gap-1.5">
+          <div className={`flex items-center ${isCollapsed ? 'flex-col gap-1.5' : 'gap-1.5'}`}>
             <button
               onClick={toggleTheme}
               aria-label="Toggle theme"
@@ -330,8 +335,9 @@ export default function AppSidebar({
         {/* User Profile Info Card */}
         <div
           className={`flex items-center gap-3 p-2 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 shadow-xs ${
-            isCollapsed ? 'justify-center' : ''
+            isCollapsed ? 'justify-center w-12 h-12 p-0' : 'w-full'
           }`}
+          title={isCollapsed ? userDisplayName : undefined}
         >
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-secondary-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-sm">
             {userInitial}
@@ -362,7 +368,7 @@ export default function AppSidebar({
         {isCollapsed && (
           <button
             onClick={handleLogout}
-            className="w-full py-2 flex items-center justify-center text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all duration-200"
+            className="w-12 h-10 flex items-center justify-center text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-all duration-200 mx-auto"
             title="Sign out"
           >
             <LogOut className="w-4 h-4" />

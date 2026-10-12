@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { 
   GraduationCap, 
   Building2, 
@@ -23,7 +23,6 @@ import {
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { register, clearError } from '@/features/auth/authSlice'
 import { getGoogleOAuthUrl } from '@/services/authApi'
-import { getDashboardPathForRole } from '@/routes/routeUtils'
 import { Button } from '@/components/ui/button'
 
 export type RegistrationRole = 
@@ -157,7 +156,6 @@ export function mapRoleParamToRegistrationRole(param?: string | null): Registrat
 }
 
 export default function RegisterPage() {
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const [searchParams] = useSearchParams()
   const { isLoading, error } = useAppSelector((state) => state.auth)
@@ -176,6 +174,7 @@ export default function RegisterPage() {
     organization_name: '',
     university_name: '',
     department: '',
+    staff_id_number: '',
   })
 
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({})
@@ -230,6 +229,9 @@ export default function RegisterPage() {
       if (!formData.university_name.trim()) {
         errors.university_name = 'University / Institution name is required.'
       }
+      if (['dorm_admin', 'student_union'].includes(selectedRole) && !formData.staff_id_number.trim()) {
+        errors.staff_id_number = 'Official Staff / Employee ID is required for verification.'
+      }
     }
 
     setClientErrors(errors)
@@ -281,18 +283,16 @@ export default function RegisterPage() {
           requiresUni ? formData.university_name.trim() || undefined : undefined,
         department:
           requiresDept ? formData.department.trim() || undefined : undefined,
-        auto_activate: true,
+        staff_id_number:
+          ['dorm_admin', 'student_union', 'uil_officer', 'finance_officer', 'dept_dean'].includes(selectedRole)
+            ? formData.staff_id_number.trim() || undefined
+            : undefined,
       })
     )
 
     if (register.fulfilled.match(result)) {
-      if (result.payload?.access) {
-        const targetDashboard = getDashboardPathForRole(selectedRole)
-        navigate(targetDashboard, { replace: true })
-      } else {
-        setRegisteredEmail(emailToRegister)
-        setRegistrationSuccess(true)
-      }
+      setRegisteredEmail(emailToRegister)
+      setRegistrationSuccess(true)
     }
   }
 
@@ -328,7 +328,6 @@ export default function RegisterPage() {
   if (registrationSuccess) {
     const isStaffRole = ['dept_dean', 'uil_officer', 'student_union', 'dorm_admin', 'finance_officer'].includes(selectedRole)
     const isAdvisorRole = selectedRole === 'advisor'
-    const isAdminRole = selectedRole === 'admin'
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-primary-50/30 dark:from-[#09090b] dark:to-neutral-900/40 px-4 py-12 animate-fade-in">
@@ -356,12 +355,6 @@ export default function RegisterPage() {
                   Your academic advisor registration for{' '}
                   <span className="font-bold text-neutral-900 dark:text-white">{registeredEmail}</span> has been received.
                   Please verify your email inbox. Note that your account will require UIL Officer approval before logging in.
-                </>
-              ) : isAdminRole ? (
-                <>
-                  Administrator account has been activated for{' '}
-                  <span className="font-bold text-neutral-900 dark:text-white">{registeredEmail}</span>.
-                  You can now sign in directly to manage institutional operations.
                 </>
               ) : (
                 <>
@@ -577,8 +570,6 @@ export default function RegisterPage() {
                 placeholder={
                   selectedRole === 'company_hr' || selectedRole === 'company_mentor'
                     ? 'recruiting@company.et'
-                    : selectedRole === 'admin'
-                    ? 'admin@smartintern.et'
                     : 'user@university.edu.et'
                 }
               />
@@ -620,7 +611,7 @@ export default function RegisterPage() {
 
           {/* Role-Specific Fields: University & Department */}
           {['advisor', 'dept_dean', 'student', 'uil_officer', 'student_union', 'dorm_admin', 'finance_officer'].includes(selectedRole) && (
-            <div className={`grid grid-cols-1 ${['advisor', 'dept_dean', 'student'].includes(selectedRole) ? 'sm:grid-cols-2' : ''} gap-3`}>
+            <div className={`grid grid-cols-1 ${['advisor', 'dept_dean', 'student', 'dorm_admin', 'student_union', 'uil_officer', 'finance_officer'].includes(selectedRole) ? 'sm:grid-cols-2' : ''} gap-3`}>
               <div>
                 <label htmlFor="university_name" className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
                   University / College {selectedRole !== 'student' && <span className="text-error-500">*</span>}
@@ -666,6 +657,32 @@ export default function RegisterPage() {
                   {(clientErrors.department || getBackendErrorForField('department')) && (
                     <p className="mt-1 text-xs font-medium text-error-600 dark:text-error-400">
                       {clientErrors.department || getBackendErrorForField('department')}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {['dorm_admin', 'student_union', 'uil_officer', 'finance_officer', 'dept_dean'].includes(selectedRole) && (
+                <div>
+                  <label htmlFor="staff_id_number" className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Staff / Employee ID {['dorm_admin', 'student_union'].includes(selectedRole) && <span className="text-error-500">*</span>}
+                  </label>
+                  <div className="relative flex items-center">
+                    <CreditCard className="w-4 h-4 text-neutral-400 absolute left-4 pointer-events-none" />
+                    <input
+                      id="staff_id_number"
+                      name="staff_id_number"
+                      type="text"
+                      value={formData.staff_id_number}
+                      onChange={handleChange}
+                      disabled={isLoading}
+                      className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/80 border-2 border-neutral-200/80 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all"
+                      placeholder="e.g. AAU-STAFF-1049"
+                    />
+                  </div>
+                  {(clientErrors.staff_id_number || getBackendErrorForField('staff_id_number')) && (
+                    <p className="mt-1 text-xs font-medium text-error-600 dark:text-error-400">
+                      {clientErrors.staff_id_number || getBackendErrorForField('staff_id_number')}
                     </p>
                   )}
                 </div>

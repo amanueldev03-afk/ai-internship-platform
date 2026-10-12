@@ -169,51 +169,63 @@ export default function PreferencesSection({
             error={firstFieldError(errors, 'internship_type')}
           />
         </FormField>
-        <FormField
-          label="Availability start"
-          htmlFor="pref-availability-start"
-          error={firstFieldError(errors, 'availability_start')}
-        >
-          <Input
-            id="pref-availability-start"
-            name="availability_start"
-            type="date"
-            value={form.availability_start}
-            onChange={handleChange}
-            error={firstFieldError(errors, 'availability_start')}
-          />
-        </FormField>
-        <FormField
-          label="Availability end"
-          htmlFor="pref-availability-end"
-          error={firstFieldError(errors, 'availability_end')}
-        >
-          <Input
-            id="pref-availability-end"
-            name="availability_end"
-            type="date"
-            value={form.availability_end}
-            onChange={handleChange}
-            error={firstFieldError(errors, 'availability_end')}
-          />
-        </FormField>
       </div>
 
-      <div className="flex items-center gap-3 pt-2">
-        <input
-          id="pref-availability-immediately"
-          name="availability_immediately"
-          type="checkbox"
-          checked={form.availability_immediately}
-          onChange={handleChange}
-          className="w-4 h-4 text-primary-600 border-neutral-300 dark:border-neutral-700 rounded focus:ring-primary-500 dark:bg-neutral-900"
-        />
-        <label
-          htmlFor="pref-availability-immediately"
-          className="text-sm font-medium text-neutral-700 dark:text-neutral-300 cursor-pointer"
-        >
-          Available immediately
-        </label>
+      <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 space-y-3">
+        <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+          Campus Logistics & University Placement Preferences
+        </h4>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          Specify institutional accommodation and campus dining needs for university clearances.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <label className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40 cursor-pointer hover:border-primary-500/40 transition-all">
+            <input
+              type="checkbox"
+              name="availability_immediately"
+              checked={form.availability_immediately}
+              onChange={handleChange}
+              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+            />
+            <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              Available for immediate internship placement
+            </span>
+          </label>
+
+          <label className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40 cursor-pointer hover:border-primary-500/40 transition-all">
+            <input
+              type="checkbox"
+              defaultChecked={true}
+              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+            />
+            <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              Request University Campus Dormitory Housing
+            </span>
+          </label>
+
+          <label className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40 cursor-pointer hover:border-primary-500/40 transition-all">
+            <input
+              type="checkbox"
+              defaultChecked={true}
+              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+            />
+            <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              Request University Cafeteria Meal Card Ticket
+            </span>
+          </label>
+
+          <label className="flex items-center gap-3 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40 cursor-pointer hover:border-primary-500/40 transition-all">
+            <input
+              type="checkbox"
+              defaultChecked={true}
+              className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+            />
+            <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              Eligible for In-House Software House Cohort (Track 1)
+            </span>
+          </label>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 pt-2">

@@ -173,6 +173,8 @@ class StudentProfileSerializer(serializers.ModelSerializer):
             "education_level",
             "field_of_study",
             "university",
+            "student_id_number",
+            "gpa",
 
             # Skills & experience (read-only — use POST /api/students/skills/add/
             # or /api/students/me/skills/ to change)
@@ -286,7 +288,132 @@ class StudentProfileSerializer(serializers.ModelSerializer):
                 )
             })
 
+        # Student ID uniqueness per university
+        student_id_number = (attrs.get("student_id_number") or getattr(self.instance, "student_id_number", "") or "").strip()
+        university = (attrs.get("university") or getattr(self.instance, "university", "") or "").strip()
+        if student_id_number and university:
+            try:
+                from apps.uil_profiles.utils import universities_match
+                from apps.students.models import StudentProfile
+                qs = StudentProfile.objects.filter(student_id_number__iexact=student_id_number)
+                if self.instance and self.instance.pk:
+                    qs = qs.exclude(pk=self.instance.pk)
+                for existing in qs:
+                    existing_univ = existing.university or (getattr(existing.user, "university_name", "") if getattr(existing, "user", None) else "")
+                    if universities_match(existing_univ, university):
+                        raise serializers.ValidationError({
+                            "student_id_number": f"A student with ID '{student_id_number}' already exists at {university}."
+                        })
+            except serializers.ValidationError:
+                raise
+            except Exception:
+                pass
+
         return attrs
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        sync_student_to_uil_profile(instance)
+        return instance
+
+
+def sync_student_to_uil_profile(profile):
+    """
+    Keep StudentProfile in sync with UILStudentProfile and user records so that
+    Department Dean and UIL Officer dashboards always reflect the latest
+    academic data (student_id_number, department, gpa, academic_year, campus_city).
+    """
+    user = getattr(profile, "user", None)
+    if not user:
+        return
+    try:
+        from apps.uil_profiles.models import UILStudentProfile
+        from apps.students.models import Student as LegacyStudent, StudentProfile
+        from apps.accounts.models import StudentProfile as AccStudentProfile
+
+        dept_val = profile.field_of_study or getattr(user, "department", "") or ""
+        for code, label in StudentProfile.FIELD_OF_STUDY_CHOICES:
+            if code == dept_val.lower().strip() or label.lower() == dept_val.lower().strip():
+                dept_val = label
+                break
+
+        legacy_stu, _ = LegacyStudent.objects.get_or_create(user=user)
+        uil_prof, _ = UILStudentProfile.objects.get_or_create(
+            student=legacy_stu,
+            defaults={
+                "student_id_number": profile.student_id_number or f"UGR/{user.id.hex[:4].upper()}/16",
+                "department": dept_val or "Computer Science",
+                "academic_year": 4,
+                "campus_city": profile.university or getattr(user, "university_name", "") or profile.city or "Addis Ababa",
+            },
+        )
+        changed = False
+        if profile.student_id_number and uil_prof.student_id_number != profile.student_id_number:
+            uil_prof.student_id_number = profile.student_id_number
+            changed = True
+        if profile.gpa is not None and uil_prof.gpa != profile.gpa:
+            uil_prof.gpa = profile.gpa
+            changed = True
+        if dept_val and uil_prof.department != dept_val:
+            uil_prof.department = dept_val
+            changed = True
+        if not uil_prof.campus_city:
+            uil_prof.campus_city = profile.university or getattr(user, "university_name", "") or profile.city or "Addis Ababa"
+            changed = True
+
+        year_map = {
+            "first_year": 1,
+            "second_year": 2,
+            "third_year": 3,
+            "fourth_year": 4,
+            "final_year": 5,
+            "graduate": 5,
+        }
+        if profile.current_year in year_map:
+            mapped_yr = year_map[profile.current_year]
+            if uil_prof.academic_year != mapped_yr:
+                uil_prof.academic_year = mapped_yr
+                changed = True
+
+        if changed:
+            uil_prof.save()
+
+        # Also sync to accounts.StudentProfile if it exists
+        if hasattr(user, "student_profile") and user.student_profile:
+            acc_sp = user.student_profile
+            acc_changed = False
+            if profile.student_id_number and acc_sp.student_id_number != profile.student_id_number:
+                acc_sp.student_id_number = profile.student_id_number
+                acc_changed = True
+            if profile.university and acc_sp.university_name != profile.university:
+                acc_sp.university_name = profile.university
+                acc_changed = True
+            if profile.gpa is not None and acc_sp.gpa != profile.gpa:
+                acc_sp.gpa = profile.gpa
+                acc_changed = True
+            if dept_val and acc_sp.department != dept_val:
+                acc_sp.department = dept_val
+                acc_changed = True
+            if acc_changed:
+                acc_sp.save()
+
+        # Sync to user model fields
+        user_updates = []
+        if dept_val and getattr(user, "department", "") != dept_val:
+            user.department = dept_val
+            user_updates.append("department")
+        if profile.university and getattr(user, "university_name", "") != profile.university:
+            user.university_name = profile.university
+            user_updates.append("university_name")
+        if profile.phone and getattr(user, "phone_number", "") != profile.phone:
+            user.phone_number = profile.phone
+            user_updates.append("phone_number")
+        if user_updates:
+            user.save(update_fields=user_updates)
+
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Failed to sync to UILStudentProfile: %s", exc)
 
 
 class StudentMeSerializer(serializers.ModelSerializer):
@@ -326,9 +453,142 @@ class StudentMeSerializer(serializers.ModelSerializer):
         )
     )
 
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, "copy") else dict(data)
+
+        # Normalize education_level
+        if "education_level" in data and data["education_level"]:
+            raw_edu = str(data["education_level"]).strip().lower().replace(" ", "_")
+            for code, label in StudentProfile.EDUCATION_LEVEL_CHOICES:
+                if raw_edu == code or raw_edu == label.lower().replace(" ", "_"):
+                    data["education_level"] = code
+                    break
+
+        # Normalize current_year
+        if "current_year" in data and data["current_year"]:
+            raw_yr = str(data["current_year"]).strip().lower().replace(" ", "_")
+            year_num_map = {
+                "1": "first_year",
+                "2": "second_year",
+                "3": "third_year",
+                "4": "fourth_year",
+                "5": "final_year",
+            }
+            if raw_yr in year_num_map:
+                data["current_year"] = year_num_map[raw_yr]
+            else:
+                for code, label in StudentProfile.CURRENT_YEAR_CHOICES:
+                    if raw_yr == code or raw_yr == label.lower().replace(" ", "_"):
+                        data["current_year"] = code
+                        break
+
+        # Normalize field_of_study
+        if "field_of_study" in data and data["field_of_study"]:
+            raw_fos = str(data["field_of_study"]).strip().lower().replace(" ", "_")
+            matched = False
+            for code, label in StudentProfile.FIELD_OF_STUDY_CHOICES:
+                if raw_fos == code or raw_fos == label.lower().replace(" ", "_"):
+                    data["field_of_study"] = code
+                    matched = True
+                    break
+            if not matched:
+                for code, label in StudentProfile.FIELD_OF_STUDY_CHOICES:
+                    if raw_fos in code or raw_fos in label.lower():
+                        data["field_of_study"] = code
+                        matched = True
+                        break
+
+        # Normalize gpa
+        if "gpa" in data:
+            if data["gpa"] == "" or data["gpa"] is None:
+                data["gpa"] = None
+
+        # Normalize date_of_birth
+        if "date_of_birth" in data:
+            if data["date_of_birth"] == "" or data["date_of_birth"] is None:
+                data["date_of_birth"] = None
+            elif isinstance(data["date_of_birth"], str) and "T" in data["date_of_birth"]:
+                data["date_of_birth"] = data["date_of_birth"].split("T")[0]
+
+        return super().to_internal_value(data)
+
     def get_completion(self, obj) -> dict:
         from .services.profile_completion import compute_profile_completion
         return compute_profile_completion(obj)
+
+    def validate_gpa(self, value):
+        if value is not None and not (0.0 <= float(value) <= 4.0):
+            raise serializers.ValidationError("GPA must be between 0.00 and 4.00.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        student_id_number = (
+            attrs.get("student_id_number")
+            or getattr(self.instance, "student_id_number", "")
+            or ""
+        ).strip()
+        university = (
+            attrs.get("university")
+            or getattr(self.instance, "university", "")
+            or ""
+        ).strip()
+        user = getattr(self.instance, "user", None) or getattr(self.context.get("request"), "user", None)
+        if not university and user:
+            university = getattr(user, "university_name", "").strip()
+
+        if student_id_number and university:
+            try:
+                from apps.uil_profiles.utils import universities_match
+                from apps.students.models import StudentProfile
+                qs = StudentProfile.objects.filter(student_id_number__iexact=student_id_number)
+                if self.instance and self.instance.pk:
+                    qs = qs.exclude(pk=self.instance.pk)
+                if user:
+                    qs = qs.exclude(user=user)
+                for existing in qs:
+                    existing_univ = existing.university or (
+                        getattr(existing.user, "university_name", "")
+                        if getattr(existing, "user", None)
+                        else ""
+                    )
+                    if universities_match(existing_univ, university):
+                        raise serializers.ValidationError({
+                            "student_id_number": f"A student with ID '{student_id_number}' already exists at {university}."
+                        })
+
+                from apps.uil_profiles.models import UILStudentProfile
+                uil_qs = UILStudentProfile.objects.filter(student_id_number__iexact=student_id_number)
+                if user:
+                    uil_qs = uil_qs.exclude(student__user=user)
+                for uil_ex in uil_qs:
+                    from apps.uil_profiles.utils import get_student_profile_university
+                    uil_univ = get_student_profile_university(uil_ex)
+                    if universities_match(uil_univ, university):
+                        raise serializers.ValidationError({
+                            "student_id_number": f"A student with ID '{student_id_number}' already exists at {university}."
+                        })
+
+                from apps.accounts.models import StudentProfile as AccStudentProfile
+                acc_qs = AccStudentProfile.objects.filter(student_id_number__iexact=student_id_number)
+                if user:
+                    acc_qs = acc_qs.exclude(user=user)
+                for acc_ex in acc_qs:
+                    if universities_match(acc_ex.university_name, university):
+                        raise serializers.ValidationError({
+                            "student_id_number": f"A student with ID '{student_id_number}' already exists at {university}."
+                        })
+            except serializers.ValidationError:
+                raise
+            except Exception:
+                pass
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        sync_student_to_uil_profile(instance)
+        return instance
 
     class Meta:
         model = StudentProfile
@@ -345,6 +605,8 @@ class StudentMeSerializer(serializers.ModelSerializer):
             "current_year",
             "field_of_study",
             "university",
+            "student_id_number",
+            "gpa",
             # Completion indicator (Task 3.6)
             "completion",
             "created_at",

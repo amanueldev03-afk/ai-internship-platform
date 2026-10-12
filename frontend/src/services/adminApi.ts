@@ -1,7 +1,7 @@
 import api from './api'
 
 export interface AdminStudent {
-  id: number
+  id: string | number
   email: string
   username: string
   first_name: string
@@ -29,7 +29,7 @@ export interface AdminStudentListResponse {
 }
 
 export interface StudentActivityEntry {
-  id: number
+  id: number | string
   action: string
   action_display: string
   description: string
@@ -39,7 +39,7 @@ export interface StudentActivityEntry {
 
 export interface StudentActivityResponse {
   student: {
-    id: number
+    id: string | number
     email: string
     full_name: string
     is_active: boolean
@@ -132,17 +132,17 @@ export async function getAdminStudents(params?: {
   return response.data
 }
 
-export async function deactivateStudent(studentId: number): Promise<{ message: string; student_id: number; is_active: boolean }> {
+export async function deactivateStudent(studentId: string | number): Promise<{ message: string; student_id: string | number; is_active: boolean }> {
   const response = await api.post(`/admin/students/${studentId}/deactivate/`)
   return response.data
 }
 
-export async function activateStudent(studentId: number): Promise<{ message: string; student_id: number; is_active: boolean }> {
+export async function activateStudent(studentId: string | number): Promise<{ message: string; student_id: string | number; is_active: boolean }> {
   const response = await api.post(`/admin/students/${studentId}/activate/`)
   return response.data
 }
 
-export async function getStudentActivity(studentId: number, params?: { page?: number; action?: string }): Promise<StudentActivityResponse> {
+export async function getStudentActivity(studentId: string | number, params?: { page?: number; action?: string }): Promise<StudentActivityResponse> {
   const response = await api.get(`/admin/students/${studentId}/activity/`, { params })
   return response.data
 }

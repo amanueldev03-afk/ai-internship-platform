@@ -6,12 +6,18 @@
 export type UserRole = 'student' | 'admin' | string
 
 export interface User {
-  id: number
+  id: number | string
   email: string
   username: string
   role: UserRole
   first_name?: string
   last_name?: string
+  full_name?: string
+  phone_number?: string
+  department?: string
+  university_name?: string
+  staff_id_number?: string
+  is_approved?: boolean
   profile_photo?: string
   profile_photo_url?: string
   is_email_verified?: boolean

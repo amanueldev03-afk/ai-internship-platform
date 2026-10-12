@@ -82,6 +82,12 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
         allow_blank=True,
     )
 
+    staff_id_number = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+
     password = serializers.CharField(
         write_only=True,
     )
@@ -122,6 +128,7 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
             "organization_name",
             "department",
             "university_name",
+            "staff_id_number",
             "password",
             "password_confirm",
             "auto_activate",
@@ -165,6 +172,12 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "department": "Department is required for this academic role."
                 })
+            staff_id = (attrs.get("staff_id_number") or "").strip()
+            if staff_id:
+                if User.objects.filter(staff_id_number=staff_id, university_name__iexact=uni).exists():
+                    raise serializers.ValidationError({
+                        "staff_id_number": f"Staff ID '{staff_id}' is already registered at {uni}."
+                    })
 
         if role_raw in ("uil_officer", "uil", "student_union", "union", "dorm_admin", "dorm", "finance_officer", "finance"):
             uni = (attrs.get("university_name") or "").strip()
@@ -172,6 +185,16 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "university_name": "University name is required for institutional staff registration."
                 })
+            staff_id = (attrs.get("staff_id_number") or "").strip()
+            if role_raw in ("dorm_admin", "dorm", "student_union", "union") and not staff_id:
+                raise serializers.ValidationError({
+                    "staff_id_number": "Staff ID Number is required for Dormitory Administration and Student Dean registration."
+                })
+            if staff_id:
+                if User.objects.filter(staff_id_number=staff_id, university_name__iexact=uni).exists():
+                    raise serializers.ValidationError({
+                        "staff_id_number": f"Staff ID '{staff_id}' is already registered at {uni}."
+                    })
 
         # 4. Password validation
         if attrs.get("password_confirm"):
@@ -213,6 +236,7 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
         org_name = (validated_data.pop("organization_name", "") or "").strip()
         dept_name = (validated_data.pop("department", "") or "").strip()
         uni_name = (validated_data.pop("university_name", "") or "").strip()
+        staff_id_num = (validated_data.pop("staff_id_number", "") or "").strip()
 
         with transaction.atomic():
             if target_role == User.Role.STUDENT:
@@ -229,31 +253,48 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
                     user.university_name = uni_name
                 if dept_name:
                     user.department = dept_name
-                if auto_activate:
-                    user.is_active = True
-                    user.is_email_verified = True
-                    user.is_approved = True
+                # Accounts require email verification before activation
+                user.is_active = False
+                user.is_email_verified = False
+                user.is_approved = True
                 user.save()
 
                 # Empty StudentProfile shell completes during onboarding
                 from apps.students.models import StudentProfile as LegacyStudentProfile
                 from apps.students.models import Student as LegacyStudent
                 from apps.uil_profiles.models import UILStudentProfile
+
+                dept_slug = ""
+                if dept_name:
+                    for code, label in LegacyStudentProfile.FIELD_OF_STUDY_CHOICES:
+                        if code == dept_name.lower().replace(" ", "_") or label.lower() == dept_name.lower():
+                            dept_slug = code
+                            break
+                    if not dept_slug:
+                        dept_slug = dept_name
+
                 LegacyStudentProfile.objects.create(
                     user=user,
                     phone=phone,
                     university=uni_name or "",
+                    field_of_study=dept_slug,
                 )
                 legacy_stu, _ = LegacyStudent.objects.get_or_create(user=user)
-                UILStudentProfile.objects.get_or_create(
+                if dept_name:
+                    legacy_stu.field_of_study = dept_name
+                    legacy_stu.save()
+                uil_prof, _ = UILStudentProfile.objects.get_or_create(
                     student=legacy_stu,
                     defaults={
                         "student_id_number": f"UGR/{user.id.hex[:4].upper()}/16",
                         "department": dept_name or "Computer Science",
                         "academic_year": 4,
-                        "campus_city": "Addis Ababa",
+                        "campus_city": uni_name or "Addis Ababa",
                     }
                 )
+                if dept_name and uil_prof.department != dept_name:
+                    uil_prof.department = dept_name
+                    uil_prof.save()
             else:
                 user = create_user_with_role(
                     email=validated_data["email"],
@@ -265,7 +306,9 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
                     phone=phone,
                     department=dept_name,
                     university_name=uni_name,
-                    auto_activate=True if auto_activate or target_role != User.Role.STUDENT else False,
+                    staff_id_number=staff_id_num,
+                    auto_activate=False,
+                    is_approved=False if target_role in (User.Role.DORM_ADMIN, User.Role.STUDENT_UNION, User.Role.DEPT_DEAN, User.Role.UIL_OFFICER, User.Role.ADVISOR, User.Role.FINANCE_OFFICER) else True,
                 )
 
                 if target_role in (User.Role.COMPANY_HR, User.Role.COMPANY_MENTOR) and org_name:
@@ -304,6 +347,7 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
                             defaults={
                                 "staff_role": target_role,
                                 "department": dept_obj,
+                                "staff_id_number": staff_id_num,
                             }
                         )
                     except Exception:
@@ -368,7 +412,7 @@ class UserSerializer(serializers.ModelSerializer):
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     """
     Writable serializer for authenticated user profile updates
-    (profile photo, name). Used by PATCH /api/accounts/me/.
+    (profile photo, name, university, staff ID). Used by PATCH /api/v1/auth/me/.
     """
 
     class Meta:
@@ -378,7 +422,39 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "profile_photo",
+            "university_name",
+            "department",
+            "staff_id_number",
+            "phone_number",
         )
+
+    def validate(self, attrs):
+        uni = attrs.get("university_name") or getattr(self.instance, "university_name", "")
+        staff_id = attrs.get("staff_id_number")
+        if staff_id and uni and self.instance:
+            conflict = User.objects.filter(
+                staff_id_number=staff_id, university_name__iexact=uni
+            ).exclude(id=self.instance.id)
+            if conflict.exists():
+                raise serializers.ValidationError({
+                    "staff_id_number": f"Staff ID '{staff_id}' is already registered at {uni}."
+                })
+        return attrs
+
+    def update(self, instance, validated_data):
+        user = super().update(instance, validated_data)
+        if hasattr(user, "staff_profile") and user.staff_profile:
+            staff_profile = user.staff_profile
+            updated = False
+            if user.staff_id_number and staff_profile.staff_id_number != user.staff_id_number:
+                staff_profile.staff_id_number = user.staff_id_number
+                updated = True
+            if user.phone_number and staff_profile.phone_number != user.phone_number:
+                staff_profile.phone_number = user.phone_number
+                updated = True
+            if updated:
+                staff_profile.save()
+        return user
 
     def validate_profile_photo(self, value):
         """Validate profile photo file type and size."""
@@ -491,8 +567,14 @@ class EmailVerificationSerializer(serializers.Serializer):
         # Activate the account now that the email is confirmed (Task 2.1).
         user.is_active = True
 
+        # Auto-approve students, employers, mentors, and administrators upon email verification.
+        # Institutional staff (dean, uil, union, dorm) require Admin approval. Advisors require UIL approval.
+        role_upper = str(user.role).upper()
+        if role_upper in (User.Role.STUDENT, User.Role.COMPANY_HR, User.Role.COMPANY_MENTOR, User.Role.ADMIN):
+            user.is_approved = True
+
         user.save(
-            update_fields=["is_email_verified", "is_active"]
+            update_fields=["is_email_verified", "is_active", "is_approved"]
         )
 
         return user
@@ -778,6 +860,47 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
+        username = (attrs.get(self.username_field) or "").strip()
+        password = attrs.get("password")
+
+        from django.db.models import Q
+        pre_user = User.objects.filter(
+            Q(email__iexact=username) | Q(username__iexact=username)
+        ).first()
+
+        if pre_user and pre_user.check_password(password):
+            role_upper = str(pre_user.role).upper()
+            if role_upper == User.Role.ADMIN or pre_user.is_superuser or pre_user.is_staff:
+                updated = False
+                if not pre_user.is_active:
+                    pre_user.is_active = True
+                    updated = True
+                if not pre_user.is_email_verified:
+                    pre_user.is_email_verified = True
+                    updated = True
+                if not getattr(pre_user, "is_approved", True):
+                    pre_user.is_approved = True
+                    updated = True
+                if pre_user.role != User.Role.ADMIN:
+                    pre_user.role = User.Role.ADMIN
+                    updated = True
+                if updated:
+                    pre_user.save()
+            else:
+                if not pre_user.is_email_verified:
+                    raise serializers.ValidationError(
+                        {"detail": "Please verify your email address before logging in."}
+                    )
+                if not getattr(pre_user, "is_approved", True):
+                    if role_upper == User.Role.ADVISOR:
+                        raise serializers.ValidationError(
+                            {"detail": "Your academic advisor account is pending approval by the UIL Officer."}
+                        )
+                    else:
+                        raise serializers.ValidationError(
+                            {"detail": "Your staff account is pending institutional administrator approval."}
+                        )
+
         data = super().validate(attrs)
         # Check approval status for institutional staff and advisors
         if not getattr(self.user, "is_approved", True):
@@ -995,24 +1118,36 @@ class RegisterSerializer(serializers.ModelSerializer):
         campus_city = (attrs.get("campus_city") or "").strip()
 
         if role == User.Role.STUDENT and student_id_number:
+            from apps.uil_profiles.utils import universities_match, get_student_profile_university
             from apps.uil_profiles.models import UILStudentProfile
-            if campus_city and UILStudentProfile.objects.filter(
-                student_id_number=student_id_number,
-                campus_city__iexact=campus_city,
-            ).exists():
-                err_key = "student_profile" if "student_profile" in self.initial_data else "student_id_number"
-                raise serializers.ValidationError({
-                    err_key: "A student profile with this student ID number already exists for the specified campus city."
-                })
+            from apps.students.models import StudentProfile as LegacyStudentProfile
 
-            if university_name and StudentProfile.objects.filter(
-                student_id_number=student_id_number,
-                university_name__iexact=university_name,
-            ).exists():
-                err_key = "student_profile" if "student_profile" in self.initial_data else "student_id_number"
-                raise serializers.ValidationError({
-                    err_key: "A student profile with this student ID number already exists for the specified university."
-                })
+            target_univ = university_name or campus_city
+            err_key = "student_profile" if "student_profile" in self.initial_data else "student_id_number"
+
+            # 1. Check accounts.StudentProfile
+            if target_univ:
+                for sp in StudentProfile.objects.filter(student_id_number__iexact=student_id_number):
+                    if universities_match(sp.university_name, target_univ):
+                        raise serializers.ValidationError({
+                            err_key: f"A student profile with ID '{student_id_number}' already exists for the specified university."
+                        })
+
+            # 2. Check UILStudentProfile
+            for uil in UILStudentProfile.objects.filter(student_id_number__iexact=student_id_number):
+                uil_univ = get_student_profile_university(uil)
+                if (target_univ and universities_match(uil_univ, target_univ)) or (campus_city and uil.campus_city.lower() == campus_city.lower()):
+                    raise serializers.ValidationError({
+                        err_key: f"A student profile with ID '{student_id_number}' already exists for the specified university/campus."
+                    })
+
+            # 3. Check apps.students.models.StudentProfile
+            if target_univ:
+                for lsp in LegacyStudentProfile.objects.filter(student_id_number__iexact=student_id_number):
+                    if universities_match(lsp.university, target_univ):
+                        raise serializers.ValidationError({
+                            err_key: f"A student profile with ID '{student_id_number}' already exists for the specified university."
+                        })
 
         # 4. Validate emergency primary phone if provided
         emergency_primary_phone = attrs.get("emergency_primary_phone")
@@ -1172,6 +1307,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
             "phone_number",
             "department",
             "university_name",
+            "staff_id_number",
             "role",
             "is_approved",
             "is_active",

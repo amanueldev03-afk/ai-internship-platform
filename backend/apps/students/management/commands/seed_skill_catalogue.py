@@ -328,6 +328,21 @@ SKILLS = {
         ("WordPress", "Popular content management system."),
         ("Drupal", "Enterprise content management platform."),
     ],
+    "Ethiopian Industry & Technology": [
+        ("Telebirr & CBE Birr Payment Integration", "Integrating Ethiopian mobile money and payment APIs."),
+        ("Chapa & SantimPay Gateway", "Integrating Ethiopian payment gateway solutions."),
+        ("Amharic NLP & Ethiopic Script Processing", "Natural language processing and sentiment analysis for Ethiopian languages."),
+        ("Ethiopic OCR & Text Recognition", "Optical character recognition for Fidel/Ethiopic script documents."),
+        ("Telecom & GSM Networks (Ethio Telecom/Safaricom)", "Telecommunication network engineering and base station ops."),
+        ("Electrical & Power Grid Engineering (EEP/EEU)", "Power generation, transmission, and substation engineering in Ethiopia."),
+        ("Civil & Structural Engineering (ERA Standards)", "Highway, building, and infrastructure engineering in Ethiopia."),
+        ("Water Resources & Irrigation Engineering", "Hydrology, dam management, and agricultural irrigation systems."),
+        ("Public Health Informatics (DHIS2 Ethiopia)", "Digital health information and hospital management systems."),
+        ("Agri-Tech & Supply Chain Systems", "Digital solutions for coffee, grain, and agricultural value chains."),
+        ("MicroTik & Enterprise Networking", "LAN/WAN, routing, and switching infrastructure commonly deployed in Ethiopian institutions."),
+        ("Hardware Troubleshooting & PC Maintenance", "Computer hardware diagnosis, repair, and peripheral maintenance."),
+        ("IFRS & Ethiopian Tax Compliance (ERCA/MOR)", "Accounting, payroll, and Ethiopian tax filing systems."),
+    ],
 }
 
 # career interest -> short description
@@ -365,6 +380,11 @@ CAREER_INTERESTS = {
     "Automation Testing": "Automating software test workflows.",
     "Site Reliability Engineering": "Keeping systems reliable and scalable.",
     "Agile Methodologies": "Working in agile, iterative delivery.",
+    "FinTech & Mobile Money Solutions": "Building financial technologies tailored for Ethiopian banking and payments.",
+    "Telecom & Network Infrastructure": "Career in telecommunications, ISP, and cellular infrastructure.",
+    "Health Informatics & MedTech": "Working on hospital and healthcare information platforms in Ethiopia.",
+    "Renewable Energy & Power Engineering": "Engineering careers in hydro, solar, and national grid systems.",
+    "Civil Infrastructure & Urban Planning": "Consulting and contracting for Ethiopian road, rail, and building projects.",
 }
 
 CATEGORY_DEFAULT = "Other"

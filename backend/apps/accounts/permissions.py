@@ -75,6 +75,20 @@ class IsLogisticsAdmin(BasePermission):
         return user_role in (str(User.Role.STUDENT_UNION).upper(), str(User.Role.DORM_ADMIN).upper())
 
 
+class IsDormAdmin(BaseRolePermission):
+    """
+    Allows access only to authenticated Dormitory Administrators.
+    """
+    allowed_roles = (User.Role.DORM_ADMIN,)
+
+
+class IsStudentUnion(BaseRolePermission):
+    """
+    Allows access only to authenticated Student Union / Student Deans.
+    """
+    allowed_roles = (User.Role.STUDENT_UNION,)
+
+
 class IsFinanceOfficer(BaseRolePermission):
     """
     Allows access only to authenticated Finance Officers.

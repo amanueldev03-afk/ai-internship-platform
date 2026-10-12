@@ -1,6 +1,8 @@
 import logging
 from rest_framework import generics, permissions, status, exceptions
+from rest_framework.views import APIView
 from rest_framework.response import Response
+from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.accounts.permissions import IsStudent, IsAcademicAdvisor, IsCompanyMentor
 from .models import WeeklyLogbook, LogbookAlert, ProjectTeam, TeamMember, ProjectTeamMessage
@@ -378,7 +380,7 @@ class InHouseCohortListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        from apps.universities.models import InHouseCohort
+        from apps.teams.models import InHouseCohort
         return InHouseCohort.objects.all().order_by("-created_at")
 
     def perform_create(self, serializer):
@@ -387,6 +389,355 @@ class InHouseCohortListCreateView(generics.ListCreateAPIView):
         if role_upper not in (User.Role.UIL_OFFICER, User.Role.DEPT_DEAN, User.Role.ADMIN) and not user.is_staff and not user.is_superuser:
             raise exceptions.PermissionDenied("Only UIL Officers, Deans, or Administrators can create cohorts.")
         serializer.save()
+
+
+class InHouseCohortDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET: Retrieve cohort details.
+    PUT/PATCH: Update cohort attributes (title, capacity_k, department, dates, etc.).
+    DELETE: Delete cohort from the platform.
+    """
+    serializer_class = InHouseCohortSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from apps.teams.models import InHouseCohort
+        return InHouseCohort.objects.all()
+
+    def check_permissions_role(self, user):
+        role_upper = str(getattr(user, "role", "")).upper()
+        if role_upper not in (User.Role.UIL_OFFICER, User.Role.DEPT_DEAN, User.Role.ADMIN) and not user.is_staff and not user.is_superuser:
+            raise exceptions.PermissionDenied("Only UIL Officers, Deans, or Administrators can modify or delete cohorts.")
+
+    def perform_update(self, serializer):
+        self.check_permissions_role(self.request.user)
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self.check_permissions_role(self.request.user)
+        instance.delete()
+
+
+class CohortVerifiedStudentsListView(APIView):
+    """
+    GET /api/v1/projects/cohorts/verified-students/
+    List students officially verified by their Department Dean, showing GPA, Academic Year,
+    skills, bio, contacts, and cohort invitation status for UIL Officer cohort inspection and invitation.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        role_upper = str(getattr(user, "role", "")).upper()
+        if role_upper not in (User.Role.UIL_OFFICER, User.Role.DEPT_DEAN, User.Role.ADMIN) and not user.is_staff and not user.is_superuser:
+            raise exceptions.PermissionDenied("Only UIL Officers, Deans, or Administrators can view verified students.")
+
+        from apps.uil_profiles.models import UILStudentProfile
+        qs = (
+            UILStudentProfile.objects.filter(is_verified_by_dean=True)
+            .select_related("student__user")
+            .prefetch_related(
+                "student__skills",
+                "student__interests",
+                "invited_inhouse_cohorts",
+                "inhouse_cohorts",
+            )
+            .order_by("-academic_year", "-gpa")
+        )
+        
+        uil_univ = ""
+        if role_upper == User.Role.UIL_OFFICER:
+            from apps.uil_profiles.utils import get_user_university
+            uil_univ = get_user_university(user)
+
+        students_data = []
+        for stu in qs:
+            u = getattr(stu, "user", None)
+            if not u and hasattr(stu, "student"):
+                u = getattr(stu.student, "user", None)
+
+            from apps.uil_profiles.utils import get_student_profile_university, universities_match
+            stu_univ = get_student_profile_university(stu)
+            if uil_univ and not universities_match(stu_univ, uil_univ):
+                continue
+
+            full_name = ""
+            if u:
+                full_name = f"{u.first_name} {u.last_name}".strip() or u.username
+            if not full_name:
+                full_name = stu.student_id_number or "Student Intern"
+
+            skills_list = []
+            interests_list = []
+            if hasattr(stu, "student") and stu.student:
+                skills_list = [s.name for s in stu.student.skills.all()]
+                interests_list = [i.name for i in stu.student.interests.all()]
+
+            invited_cohort_ids = [str(c.id) for c in stu.invited_inhouse_cohorts.all()]
+            accepted_cohort_ids = [str(c.id) for c in stu.inhouse_cohorts.all()]
+
+            students_data.append({
+                "id": str(stu.id),
+                "student_id_number": stu.student_id_number,
+                "full_name": full_name,
+                "email": u.email if u else "",
+                "phone": getattr(u, "phone", "") if u else "",
+                "bio": getattr(u, "bio", "") if u else "",
+                "department": stu.department,
+                "university": stu_univ,
+                "campus_city": stu.campus_city,
+                "academic_year": stu.academic_year,
+                "gpa": str(stu.gpa) if stu.gpa else None,
+                "github_url": stu.github_url or (getattr(u, "github_url", "") if u else ""),
+                "linkedin_url": getattr(u, "linkedin_url", "") if u else "",
+                "skills": skills_list,
+                "interests": interests_list,
+                "invited_cohort_ids": invited_cohort_ids,
+                "accepted_cohort_ids": accepted_cohort_ids,
+                "is_verified_by_dean": stu.is_verified_by_dean,
+                "dean_verified_at": stu.dean_verified_at.isoformat() if stu.dean_verified_at else None,
+                "forwarded_to_uil": stu.forwarded_to_uil,
+            })
+
+        return Response({"count": len(students_data), "students": students_data}, status=status.HTTP_200_OK)
+
+
+class CohortInviteStudentView(APIView):
+    """
+    POST /api/v1/projects/cohorts/<uuid:cohort_id>/invite-student/
+    UIL Officer invites or directly selects a Dean-verified student into a cohort up to capacity K.
+    Dispatches in-app notification to the student's notification bell.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, cohort_id):
+        user = request.user
+        role_upper = str(getattr(user, "role", "")).upper()
+        if role_upper not in (User.Role.UIL_OFFICER, User.Role.ADMIN) and not user.is_staff and not user.is_superuser:
+            raise exceptions.PermissionDenied("Only UIL Officers can invite students to cohorts.")
+
+        from apps.teams.models import InHouseCohort
+        from apps.uil_profiles.models import UILStudentProfile
+        cohort = generics.get_object_or_404(InHouseCohort, id=cohort_id)
+
+        student_id = request.data.get("student_id")
+        if not student_id:
+            return Response({"error": "student_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        student = generics.get_object_or_404(UILStudentProfile, id=student_id)
+
+        # Enforce university match between UIL Officer and Student
+        if role_upper == User.Role.UIL_OFFICER:
+            from apps.uil_profiles.utils import get_user_university, get_student_profile_university, universities_match
+            uil_univ = get_user_university(user)
+            student_univ = get_student_profile_university(student)
+            if uil_univ and not universities_match(student_univ, uil_univ):
+                return Response(
+                    {"detail": f"Institutional Mismatch: You can only invite students from your university ({uil_univ}). Student belongs to '{student_univ}'."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        # Enforce: only students verified by Department Dean can be invited
+        if not student.is_verified_by_dean:
+            return Response(
+                {"detail": "Student has not been verified by Department Dean yet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Enforce minimum GPA if configured on cohort
+        if cohort.min_gpa and student.gpa and student.gpa < cohort.min_gpa:
+            return Response(
+                {"detail": f"Student GPA ({student.gpa}) does not satisfy cohort minimum requirement ({cohort.min_gpa})."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Enforce capacity K
+        total_count = cohort.enrolled_count + cohort.invited_students.count()
+        if total_count >= cohort.capacity_k and not cohort.invited_students.filter(id=student.id).exists():
+            return Response(
+                {"detail": f"Cohort capacity K ({cohort.capacity_k}) has been reached."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cohort.invited_students.add(student)
+
+        # Dispatch notification to student's bell
+        student_user = getattr(student, "user", None)
+        if not student_user and hasattr(student, "student"):
+            student_user = getattr(student.student, "user", None)
+        if student_user:
+            from apps.notifications.services import create_notification
+            from apps.notifications.models import Notification
+            create_notification(
+                recipient=student_user,
+                actor=request.user,
+                title="Track 1 Software House Cohort Invitation",
+                message=f"You have been invited by UIL Officer to join the in-house cohort '{cohort.title or cohort.university_name}'. Review academic prerequisites and accept placement.",
+                notification_type=Notification.NotificationType.COHORT,
+                link="/student/dashboard?tab=track1",
+                metadata={"cohort_id": str(cohort.id), "action": "INVITE"},
+            )
+
+        return Response({
+            "message": f"Student {student.student_id_number} invited to {cohort.title or cohort.university_name}.",
+            "cohort_id": str(cohort.id),
+            "invited_count": cohort.invited_students.count(),
+            "enrolled_count": cohort.enrolled_count,
+            "capacity_k": cohort.capacity_k,
+        }, status=status.HTTP_200_OK)
+
+
+class StudentCohortAcceptView(APIView):
+    """
+    POST /api/v1/projects/cohorts/<uuid:cohort_id>/accept/
+    Student 1-click accepts cohort enrollment directly on their dashboard.
+    Dispatches in-app notification to the UIL Officer's notification bell.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, cohort_id):
+        from apps.teams.models import InHouseCohort
+        from apps.uil_profiles.models import UILStudentProfile
+        from apps.logistics.models import CampusLogistics
+        cohort = generics.get_object_or_404(InHouseCohort, id=cohort_id)
+
+        uil_profile = UILStudentProfile.objects.filter(student__user=request.user).first()
+        if not uil_profile:
+            return Response({"detail": "UIL Student Profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not uil_profile.is_verified_by_dean:
+            return Response({"detail": "You must be verified by your Department Dean before joining a cohort."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Enroll student
+        if not cohort.accepted_students.filter(id=uil_profile.id).exists():
+            cohort.accepted_students.add(uil_profile)
+            cohort.invited_students.remove(uil_profile)
+            cohort.enrolled_count = cohort.accepted_students.count()
+            cohort.save()
+
+            # Ensure CampusLogistics is updated
+            logistics, _ = CampusLogistics.objects.get_or_create(
+                student=uil_profile,
+                defaults={"cohort": cohort},
+            )
+            logistics.cohort = cohort
+            logistics.uil_placed = True
+            logistics.uil_placed_at = timezone.now()
+            logistics.save()
+
+            # Send in-app notification to UIL Officer
+            from apps.notifications.services import create_notification
+            from apps.notifications.models import Notification
+            student_user = request.user
+            student_name = f"{student_user.first_name} {student_user.last_name}".strip() or student_user.username
+            from apps.uil_profiles.utils import get_student_profile_university, universities_match, get_user_university
+            student_univ = get_student_profile_university(uil_profile)
+            uil_officers = User.objects.filter(role=User.Role.UIL_OFFICER)
+            for uil in uil_officers:
+                uil_univ = get_user_university(uil)
+                if not student_univ or not uil_univ or universities_match(student_univ, uil_univ):
+                    create_notification(
+                        recipient=uil,
+                        actor=student_user,
+                        title=f"Cohort Enrollment: {student_name} Accepted",
+                        message=f"Student {student_name} ({uil_profile.student_id_number}) has accepted enrollment in cohort '{cohort.title or cohort.university_name}'.",
+                        notification_type=Notification.NotificationType.COHORT,
+                        link="/uil/dashboard?tab=cohorts",
+                        metadata={"cohort_id": str(cohort.id), "student_id": str(uil_profile.id), "action": "ACCEPT"},
+                    )
+
+        return Response({
+            "message": f"Successfully enrolled in cohort: {cohort.title or cohort.university_name}!",
+            "cohort_id": str(cohort.id),
+            "enrolled_count": cohort.enrolled_count,
+        }, status=status.HTTP_200_OK)
+
+
+class StudentCohortRejectView(APIView):
+    """
+    POST /api/v1/projects/cohorts/<uuid:cohort_id>/reject/
+    Student declines/rejects an in-house cohort invitation.
+    Removes the student from invited_students and notifies institutional UIL Officer.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, cohort_id):
+        from apps.teams.models import InHouseCohort
+        from apps.uil_profiles.models import UILStudentProfile
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import Notification
+
+        cohort = generics.get_object_or_404(InHouseCohort, id=cohort_id)
+        uil_profile = UILStudentProfile.objects.filter(student__user=request.user).first()
+        if not uil_profile:
+            return Response({"detail": "UIL Student Profile not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Remove from invited students if present
+        cohort.invited_students.remove(uil_profile)
+
+        # Send in-app notification to UIL Officer
+        student_user = request.user
+        student_name = f"{student_user.first_name} {student_user.last_name}".strip() or student_user.username
+
+        from apps.uil_profiles.utils import get_student_profile_university, universities_match, get_user_university
+        student_univ = get_student_profile_university(uil_profile)
+        uil_officers = User.objects.filter(role=User.Role.UIL_OFFICER)
+
+        for uil in uil_officers:
+            uil_univ = get_user_university(uil)
+            if not student_univ or not uil_univ or universities_match(student_univ, uil_univ):
+                create_notification(
+                    recipient=uil,
+                    actor=student_user,
+                    title=f"Cohort Invitation Declined by {student_name}",
+                    message=f"Student {student_name} ({uil_profile.student_id_number}) has declined the invitation to join cohort '{cohort.title or cohort.university_name}'.",
+                    notification_type=Notification.NotificationType.COHORT,
+                    link="/uil/dashboard?tab=cohorts",
+                    metadata={"cohort_id": str(cohort.id), "student_id": str(uil_profile.id), "action": "REJECT"},
+                )
+
+        return Response({
+            "message": f"You have declined the invitation for cohort: {cohort.title or cohort.university_name}.",
+            "cohort_id": str(cohort.id),
+        }, status=status.HTTP_200_OK)
+
+
+class StudentMyCohortsView(APIView):
+    """
+    GET /api/v1/projects/cohorts/my-cohorts/
+    Returns cohorts where student is invited, enrolled, or eligible to join.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from apps.teams.models import InHouseCohort
+        from apps.uil_profiles.models import UILStudentProfile
+        uil_profile = UILStudentProfile.objects.filter(student__user=request.user).first()
+
+        cohorts = InHouseCohort.objects.filter(is_open=True).order_by("-created_at")
+        results = []
+        for c in cohorts:
+            is_invited = uil_profile in c.invited_students.all() if uil_profile else False
+            is_enrolled = uil_profile in c.accepted_students.all() if uil_profile else False
+            results.append({
+                "id": str(c.id),
+                "title": c.title or f"{c.university_name} Cohort",
+                "university_name": c.university_name,
+                "department": c.department or "All Engineering",
+                "requirements": c.requirements,
+                "opportunities": c.opportunities,
+                "min_gpa": str(c.min_gpa) if c.min_gpa else None,
+                "academic_year": c.academic_year,
+                "start_date": str(c.start_date),
+                "end_date": str(c.end_date),
+                "capacity_k": c.capacity_k,
+                "enrolled_count": c.enrolled_count,
+                "is_open": c.is_open,
+                "is_invited": is_invited,
+                "is_enrolled": is_enrolled,
+            })
+
+        return Response({"cohorts": results}, status=status.HTTP_200_OK)
 
 
 class ProjectTeamMessageListCreateView(generics.ListCreateAPIView):

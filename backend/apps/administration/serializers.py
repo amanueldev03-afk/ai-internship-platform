@@ -148,5 +148,5 @@ class AdminStudentActionSerializer(serializers.Serializer):
     """
 
     message = serializers.CharField()
-    student_id = serializers.IntegerField()
+    student_id = serializers.CharField()
     is_active = serializers.BooleanField()

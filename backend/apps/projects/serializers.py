@@ -207,14 +207,20 @@ class LogbookAlertSerializer(serializers.ModelSerializer):
 
 
 class InHouseCohortSerializer(serializers.ModelSerializer):
-    student_count = serializers.IntegerField(source="students.count", read_only=True)
+    student_count = serializers.SerializerMethodField(read_only=True)
     teams_count = serializers.SerializerMethodField(read_only=True)
+    invited_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
-        from apps.universities.models import InHouseCohort
+        from apps.teams.models import InHouseCohort
         model = InHouseCohort
         fields = [
             "id",
+            "title",
+            "department",
+            "requirements",
+            "opportunities",
+            "min_gpa",
             "university_name",
             "academic_year",
             "start_date",
@@ -223,11 +229,18 @@ class InHouseCohortSerializer(serializers.ModelSerializer):
             "enrolled_count",
             "is_open",
             "student_count",
+            "invited_count",
             "teams_count",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "enrolled_count", "created_at", "updated_at"]
+
+    def get_student_count(self, obj) -> int:
+        return obj.accepted_students.count()
+
+    def get_invited_count(self, obj) -> int:
+        return obj.invited_students.count()
 
     def get_teams_count(self, obj) -> int:
         return obj.teams.count()

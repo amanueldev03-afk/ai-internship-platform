@@ -37,12 +37,16 @@ def _get_or_create_profile(user):
 
 def _queue_embedding(profile):
     """Queue embedding regeneration after the current transaction commits."""
+    def _safe_dispatch():
+        try:
+            generate_student_embedding_task.delay(profile.id)
+        except Exception as exc:
+            logger.warning(f"Could not queue embedding regeneration for profile {profile.id}: {exc}")
+
     try:
-        transaction.on_commit(
-            lambda: generate_student_embedding_task.delay(profile.id)
-        )
+        transaction.on_commit(_safe_dispatch)
     except (AttributeError, RuntimeError) as exc:
-        logger.warning(f"Could not queue embedding regeneration for profile {profile.id}: {exc}")
+        logger.warning(f"Could not queue embedding regeneration hook for profile {profile.id}: {exc}")
 
 
 def _handle_cv_file(cv_file, user):
@@ -300,8 +304,20 @@ class StudentMeView(GenericAPIView):
     )
     def get(self, request):
         profile = self._get_profile(request)
+        data = StudentMeSerializer(profile).data
+        # Populate fallbacks if empty on profile
+        if not data.get("university") and getattr(request.user, "university_name", None):
+            data["university"] = request.user.university_name
+        if not data.get("phone") and getattr(request.user, "phone_number", None):
+            data["phone"] = request.user.phone_number
+        if not data.get("student_id_number"):
+            uil = getattr(getattr(request.user, "student", None), "uil_student_profile", None)
+            if uil and uil.student_id_number:
+                data["student_id_number"] = uil.student_id_number
+            elif hasattr(request.user, "student_profile") and request.user.student_profile and request.user.student_profile.student_id_number:
+                data["student_id_number"] = request.user.student_profile.student_id_number
         return Response(
-            StudentMeSerializer(profile).data,
+            data,
             status=status.HTTP_200_OK,
         )
 
@@ -627,10 +643,22 @@ class StudentSkillsView(GenericAPIView):
         responses={201: StudentSkillSerializer},
     )
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        skill_id = request.data.get("skill_id")
+        skill_name = request.data.get("name") or request.data.get("skill_name")
         profile = self._get_profile(request)
-        skill = Skill.objects.get(id=serializer.validated_data["skill_id"])
+
+        if skill_name and not skill_id:
+            cleaned_name = str(skill_name).strip()
+            if not cleaned_name:
+                return Response({"name": "Skill name cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+            skill = Skill.objects.filter(name__iexact=cleaned_name).first()
+            if not skill:
+                skill = Skill.objects.create(name=cleaned_name, category="General", is_active=True)
+        else:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            skill = Skill.objects.get(id=serializer.validated_data["skill_id"])
+
         profile.skills.add(skill)
 
         _queue_embedding(profile)
@@ -709,10 +737,22 @@ class StudentInterestsView(GenericAPIView):
         responses={201: StudentInterestSerializer},
     )
     def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        interest_id = request.data.get("interest_id")
+        interest_name = request.data.get("name") or request.data.get("interest_name")
         profile = self._get_profile(request)
-        interest = CareerInterest.objects.get(id=serializer.validated_data["interest_id"])
+
+        if interest_name and not interest_id:
+            cleaned_name = str(interest_name).strip()
+            if not cleaned_name:
+                return Response({"name": "Interest name cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+            interest = CareerInterest.objects.filter(name__iexact=cleaned_name).first()
+            if not interest:
+                interest = CareerInterest.objects.create(name=cleaned_name, is_active=True)
+        else:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            interest = CareerInterest.objects.get(id=serializer.validated_data["interest_id"])
+
         profile.interests.add(interest)
 
         _queue_embedding(profile)

@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Case, CharField, Count, Q, Value, When
 from django.db.models.functions import TruncDay
@@ -114,7 +115,7 @@ class AdminStudentDeactivateView(APIView):
     def post(self, request, pk):
         try:
             student = User.objects.get(pk=pk, role=User.Role.STUDENT)
-        except User.DoesNotExist:
+        except (User.DoesNotExist, ValueError, ValidationError):
             return Response(
                 {
                     "detail": "Student not found."
@@ -126,7 +127,7 @@ class AdminStudentDeactivateView(APIView):
             return Response(
                 {
                     "detail": "Student account is already inactive.",
-                    "student_id": student.id,
+                    "student_id": str(student.id),
                     "is_active": False,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -143,7 +144,7 @@ class AdminStudentDeactivateView(APIView):
                 f"{request.user.email}."
             ),
             metadata={
-                "admin_id": request.user.id,
+                "admin_id": str(request.user.id),
                 "admin_email": request.user.email,
             },
         )
@@ -151,7 +152,7 @@ class AdminStudentDeactivateView(APIView):
         serializer = AdminStudentActionSerializer(
             data={
                 "message": "Student account deactivated successfully.",
-                "student_id": student.id,
+                "student_id": str(student.id),
                 "is_active": False,
             }
         )
@@ -177,7 +178,7 @@ class AdminStudentActivateView(APIView):
     def post(self, request, pk):
         try:
             student = User.objects.get(pk=pk, role=User.Role.STUDENT)
-        except User.DoesNotExist:
+        except (User.DoesNotExist, ValueError, ValidationError):
             return Response(
                 {
                     "detail": "Student not found."
@@ -189,7 +190,7 @@ class AdminStudentActivateView(APIView):
             return Response(
                 {
                     "detail": "Student account is already active.",
-                    "student_id": student.id,
+                    "student_id": str(student.id),
                     "is_active": True,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -206,7 +207,7 @@ class AdminStudentActivateView(APIView):
                 f"{request.user.email}."
             ),
             metadata={
-                "admin_id": request.user.id,
+                "admin_id": str(request.user.id),
                 "admin_email": request.user.email,
             },
         )
@@ -214,7 +215,7 @@ class AdminStudentActivateView(APIView):
         serializer = AdminStudentActionSerializer(
             data={
                 "message": "Student account activated successfully.",
-                "student_id": student.id,
+                "student_id": str(student.id),
                 "is_active": True,
             }
         )
@@ -250,7 +251,7 @@ class AdminStudentActivityView(generics.ListAPIView):
     def _get_student_or_404(self, pk):
         try:
             return User.objects.get(pk=pk, role=User.Role.STUDENT)
-        except User.DoesNotExist:
+        except (User.DoesNotExist, Exception):
             return None
 
     def get_queryset(self):
@@ -273,12 +274,8 @@ class AdminStudentActivityView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         student_id = self.kwargs.get("pk")
-
-        try:
-            student = User.objects.get(
-                pk=student_id, role=User.Role.STUDENT
-            )
-        except User.DoesNotExist:
+        student = self._get_student_or_404(student_id)
+        if student is None:
             return Response(
                 {"detail": "Student not found."},
                 status=status.HTTP_404_NOT_FOUND,

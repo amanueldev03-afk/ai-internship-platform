@@ -173,6 +173,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="University Affiliation",
     )
 
+    staff_id_number = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Staff / Employee ID Number",
+        help_text="Unique institutional staff or employee identification number.",
+    )
+
     date_joined = models.DateTimeField(
         default=timezone.now,
     )

@@ -59,6 +59,9 @@ ACTORS = [
         "role": User.Role.DEPT_DEAN,
         "first_name": "Dean",
         "last_name": "Engineering",
+        "university_name": "Addis Ababa University",
+        "department": "Software Engineering",
+        "staff_id_number": "AAU/DEAN/001",
     },
     {
         "username": "uil1",
@@ -66,6 +69,8 @@ ACTORS = [
         "role": User.Role.UIL_OFFICER,
         "first_name": "UIL",
         "last_name": "Head Officer",
+        "university_name": "Addis Ababa University",
+        "staff_id_number": "AAU/UIL/001",
     },
     {
         "username": "union1",
@@ -73,6 +78,8 @@ ACTORS = [
         "role": User.Role.STUDENT_UNION,
         "first_name": "Student",
         "last_name": "Union Rep",
+        "university_name": "Addis Ababa University",
+        "staff_id_number": "AAU/UNION/001",
     },
     {
         "username": "dorm1",
@@ -80,6 +87,8 @@ ACTORS = [
         "role": User.Role.DORM_ADMIN,
         "first_name": "Dormitory",
         "last_name": "Administrator",
+        "university_name": "Addis Ababa University",
+        "staff_id_number": "AAU/DORM/001",
     },
     {
         "username": "finance1",
@@ -87,10 +96,14 @@ ACTORS = [
         "role": User.Role.FINANCE_OFFICER,
         "first_name": "Finance",
         "last_name": "Officer",
+        "university_name": "Addis Ababa University",
+        "staff_id_number": "AAU/FIN/001",
     },
 ]
 
 print("=== SEEDING ACTOR ACCOUNTS ===")
+from apps.uil_profiles.models import StaffProfile, UniversityDepartment
+
 for actor_data in ACTORS:
     email = actor_data["email"]
     user, created = User.objects.get_or_create(
@@ -100,6 +113,9 @@ for actor_data in ACTORS:
             "first_name": actor_data["first_name"],
             "last_name": actor_data["last_name"],
             "username": actor_data.get("username"),
+            "university_name": actor_data.get("university_name", ""),
+            "department": actor_data.get("department", ""),
+            "staff_id_number": actor_data.get("staff_id_number", ""),
             "is_active": True,
             "is_email_verified": True,
             "is_approved": True,
@@ -111,6 +127,14 @@ for actor_data in ACTORS:
     user.role = actor_data["role"]
     if actor_data.get("username"):
         user.username = actor_data["username"]
+    user.first_name = actor_data["first_name"]
+    user.last_name = actor_data["last_name"]
+    if actor_data.get("university_name"):
+        user.university_name = actor_data["university_name"]
+    if actor_data.get("department"):
+        user.department = actor_data["department"]
+    if actor_data.get("staff_id_number"):
+        user.staff_id_number = actor_data["staff_id_number"]
     user.is_active = True
     user.is_email_verified = True
     user.is_approved = True
@@ -121,6 +145,21 @@ for actor_data in ACTORS:
     pwd = actor_data.get("password", DEFAULT_PASSWORD)
     user.set_password(pwd)
     user.save()
+
+    # Link StaffProfile if institutional role
+    if user.role in (User.Role.DEPT_DEAN, User.Role.UIL_OFFICER, User.Role.STUDENT_UNION, User.Role.DORM_ADMIN, User.Role.ADVISOR, User.Role.FINANCE_OFFICER):
+        dept_obj = None
+        if user.university_name:
+            dept_obj, _ = UniversityDepartment.objects.get_or_create(
+                university_name=user.university_name,
+                department_name=user.department or "General Department",
+            )
+        staff_prof, _ = StaffProfile.objects.get_or_create(user=user)
+        staff_prof.staff_role = user.role
+        staff_prof.department = dept_obj
+        staff_prof.staff_id_number = user.staff_id_number or ""
+        staff_prof.save()
+
     print(f"Configured actor: {user.username} ({user.email}) -> {user.role} with password '{pwd}'")
 
 print("=== SEEDING COMPLETE ===")

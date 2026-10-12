@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAppSelector } from '@/hooks/redux'
 import * as authApi from '@/services/authApi'
 import * as studentApi from '@/services/studentApi'
@@ -19,7 +19,7 @@ import PreferencesSection from './PreferencesSection'
 import ResumeSection from './ResumeSection'
 import StudentRecommendations from './StudentRecommendations'
 import InternshipSearch from './InternshipSearch'
-import { Camera, RefreshCw } from 'lucide-react'
+import { Camera, RefreshCw, KeyRound, Lock, X, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 type TabId = 'overview' | 'personal' | 'skills' | 'preferences' | 'resume' | 'recommendations' | 'search'
@@ -48,24 +48,113 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(authUser)
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as TabId | null
+  const [activeTab, setActiveTab] = useState<TabId>(
+    initialTab && TABS.some((t) => t.id === initialTab) ? initialTab : 'overview'
+  )
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null)
 
+  // Password Change Modal State
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    if (!passwordForm.oldPassword) {
+      setPasswordError('Current password is required.')
+      return
+    }
+    if (!passwordForm.newPassword) {
+      setPasswordError('New password is required.')
+      return
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters long.')
+      return
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match.')
+      return
+    }
+    if (passwordForm.oldPassword === passwordForm.newPassword) {
+      setPasswordError('New password must be different from your current password.')
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      await authApi.changePassword({
+        old_password: passwordForm.oldPassword,
+        new_password: passwordForm.newPassword,
+        new_password_confirm: passwordForm.confirmPassword,
+      })
+      setPasswordSuccess('Password changed successfully!')
+      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
+      setTimeout(() => {
+        setShowPasswordModal(false)
+        setPasswordSuccess(null)
+      }, 2000)
+    } catch (err: any) {
+      const respData = err?.response?.data
+      if (typeof respData === 'string') {
+        setPasswordError(respData)
+      } else if (respData?.old_password) {
+        setPasswordError(`Current password: ${Array.isArray(respData.old_password) ? respData.old_password[0] : respData.old_password}`)
+      } else if (respData?.new_password) {
+        setPasswordError(`New password: ${Array.isArray(respData.new_password) ? respData.new_password[0] : respData.new_password}`)
+      } else if (respData?.new_password_confirm) {
+        setPasswordError(`Confirm password: ${Array.isArray(respData.new_password_confirm) ? respData.new_password_confirm[0] : respData.new_password_confirm}`)
+      } else if (respData?.detail) {
+        setPasswordError(Array.isArray(respData.detail) ? respData.detail[0] : respData.detail)
+      } else {
+        setPasswordError('Failed to change password. Please check your credentials and try again.')
+      }
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') as TabId | null
+    if (tabFromUrl && TABS.some((t) => t.id === tabFromUrl)) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [searchParams])
+
+  const handleTabChange = (tabId: TabId) => {
+    setActiveTab(tabId)
+    setSearchParams({ tab: tabId })
+  }
+
   const fetchProfileData = async () => {
     setError(null)
-    const [userResult, profileResult] = await Promise.allSettled([
-      authApi.getCurrentUser(),
-      studentApi.getStudentProfile(),
-    ])
-    if (userResult.status === 'fulfilled') {
-      setUser(userResult.value)
-    }
-    if (profileResult.status === 'fulfilled') {
-      setProfile(profileResult.value)
-    } else {
+    try {
+      const currentUser = await authApi.getCurrentUser().catch(() => null)
+      if (currentUser) {
+        setUser(currentUser)
+      }
+      const currentRole = (currentUser?.role || authUser?.role || '').toLowerCase()
+      const isStudent = !currentRole || currentRole === 'student'
+      if (isStudent) {
+        const studentProf = await studentApi.getStudentProfile()
+        setProfile(studentProf)
+      }
+    } catch {
+      // If student profile fails
       setProfile(null)
-      setError('Failed to load profile details. Please try again.')
+      setError('Failed to load student profile details.')
     }
   }
 
@@ -257,7 +346,7 @@ export default function ProfilePage() {
                     {TABS.filter(tab => tab.category === 'basic').map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={`w-full text-left px-3.5 py-2 rounded-2xl text-xs font-bold transition-all ${
                           activeTab === tab.id
                             ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white shadow-glow'
@@ -276,7 +365,7 @@ export default function ProfilePage() {
                     {TABS.filter(tab => tab.category === 'professional').map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={`w-full text-left px-3.5 py-2 rounded-2xl text-xs font-bold transition-all ${
                           activeTab === tab.id
                             ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white shadow-glow'
@@ -295,7 +384,7 @@ export default function ProfilePage() {
                     {TABS.filter(tab => tab.category === 'internships').map((tab) => (
                       <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => handleTabChange(tab.id)}
                         className={`w-full text-left px-3.5 py-2 rounded-2xl text-xs font-bold transition-all ${
                           activeTab === tab.id
                             ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white shadow-glow'
@@ -343,46 +432,100 @@ export default function ProfilePage() {
 
                   <div className="p-6 rounded-2xl bg-white/90 dark:bg-neutral-900/90 border border-neutral-200/80 dark:border-neutral-800 space-y-4">
                     <h3 className="text-base font-bold text-neutral-900 dark:text-white border-b border-neutral-200/80 dark:border-neutral-800 pb-3">
-                      Academic & Career Snapshot
+                      {user?.role && user.role !== 'student' ? 'Institutional Profile' : 'Academic & Career Snapshot'}
                     </h3>
-                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">University</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {profile?.university || labelFor(EDUCATION_LEVEL_LABELS, profile?.education_level) || 'Not specified'}
-                        </dd>
+                    {user?.role && user.role !== 'student' ? (
+                      <div className="space-y-4">
+                        <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">University</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {user.university_name || 'Addis Ababa University'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Staff / Employee ID</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white font-mono">
+                            {user.staff_id_number || 'Not registered'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Department / Unit</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {user.department || 'General Administration'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Role Title</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {user.role}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Verification Status</dt>
+                          <dd className="font-bold text-emerald-600 dark:text-emerald-400">
+                            {user.is_approved ? 'Verified by Administrator' : 'Pending Verification'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Account Active</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {user.is_email_verified ? 'Active & Confirmed' : 'Email Pending'}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowPasswordModal(true)}
+                          className="rounded-xl text-xs font-bold"
+                        >
+                          <KeyRound className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+                          Change Account Password
+                        </Button>
                       </div>
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">Field of Study</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {labelFor(FIELD_OF_STUDY_LABELS, profile?.field_of_study) || 'Not specified'}
-                        </dd>
-                      </div>
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">Education Level</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {labelFor(EDUCATION_LEVEL_LABELS, profile?.education_level) || 'Not specified'}
-                        </dd>
-                      </div>
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">Work Mode</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {labelFor(WORK_MODE_LABELS, profile?.work_type) || 'Not specified'}
-                        </dd>
-                      </div>
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">Internship Type</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {labelFor(INTERNSHIP_TYPE_LABELS, profile?.internship_type) || 'Not specified'}
-                        </dd>
-                      </div>
-                      <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
-                        <dt className="font-bold text-neutral-400 uppercase mb-1">Compensation</dt>
-                        <dd className="font-bold text-neutral-900 dark:text-white">
-                          {labelFor(COMPENSATION_LABELS, profile?.compensation_preference) || 'Not specified'}
-                        </dd>
-                      </div>
-                    </dl>
+                    </div>
+                    ) : (
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">University</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {profile?.university || labelFor(EDUCATION_LEVEL_LABELS, profile?.education_level) || 'Not specified'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Field of Study</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {labelFor(FIELD_OF_STUDY_LABELS, profile?.field_of_study) || 'Not specified'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Education Level</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {labelFor(EDUCATION_LEVEL_LABELS, profile?.education_level) || 'Not specified'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Work Mode</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {labelFor(WORK_MODE_LABELS, profile?.work_type) || 'Not specified'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Internship Type</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {labelFor(INTERNSHIP_TYPE_LABELS, profile?.internship_type) || 'Not specified'}
+                          </dd>
+                        </div>
+                        <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60">
+                          <dt className="font-bold text-neutral-400 uppercase mb-1">Compensation</dt>
+                          <dd className="font-bold text-neutral-900 dark:text-white">
+                            {labelFor(COMPENSATION_LABELS, profile?.compensation_preference) || 'Not specified'}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
                   </div>
                 </div>
               )}
@@ -410,6 +553,133 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md card-gradient rounded-3xl p-6 sm:p-8 shadow-2xl border-2 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-neutral-900 dark:text-white">Change Password</h3>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Update your account sign-in password</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false)
+                  setPasswordError(null)
+                  setPasswordSuccess(null)
+                }}
+                className="p-1.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {passwordSuccess && (
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{passwordSuccess}</span>
+              </div>
+            )}
+
+            {passwordError && (
+              <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
+                <X className="w-4 h-4 shrink-0" />
+                <span>{passwordError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Current Password
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 pointer-events-none" />
+                  <input
+                    type="password"
+                    required
+                    value={passwordForm.oldPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, oldPassword: e.target.value }))}
+                    placeholder="Enter current password"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  New Password
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 pointer-events-none" />
+                  <input
+                    type="password"
+                    required
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))}
+                    placeholder="Min. 8 characters"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Confirm New Password
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 pointer-events-none" />
+                  <input
+                    type="password"
+                    required
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))}
+                    placeholder="Confirm your new password"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:border-primary-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowPasswordModal(false)
+                    setPasswordError(null)
+                    setPasswordSuccess(null)
+                  }}
+                  disabled={passwordLoading}
+                  className="rounded-xl text-xs font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={passwordLoading}
+                  className="rounded-xl text-xs font-bold shadow-glow"
+                >
+                  {passwordLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      Updating Password...
+                    </>
+                  ) : (
+                    'Save New Password'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

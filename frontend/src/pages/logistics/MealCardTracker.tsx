@@ -14,6 +14,10 @@ import {
   Utensils,
   RefreshCw,
   Sparkles,
+  Printer,
+  X,
+  QrCode,
+  Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -28,6 +32,7 @@ export default function MealCardTracker() {
 
   // Modal / Inline input state for card activation
   const [cardInputs, setCardInputs] = useState<Record<string, string>>({})
+  const [printingTicketStudent, setPrintingTicketStudent] = useState<CampusLogisticsItem | null>(null)
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -370,7 +375,19 @@ export default function MealCardTracker() {
                               )}
                             </Button>
                           ) : (
-                            <span className="text-xs text-slate-400 italic">Issued</span>
+                            <div className="flex items-center justify-end gap-2">
+                              <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" /> Issued
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setPrintingTicketStudent(item)}
+                                className="text-xs h-7 px-2.5 flex items-center gap-1 border-indigo-200 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950 font-bold"
+                              >
+                                <Printer className="w-3.5 h-3.5" /> Print Ticket
+                              </Button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -382,6 +399,164 @@ export default function MealCardTracker() {
           </div>
         )}
       </div>
+
+      {/* PRINT-READY PAPER CAFETERIA MEAL TICKET MODAL */}
+      {printingTicketStudent && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white text-neutral-900 rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-neutral-300 relative print:p-0 print:border-none print:shadow-none print:w-full">
+            {/* Action Bar (hidden in print) */}
+            <div className="flex items-center justify-between border-b pb-3 print:hidden">
+              <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-indigo-600" />
+                Paper Dining Pass & Clearance Print Preview
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => window.print()}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 flex items-center gap-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setPrintingTicketStudent(null)}
+                  className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Official Document Body */}
+            <div className="p-6 border-2 border-dashed border-neutral-400 rounded-2xl bg-neutral-50/60 space-y-4 print:border-solid print:p-4">
+              {/* Header */}
+              <div className="text-center space-y-1 border-b pb-4">
+                <div className="text-[11px] font-black uppercase tracking-widest text-neutral-600">
+                  Federal Democratic Republic of Ethiopia • University Student Union
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-neutral-900 tracking-tight">
+                  OFFICIAL CAFETERIA MEAL TICKET & HOUSING CLEARANCE
+                </h2>
+                <div className="text-xs font-semibold text-indigo-700">
+                  Track 1 In-House Software House Internship Program
+                </div>
+              </div>
+
+              {/* Student & Meal Card Details */}
+              <div className="grid grid-cols-2 gap-3 text-xs bg-white p-3.5 rounded-xl border border-neutral-200">
+                <div>
+                  <span className="text-neutral-500 block">Student Full Name:</span>
+                  <strong className="text-neutral-900 text-sm">{printingTicketStudent.student_name}</strong>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">University ID Number:</span>
+                  <strong className="font-mono text-neutral-900 text-sm">{printingTicketStudent.student_id_number}</strong>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">Department & Year:</span>
+                  <span className="font-semibold text-neutral-800">{printingTicketStudent.department} (Year {printingTicketStudent.academic_year})</span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">Campus Host Institution:</span>
+                  <span className="font-semibold text-neutral-800">{printingTicketStudent.cohort_name || 'Addis Ababa University'}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">Meal Card Identifier:</span>
+                  <span className="font-mono font-bold text-indigo-700 text-sm bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 inline-block">
+                    {printingTicketStudent.meal_card_number}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block">Clearance Period:</span>
+                  <span className="font-semibold text-neutral-800">
+                    {printingTicketStudent.valid_from && printingTicketStudent.valid_until
+                      ? `${printingTicketStudent.valid_from} to ${printingTicketStudent.valid_until}`
+                      : 'Full In-House Cohort'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Dining Hall Schedule Checklist */}
+              <div className="space-y-2 bg-white p-3.5 rounded-xl border border-neutral-200">
+                <span className="text-xs font-bold text-neutral-700 uppercase tracking-wider block">
+                  Daily Cafeteria Schedule Checklist & Entitlements
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="p-2 rounded-lg bg-neutral-50 border border-neutral-200 flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block text-neutral-900">Breakfast</strong>
+                      <span className="text-[11px] text-neutral-500">07:00 – 08:30</span>
+                      <span className="text-[10px] text-neutral-400 block">Tea, Bread & Kinche</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-neutral-50 border border-neutral-200 flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block text-neutral-900">Lunch</strong>
+                      <span className="text-[11px] text-neutral-500">11:30 – 13:30</span>
+                      <span className="text-[10px] text-neutral-400 block">Enjera with Wot & Balanced Meal</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-neutral-50 border border-neutral-200 flex items-start gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block text-neutral-900">Dinner</strong>
+                      <span className="text-[11px] text-neutral-500">18:00 – 20:00</span>
+                      <span className="text-[10px] text-neutral-400 block">Full Evening Dining Service</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Institutional Cryptographic Signatures & Clearance for Dorm Admin */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div className="sm:col-span-2 space-y-2 text-xs">
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <span className="text-[11px] font-bold text-emerald-800 uppercase block">
+                      Student Union Sign-Off for Dormitory Administration
+                    </span>
+                    <p className="text-[11px] text-emerald-900 mt-0.5">
+                      Clearance Granted: Bearer is verified for Track 1 campus residency & dining. Dormitory Administration is authorized to allocate building block, room, and bed (1–8) and issue the room key.
+                    </p>
+                    <div className="mt-1 font-mono text-[10px] text-emerald-700 truncate">
+                      HMAC: {printingTicketStudent.student_union_signature_hash || printingTicketStudent.dean_signature_hash || 'SHA256-AUTH-SEAL'}
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded-xl bg-neutral-100 text-[10px] text-neutral-600 flex items-center justify-between">
+                    <span>Dean Digital Sign-Off: <strong>VERIFIED</strong></span>
+                    <span>Union Meal Card: <strong>ACTIVE</strong></span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center p-2 bg-white rounded-xl border border-neutral-200 text-center">
+                  {printingTicketStudent.student_union_qr_code ? (
+                    <img
+                      src={printingTicketStudent.student_union_qr_code}
+                      alt="Union QR"
+                      className="w-24 h-24 object-contain"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 border border-dashed rounded-lg flex flex-col items-center justify-center p-2 text-neutral-400">
+                      <QrCode className="w-8 h-8 text-neutral-500" />
+                      <span className="text-[9px] mt-1 font-bold">HMAC VERIFIED</span>
+                    </div>
+                  )}
+                  <span className="text-[9px] font-bold text-neutral-500 mt-1 uppercase">Scan to Verify</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center text-[11px] text-neutral-400 print:block">
+              Present this physical ticket along with your official University Student ID at the campus dining hall and Dormitory Administration office.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

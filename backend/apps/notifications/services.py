@@ -60,3 +60,35 @@ def notify_user(
 
     logger.info(f"Notification delivered to user {user} ({email}): {title}")
     return True
+
+
+def create_notification(
+    recipient: Any,
+    title: str,
+    message: str,
+    notification_type: str = "GENERAL",
+    actor: Optional[Any] = None,
+    link: str = "",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[Any]:
+    """
+    Creates an in-app Notification record for recipient and returns the created instance.
+    """
+    if not recipient:
+        return None
+    try:
+        from .models import Notification
+        notif = Notification.objects.create(
+            recipient=recipient,
+            actor=actor,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            link=link,
+            metadata=metadata or {},
+        )
+        return notif
+    except Exception as exc:
+        logger.warning("Failed to create Notification record: %s", exc)
+        return None
+

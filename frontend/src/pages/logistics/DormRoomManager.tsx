@@ -18,6 +18,8 @@ import {
   DoorOpen,
   ArrowRightLeft,
   X,
+  ShieldCheck,
+  Utensils,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -68,6 +70,16 @@ export default function DormRoomManager() {
     e.preventDefault()
     if (!selectedStudentId) {
       setError('Please select a student to assign.')
+      return
+    }
+
+    const student = unassignedStudents.find((s) => s.id === selectedStudentId)
+    if (!student?.dean_approved) {
+      setError('Cannot assign dorm: Missing Department Dean cryptographic digital sign-off.')
+      return
+    }
+    if (!student?.meal_card_active) {
+      setError('Cannot assign dorm: Missing Student Union meal card activation & dining clearance.')
       return
     }
 
@@ -428,11 +440,87 @@ export default function DormRoomManager() {
                     <option value="">-- Choose Student ({unassignedStudents.length} available) --</option>
                     {unassignedStudents.map((st) => (
                       <option key={st.id} value={st.id}>
-                        {st.student_name} ({st.student_id_number}) - {st.department}
+                        {st.student_name} ({st.student_id_number}) - {st.department} {st.meal_card_active ? '✓ Meal Cleared' : '⏳ Pending Union'}
                       </option>
                     ))}
                   </select>
                 </div>
+
+                {/* Two-Letter Clearance Check Box */}
+                {(() => {
+                  const selectedStudent = unassignedStudents.find((st) => st.id === selectedStudentId)
+                  if (!selectedStudent) return null
+
+                  const isDeanCleared = selectedStudent.dean_approved
+                  const isUnionCleared = selectedStudent.meal_card_active && Boolean(selectedStudent.meal_card_number)
+                  const isBothCleared = isDeanCleared && isUnionCleared
+
+                  return (
+                    <div className="p-3.5 rounded-xl border bg-slate-50 dark:bg-slate-900/60 space-y-2.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                        Institutional Two-Letter Clearance Verification
+                      </span>
+
+                      {/* Letter 1: Department Dean Clearance Letter */}
+                      <div className="flex items-start justify-between text-xs p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                            Department Dean Clearance Letter
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono truncate max-w-[240px]">
+                            HMAC: {selectedStudent.dean_signature_hash ? selectedStudent.dean_signature_hash.slice(0, 24) + '...' : 'Dean Verified'}
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isDeanCleared
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                        }`}>
+                          {isDeanCleared ? 'APPROVED' : 'MISSING'}
+                        </span>
+                      </div>
+
+                      {/* Letter 2: Student Union Dining & Residency Clearance */}
+                      <div className="flex items-start justify-between text-xs p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <Utensils className="w-3.5 h-3.5 text-amber-600" />
+                            Student Union Meal & Housing Clearance
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            Meal Card: {selectedStudent.meal_card_number || 'Not Activated by Union'}
+                          </div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isUnionCleared
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                        }`}>
+                          {isUnionCleared ? 'ACTIVE' : 'PENDING'}
+                        </span>
+                      </div>
+
+                      {/* Date Window Check */}
+                      <div className="text-[11px] text-slate-500 flex items-center justify-between pt-1">
+                        <span>Schedule Validity Window:</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          {selectedStudent.valid_from && selectedStudent.valid_until
+                            ? `${selectedStudent.valid_from} to ${selectedStudent.valid_until}`
+                            : 'Current In-House Cohort'}
+                        </span>
+                      </div>
+
+                      {/* Warning if not cleared */}
+                      {!isBothCleared && (
+                        <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-[11px] font-medium flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Both Dean sign-off and Student Union meal card activation must be complete before assigning a room.</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Dorm Block */}
                 <div>
@@ -509,10 +597,13 @@ export default function DormRoomManager() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium"
+                    disabled={isSubmitting || (() => {
+                      const st = unassignedStudents.find((s) => s.id === selectedStudentId)
+                      return !st?.dean_approved || !st?.meal_card_active
+                    })()}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Assigning...' : 'Confirm Assignment'}
+                    {isSubmitting ? 'Assigning...' : 'Confirm Room & Bed (1-8)'}
                   </Button>
                 </div>
               </form>

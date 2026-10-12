@@ -159,6 +159,106 @@ class UILStudentProfile(models.Model):
         default="",
         verbose_name="Dorm & Food Clearance Letter Base64 QR",
     )
+    dean_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_uil_students",
+        verbose_name="Verifying Department Dean",
+    )
+    dean_letter_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Official Institutional Clearance & Services Pass",
+        verbose_name="Dean Letter Title",
+    )
+    dean_letter_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Dean Clearance Notes & Remarks",
+    )
+    dean_allow_dorm = models.BooleanField(
+        default=True,
+        verbose_name="Dormitory Clearance Allowed",
+    )
+    dean_allow_food = models.BooleanField(
+        default=True,
+        verbose_name="Cafeteria Clearance Allowed",
+    )
+    dean_allow_internship = models.BooleanField(
+        default=True,
+        verbose_name="Internship Clearance Allowed",
+    )
+    dean_valid_from = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Clearance Valid From",
+    )
+    dean_valid_until = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Clearance Valid Until",
+    )
+    dean_letter_qr = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Dean Custom Clearance Letter Base64 QR",
+    )
+    dean_unique_qr = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Unified Department Dean Base64 QR Code",
+        help_text="Single persistent QR code representing the Department Dean across all documents.",
+    )
+    internship_letter_sent = models.BooleanField(
+        default=False,
+        verbose_name="Internship Clearance Letter Dispatched",
+    )
+    internship_letter_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Internship Letter Sent Timestamp",
+    )
+    dorm_food_letter_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Official Campus Dormitory & Cafeteria Clearance Authorization",
+        verbose_name="Dorm & Food Clearance Letter Title",
+    )
+    dorm_food_letter_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Dorm & Food Clearance Statement & Guidelines",
+    )
+    dorm_food_letter_sent = models.BooleanField(
+        default=False,
+        verbose_name="Dorm & Food Letter Dispatched",
+    )
+    dorm_food_letter_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Dorm & Food Letter Sent Timestamp",
+    )
+    score_letter_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Official Score Letter Remarks & Standing",
+    )
+    score_letter_sent = models.BooleanField(
+        default=False,
+        verbose_name="Score Letter / Roster Released",
+    )
+    score_letter_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Score Letter Sent Timestamp",
+    )
+    score_roster_data = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Score Roster Breakdown Data",
+    )
     dean_score_roster_file = models.FileField(
         upload_to="dean_rosters/%Y/%m/",
         null=True,
@@ -174,6 +274,26 @@ class UILStudentProfile(models.Model):
         null=True,
         blank=True,
         verbose_name="Forwarded to UIL Timestamp",
+    )
+    forwarded_to_dorm = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Forwarded to Dormitory Admin",
+    )
+    forwarded_to_dorm_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Forwarded to Dormitory Timestamp",
+    )
+    forwarded_to_student_dean = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Forwarded to Student Dean",
+    )
+    forwarded_to_student_dean_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Forwarded to Student Dean Timestamp",
     )
     embedding = VectorField(
         dimensions=384,
@@ -318,6 +438,13 @@ class StaffProfile(models.Model):
     staff_role = models.CharField(
         max_length=30,
         verbose_name="Staff Institutional Role",
+    )
+    staff_id_number = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Staff / Employee ID Number",
+        help_text="Unique institutional staff or employee identification number.",
     )
     phone_number = models.CharField(
         max_length=20,

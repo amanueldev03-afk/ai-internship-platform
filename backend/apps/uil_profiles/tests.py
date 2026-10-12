@@ -381,3 +381,394 @@ class ResumeDocumentParsingAndWorkflowTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("file", response.json())
 
+
+class DeanWorkflowAndChatTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        # Create Dean of Computer Science
+        self.dean_user = User.objects.create_user(
+            email="cs_dean@aau.edu.et",
+            password="Password123!",
+            role=User.Role.DEPT_DEAN,
+            department="Computer Science",
+            university_name="Addis Ababa University",
+            first_name="Dr. Bekele",
+            last_name="Tadesse",
+        )
+
+        # Create CS Student (with underscore department "computer_science")
+        self.cs_student_user = User.objects.create_user(
+            email="cs_student@aau.edu.et",
+            password="Password123!",
+            role=User.Role.STUDENT,
+            department="computer_science",
+            university_name="Addis Ababa University",
+            first_name="Amanuel",
+            last_name="Mulugeta",
+        )
+        self.cs_legacy_student = Student.objects.create(
+            user=self.cs_student_user,
+            field_of_study="computer_science",
+            university="Addis Ababa University",
+        )
+        self.cs_uil_profile = UILStudentProfile.objects.create(
+            student=self.cs_legacy_student,
+            student_id_number="UGR/1234/16",
+            campus_city="Addis Ababa",
+            department="computer_science",
+            academic_year=4,
+            gpa=Decimal("3.85"),
+        )
+
+        # Create Civil Eng Student
+        self.civil_student_user = User.objects.create_user(
+            email="civil_student@aau.edu.et",
+            password="Password123!",
+            role=User.Role.STUDENT,
+            department="Civil Engineering",
+            university_name="Addis Ababa University",
+            first_name="Chala",
+            last_name="Gemechu",
+        )
+        self.civil_legacy_student = Student.objects.create(
+            user=self.civil_student_user,
+            field_of_study="Civil Engineering",
+            university="Addis Ababa University",
+        )
+        self.civil_uil_profile = UILStudentProfile.objects.create(
+            student=self.civil_legacy_student,
+            student_id_number="UGR/9999/16",
+            campus_city="Addis Ababa",
+            department="Civil Engineering",
+            academic_year=4,
+            gpa=Decimal("3.20"),
+        )
+
+    def test_dean_student_list_department_matching(self):
+        """Dean of Computer Science should see computer_science student and not Civil Eng student."""
+        self.client.force_authenticate(user=self.dean_user)
+        url = reverse("uil_profiles:dean-students")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.json()
+        student_ids = [s["student_id_number"] for s in data["students"]]
+        self.assertIn("UGR/1234/16", student_ids)
+        self.assertNotIn("UGR/9999/16", student_ids)
+
+        # Check dossier fields
+        matching_student = next(s for s in data["students"] if s["student_id_number"] == "UGR/1234/16")
+        self.assertEqual(matching_student["gpa"], "3.85")
+        self.assertEqual(matching_student["academic_year"], 4)
+        self.assertTrue(matching_student["is_eligible"])
+
+    def test_dean_verify_student_and_chat_activation(self):
+        """Dean verifies CS student, generating QR, email, and activating chat."""
+        self.client.force_authenticate(user=self.dean_user)
+        verify_url = reverse("uil_profiles:dean-verify-student", kwargs={"pk": self.cs_uil_profile.id})
+        resp = self.client.post(verify_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.cs_uil_profile.refresh_from_db()
+        self.assertTrue(self.cs_uil_profile.is_verified_by_dean)
+        self.assertTrue(len(self.cs_uil_profile.dean_signature_hash) > 0)
+        self.assertTrue(len(self.cs_uil_profile.dean_verification_letter_qr) > 0)
+
+        # Dean opens chat with verified student
+        chat_url = reverse("uil_profiles:dean-chat", kwargs={"student_id": self.cs_uil_profile.id})
+        chat_resp = self.client.get(chat_url)
+        self.assertEqual(chat_resp.status_code, status.HTTP_200_OK)
+        # Should contain the automated initial welcome greeting
+        self.assertGreaterEqual(len(chat_resp.json()["messages"]), 1)
+
+        # Dean sends a message
+        send_url = reverse("uil_profiles:dean-chat-send", kwargs={"student_id": self.cs_uil_profile.id})
+        send_resp = self.client.post(send_url, {"message": "Please review your logistics clearance window."}, format="json")
+        self.assertEqual(send_resp.status_code, status.HTTP_201_CREATED)
+
+        # Student logs in and reads chat
+        self.client.force_authenticate(user=self.cs_student_user)
+        student_chat_url = reverse("uil_profiles:student-dean-chat")
+        stu_chat_resp = self.client.get(student_chat_url)
+        self.assertEqual(stu_chat_resp.status_code, status.HTTP_200_OK)
+        stu_messages = stu_chat_resp.json()["messages"]
+        self.assertGreaterEqual(len(stu_messages), 2)
+
+        # Student replies
+        student_send_url = reverse("uil_profiles:student-dean-chat-send")
+        stu_send_resp = self.client.post(student_send_url, {"message": "Thank you Dean! I received the clearance letter."}, format="json")
+        self.assertEqual(stu_send_resp.status_code, status.HTTP_201_CREATED)
+
+    def test_unverified_student_cannot_access_chat(self):
+        """Unverified student must receive 403 Forbidden when attempting to access Dean chat."""
+        self.client.force_authenticate(user=self.civil_student_user)
+        student_chat_url = reverse("uil_profiles:student-dean-chat")
+        resp = self.client.get(student_chat_url)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dean_custom_clearance_letter_and_student_preview(self):
+        """Test custom clearance letter issuance and student read-only roster preview."""
+        self.client.force_authenticate(user=self.dean_user)
+        verify_url = reverse("uil_profiles:dean-verify-student", kwargs={"pk": self.cs_uil_profile.id})
+        payload = {
+            "notes": "Approved for Summer 2024 Track 1. Dorm Block 4 & Cafeteria pass authorized.",
+            "allow_dormitory": True,
+            "allow_cafeteria": True,
+            "allow_internship": True,
+            "valid_from": "2026-10-01",
+            "valid_until": "2027-02-01",
+        }
+        resp = self.client.post(verify_url, payload, format="json")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        data = resp.json()
+        self.assertIn("Dean Dr.", data["dean_title"])
+        self.assertTrue(len(data["dean_letter_qr"]) > 0)
+        self.assertEqual(data["dean_letter_notes"], payload["notes"])
+
+        # Test Dean issue / edit letter
+        issue_letter_url = reverse("uil_profiles:dean-issue-letter", kwargs={"student_id": self.cs_uil_profile.id})
+        new_payload = {
+            "notes": "Updated remarks: Extended clearance granted by Dean Dr. Mulat.",
+            "allow_dormitory": True,
+            "allow_cafeteria": False,
+            "allow_internship": True,
+            "valid_from": "2026-10-05",
+            "valid_until": "2027-02-15",
+        }
+        issue_resp = self.client.post(issue_letter_url, new_payload, format="json")
+        self.assertEqual(issue_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(issue_resp.json()["dean_letter_notes"], new_payload["notes"])
+        self.assertFalse(issue_resp.json()["dean_allow_food"])
+
+        # Student inspects their profile and score roster preview
+        self.client.force_authenticate(user=self.cs_student_user)
+        me_url = reverse("uil_profiles:student-uil-me")
+        me_resp = self.client.get(me_url)
+        self.assertEqual(me_resp.status_code, status.HTTP_200_OK)
+        me_data = me_resp.json()
+        self.assertTrue(me_data["is_verified_by_dean"])
+        self.assertIn("Dean Dr.", me_data["dean_title"])
+        self.assertEqual(me_data["dean_letter_notes"], new_payload["notes"])
+        self.assertIn("score_roster_preview", me_data)
+        self.assertEqual(me_data["score_roster_preview"]["eligibility_status"], "APPROVED - 3RD YEAR COMPLETED")
+
+    def test_single_dean_qr_across_all_three_letters_and_separate_dispatch(self):
+        """
+        Verify that a Department Dean has exactly ONE unique QR code for all applications
+        (Official Internship Clearance, Dorm & Cafeteria Clearance, and Official Score Letter),
+        and that after student verification, the Dean can compose and dispatch each of the 3 letters separately.
+        """
+        self.client.force_authenticate(user=self.dean_user)
+        verify_url = reverse("uil_profiles:dean-verify-student", kwargs={"pk": self.cs_uil_profile.id})
+        v_resp = self.client.post(verify_url, {"notes": "Verified for Track 1."}, format="json")
+        self.assertEqual(v_resp.status_code, status.HTTP_200_OK)
+        v_data = v_resp.json()
+        dean_qr = v_data["dean_unique_qr"]
+        self.assertTrue(len(dean_qr) > 0)
+        self.assertEqual(v_data["dean_letter_qr"], dean_qr)
+        self.assertEqual(v_data["dean_dorm_food_letter_qr"], dean_qr)
+        self.assertEqual(v_data["dean_verification_letter_qr"], dean_qr)
+
+        # 1. Issue Internship Clearance Letter separately
+        issue_url = reverse("uil_profiles:dean-issue-letter", kwargs={"student_id": self.cs_uil_profile.id})
+        int_resp = self.client.post(issue_url, {
+            "letter_type": "internship",
+            "letter_title": "Official Internship Clearance Letter",
+            "notes": "Student officially cleared for Track 1 In-House Internship only.",
+            "allow_internship": True,
+        }, format="json")
+        self.assertEqual(int_resp.status_code, status.HTTP_200_OK)
+        int_data = int_resp.json()
+        self.assertTrue(int_data["internship_letter_sent"])
+        self.assertEqual(int_data["dean_unique_qr"], dean_qr)
+        self.assertEqual(int_data["dean_letter_qr"], dean_qr)
+
+        # 2. Issue Dorm & Cafeteria Clearance Letter separately
+        dorm_resp = self.client.post(issue_url, {
+            "letter_type": "dorm_food",
+            "letter_title": "Official Campus Dormitory & Cafeteria Clearance Authorization",
+            "notes": "Approved for Dorm Block 4, Room 12 and dining hall meal card.",
+            "allow_dormitory": True,
+            "allow_cafeteria": True,
+        }, format="json")
+        self.assertEqual(dorm_resp.status_code, status.HTTP_200_OK)
+        dorm_data = dorm_resp.json()
+        self.assertTrue(dorm_data["dorm_food_letter_sent"])
+        self.assertEqual(dorm_data["dean_unique_qr"], dean_qr)
+        self.assertEqual(dorm_data["dean_dorm_food_letter_qr"], dean_qr)
+
+        # 3. Issue and update Score Sheet & Excel Roster separately
+        score_resp = self.client.post(issue_url, {
+            "letter_type": "score",
+            "notes": "Final composite score approved by Dean Dr. Mulat.",
+            "advisor_score": "24",
+            "uil_score": "23",
+            "doc_score": "25",
+            "pres_score": "24",
+            "gpa": "3.85",
+        }, format="json")
+        self.assertEqual(score_resp.status_code, status.HTTP_200_OK)
+        score_data = score_resp.json()
+        self.assertTrue(score_data["score_letter_sent"])
+        self.assertEqual(score_data["dean_unique_qr"], dean_qr)
+        self.assertEqual(float(score_data["score_roster_data"]["total_score"]), 96.0)
+
+        # 4. Student views their dashboard profile with all 3 letters and identical Dean QR code
+        self.client.force_authenticate(user=self.cs_student_user)
+        me_url = reverse("uil_profiles:student-uil-me")
+        me_resp = self.client.get(me_url)
+        self.assertEqual(me_resp.status_code, status.HTTP_200_OK)
+        me_data = me_resp.json()
+        self.assertEqual(me_data["dean_unique_qr"], dean_qr)
+        self.assertTrue(me_data["internship_letter_sent"])
+        self.assertTrue(me_data["dorm_food_letter_sent"])
+        self.assertTrue(me_data["score_letter_sent"])
+        self.assertEqual(me_data["score_roster_preview"]["dean_unique_qr"], dean_qr)
+
+    def test_cross_university_dean_access_forbidden(self):
+        """A Dean from a different university (e.g. ASTU) cannot view or verify an AAU student."""
+        astu_dean = User.objects.create_user(
+            email="astu_dean@astu.edu.et",
+            password="Password123!",
+            role=User.Role.DEPT_DEAN,
+            department="Computer Science",
+            university_name="Adama Science and Technology University",
+            first_name="Dr. Kebede",
+            last_name="Alemu",
+        )
+        self.client.force_authenticate(user=astu_dean)
+
+        # ASTU Dean student list should NOT include AAU student
+        url = reverse("uil_profiles:dean-students")
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        student_ids = [s["student_id_number"] for s in resp.json()["students"]]
+        self.assertNotIn("UGR/1234/16", student_ids)
+
+        # ASTU Dean cannot verify AAU student (403 Forbidden)
+        verify_url = reverse("uil_profiles:dean-verify-student", kwargs={"pk": self.cs_uil_profile.id})
+        v_resp = self.client.post(verify_url)
+        self.assertEqual(v_resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_student_forward_to_dorm_and_dean_complete_flow(self):
+        """
+        Verify validation rules for forwarding Dorm & Cafeteria letter:
+        1. Must be verified by Department Dean first.
+        2. Must have registered Dorm Admin / Student Dean at the student's university.
+        3. Target actor must be admin-approved (is_approved=True).
+        4. Target actor must have a completed profile with university and unique staff ID.
+        5. Student, Dorm Admin, and Student Dean must belong to the exact same university.
+        6. Once forwarded, letters display on Dorm Admin and Student Dean list endpoints.
+        """
+        forward_dorm_url = reverse("uil_profiles:student-forward-to-dorm")
+        forward_dean_url = reverse("uil_profiles:student-forward-to-student-dean")
+
+        # Step 0: Unverified student fails
+        self.client.force_authenticate(user=self.cs_student_user)
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("verified by your Department Dean", resp.json()["detail"])
+
+        # Verify student via Dean
+        self.client.force_authenticate(user=self.dean_user)
+        verify_url = reverse("uil_profiles:dean-verify-student", kwargs={"pk": self.cs_uil_profile.id})
+        self.client.post(verify_url, {"notes": "Verified for Track 1."}, format="json")
+
+        # Step 1: Student attempts forward when no Dorm Admin exists
+        self.client.force_authenticate(user=self.cs_student_user)
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("No Dormitory Administrator registered", resp.json()["detail"])
+
+        # Create Dorm Admin from a different university (e.g. ASTU)
+        diff_dorm = User.objects.create_user(
+            email="astu_dorm@astu.edu.et",
+            password="Password123!",
+            role=User.Role.DORM_ADMIN,
+            university_name="Adama Science and Technology University",
+            staff_id_number="ASTU-DORM-01",
+            is_approved=True,
+            is_active=True,
+        )
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("No Dormitory Administrator registered", resp.json()["detail"])
+
+        # Create AAU Dorm Admin but unapproved by platform admin (is_approved=False)
+        aau_dorm = User.objects.create_user(
+            email="aau_dorm@aau.edu.et",
+            password="Password123!",
+            role=User.Role.DORM_ADMIN,
+            university_name="Addis Ababa University",
+            staff_id_number="AAU-DORM-99",
+            is_approved=False,
+            is_active=True,
+        )
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("has not been verified/approved by the platform administrator", resp.json()["detail"])
+
+        # Approve Dorm Admin but clear staff_id_number to test profile completeness check
+        aau_dorm.is_approved = True
+        aau_dorm.staff_id_number = ""
+        aau_dorm.save()
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("has not completed their institutional profile", resp.json()["detail"])
+
+        # Set valid unique staff_id_number
+        aau_dorm.staff_id_number = "AAU-DORM-01"
+        aau_dorm.save()
+
+        # Step 2: Successful forward to Dormitory Administration
+        resp = self.client.post(forward_dorm_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn("successfully forwarded to Dormitory Administration", resp.json()["message"])
+
+        # Verify DB status
+        self.cs_uil_profile.refresh_from_db()
+        self.assertTrue(self.cs_uil_profile.forwarded_to_dorm)
+        self.assertIsNotNone(self.cs_uil_profile.forwarded_to_dorm_at)
+
+        # Step 3: Student forwards to Student Dean (same checks)
+        resp_dean = self.client.post(forward_dean_url)
+        self.assertEqual(resp_dean.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("No Student Dean registered", resp_dean.json()["detail"])
+
+        # Create approved AAU Student Dean with unique Staff ID
+        aau_union = User.objects.create_user(
+            email="aau_dean_union@aau.edu.et",
+            password="Password123!",
+            role=User.Role.STUDENT_UNION,
+            university_name="Addis Ababa University",
+            staff_id_number="AAU-UNION-01",
+            is_approved=True,
+            is_active=True,
+        )
+        resp_dean = self.client.post(forward_dean_url)
+        self.assertEqual(resp_dean.status_code, status.HTTP_200_OK)
+        self.assertIn("successfully forwarded to Student Dean", resp_dean.json()["message"])
+
+        self.cs_uil_profile.refresh_from_db()
+        self.assertTrue(self.cs_uil_profile.forwarded_to_student_dean)
+        self.assertIsNotNone(self.cs_uil_profile.forwarded_to_student_dean_at)
+
+        # Step 4: Dorm Admin views received forwarded letters
+        self.client.force_authenticate(user=aau_dorm)
+        dorm_list_url = reverse("uil_profiles:dorm-forwarded-letters")
+        dorm_resp = self.client.get(dorm_list_url)
+        self.assertEqual(dorm_resp.status_code, status.HTTP_200_OK)
+        dorm_letters = dorm_resp.json()
+        self.assertEqual(len(dorm_letters), 1)
+        self.assertEqual(dorm_letters[0]["student_id_number"], "UGR/1234/16")
+        self.assertEqual(dorm_letters[0]["university_name"], "Addis Ababa University")
+
+        # Step 5: Student Dean views received forwarded cafeteria letters
+        self.client.force_authenticate(user=aau_union)
+        dean_list_url = reverse("uil_profiles:student-dean-forwarded-letters")
+        dean_resp = self.client.get(dean_list_url)
+        self.assertEqual(dean_resp.status_code, status.HTTP_200_OK)
+        dean_letters = dean_resp.json()
+        self.assertEqual(len(dean_letters), 1)
+        self.assertEqual(dean_letters[0]["student_id_number"], "UGR/1234/16")
+
+
+

@@ -37,21 +37,23 @@ def get_recommendation_cache_key(user_id: int) -> str:
 
 
 def bust_recommendation_cache(user_id: int) -> None:
-    """Delete cached recommendations for a user, refresh embedding, and queue match recalculation."""
-    cache.delete(get_recommendation_cache_key(user_id))
+    """Delete cached recommendations for a user and queue background match recalculation."""
+    try:
+        cache.delete(get_recommendation_cache_key(user_id))
+    except Exception as e:
+        logger.warning(f"Failed to clear recommendation cache for user {user_id}: {e}")
+
     try:
         from apps.students.models import StudentProfile
-        from apps.recommendations.services.semantic_matching import update_student_embedding
         profile = StudentProfile.objects.filter(user_id=user_id).first()
         if profile:
-            update_student_embedding(profile)
             try:
                 from apps.recommendations.tasks import recalculate_student_matches_task
                 recalculate_student_matches_task.delay(profile.id)
             except Exception as task_exc:
                 logger.debug(f"Could not queue recalculate_student_matches_task for user {user_id}: {task_exc}")
     except Exception as e:
-        logger.warning(f"Could not refresh student embedding on cache bust for user {user_id}: {e}")
+        logger.warning(f"Could not dispatch match recalculation on cache bust for user {user_id}: {e}")
 
 
 class StudentRecommendationView(APIView):

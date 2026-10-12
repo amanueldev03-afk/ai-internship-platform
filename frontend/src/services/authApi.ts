@@ -75,6 +75,7 @@ export async function register(data: {
   organization_name?: string
   department?: string
   university_name?: string
+  staff_id_number?: string
   auto_activate?: boolean
 }): Promise<RegisterResponse> {
   const response = await api.post<RegisterResponse>('/auth/register/', data)

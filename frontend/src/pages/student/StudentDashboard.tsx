@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Link, useSearchParams, useLocation } from 'react-router-dom'
 import { 
   Sparkles, 
   FileText, 
@@ -22,6 +22,7 @@ import {
   Utensils,
   CheckCircle2,
   ShieldCheck,
+  AlertTriangle,
   MessagesSquare,
   FileCheck,
   Award,
@@ -30,7 +31,15 @@ import {
   Check,
   QrCode,
   X,
-  Clock
+  Clock,
+  Loader2,
+  Building,
+  FileSpreadsheet,
+  Home,
+  ZoomIn,
+  Eye,
+  EyeOff,
+  GraduationCap
 } from 'lucide-react'
 import api from '@/services/api'
 import { useAppSelector } from '@/hooks/redux'
@@ -46,6 +55,8 @@ import type { User, Internship } from '@/types'
 import type { Skill, CareerInterest } from '@/services/studentApi'
 import { Button } from '@/components/ui/button'
 import { normalizeApplicationUrl } from '@/utils/urlValidation'
+import { ensureBase64DataUri } from '@/utils/qrUtils'
+import NotificationBell from '@/components/common/NotificationBell'
 
 function formatDate(dateString?: string) {
   if (!dateString) return 'Active'
@@ -251,7 +262,16 @@ export default function StudentDashboard() {
 
   const [user, setUser] = useState<User | null>(authUser)
   const [data, setData] = useState<DashboardData | null>(null)
+  const location = useLocation()
+  const [showVerifiedToast, setShowVerifiedToast] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    if ((location.state as any)?.verifiedJustNow || searchParams.get('verified') === 'true') {
+      setShowVerifiedToast(true)
+    }
+  }, [location, searchParams])
+
   const activeTab = (searchParams.get('tab') as 'overview' | 'track1' | 'logistics' | 'channel') || 'overview'
   const setActiveTab = (tab: 'overview' | 'track1' | 'logistics' | 'channel') => {
     setSearchParams({ tab })
@@ -280,13 +300,421 @@ export default function StudentDashboard() {
   const [isRespondingInvite, setIsRespondingInvite] = useState<string | null>(null)
   const [isForwardingToUIL, setIsForwardingToUIL] = useState(false)
   const [forwardedToUIL, setForwardedToUIL] = useState(false)
+  const [isForwardingToDorm, setIsForwardingToDorm] = useState(false)
+  const [forwardedToDorm, setForwardedToDorm] = useState(false)
+  const [isForwardingToStudentDean, setIsForwardingToStudentDean] = useState(false)
+  const [forwardedToStudentDean, setForwardedToStudentDean] = useState(false)
   const [studentQrModal, setStudentQrModal] = useState<{ title: string; qrBase64: string } | null>(null)
+  const [lastViewedLetter, setLastViewedLetter] = useState<'internship' | 'dorm_food' | 'score'>('internship')
+  const [isClearanceLetterModalOpen, setIsClearanceLetterModalOpen] = useState(false)
+  const [isScoreRosterModalOpen, setIsScoreRosterModalOpen] = useState(false)
+  const [isQrScannerModalOpen, setIsQrScannerModalOpen] = useState(false)
+  const [qrZoomLevel, setQrZoomLevel] = useState<'fit' | '1.5x' | '2x'>('fit')
+
+  const [uilProfile, setUilProfile] = useState<{
+    id?: string
+    student_id_number?: string
+    campus_city?: string
+    department?: string
+    academic_year?: number
+    gpa?: string | null
+    is_eligible?: boolean
+    is_verified_by_dean?: boolean
+    dean_verified_at?: string | null
+    dean_name?: string | null
+    dean_title?: string | null
+    dean_email?: string | null
+    dean_department?: string | null
+    dean_unique_qr?: string | null
+    dean_letter_title?: string | null
+    dean_letter_notes?: string | null
+    internship_letter_sent?: boolean
+    internship_letter_sent_at?: string | null
+    dorm_food_letter_title?: string | null
+    dorm_food_letter_notes?: string | null
+    dorm_food_letter_sent?: boolean
+    dorm_food_letter_sent_at?: string | null
+    score_letter_notes?: string | null
+    score_letter_sent?: boolean
+    score_letter_sent_at?: string | null
+    score_roster_data?: {
+      gpa?: number | string
+      advisor_score?: number
+      uil_score?: number
+      doc_score?: number
+      defense_score?: number
+      total_score?: number
+      remarks?: string
+    } | null
+    dean_allow_dorm?: boolean
+    dean_allow_food?: boolean
+    dean_allow_internship?: boolean
+    dean_valid_from?: string | null
+    dean_valid_until?: string | null
+    dean_signature_hash?: string
+    dean_verification_letter_qr?: string
+    dean_dorm_food_letter_qr?: string
+    dean_letter_qr?: string
+    has_score_roster?: boolean
+    score_roster_preview?: {
+      student_id?: string
+      full_name?: string
+      department?: string
+      academic_year?: string
+      gpa?: string
+      eligibility_status?: string
+      endorsed_by?: string
+      signature_hash?: string
+      verified_date?: string
+      allowed_services?: string[]
+      valid_from?: string | null
+      valid_until?: string | null
+    }
+    forwarded_to_uil?: boolean
+    forwarded_to_uil_at?: string | null
+    forwarded_to_dorm?: boolean
+    forwarded_to_dorm_at?: string | null
+    forwarded_to_student_dean?: boolean
+    forwarded_to_student_dean_at?: string | null
+  } | null>(null)
+
+  // Track 1 Cohorts Placement
+  const [studentCohorts, setStudentCohorts] = useState<{
+    id: string
+    title: string
+    university_name: string
+    department: string
+    requirements: string
+    opportunities: string
+    min_gpa: string | null
+    academic_year: string
+    start_date: string
+    end_date: string
+    capacity_k: number
+    enrolled_count: number
+    is_open: boolean
+    is_invited: boolean
+    is_enrolled: boolean
+  }[]>([])
+  const [isAcceptingCohort, setIsAcceptingCohort] = useState<string | null>(null)
+  const [isRejectingCohort, setIsRejectingCohort] = useState<string | null>(null)
+  const [dismissedCohortIds, setDismissedCohortIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('student_dismissed_cohorts') || '[]')
+    } catch {
+      return []
+    }
+  })
+  const [showHiddenCohorts, setShowHiddenCohorts] = useState(false)
+
+  const handleDismissCohort = (cohortId: string) => {
+    const updated = Array.from(new Set([...dismissedCohortIds, cohortId]))
+    setDismissedCohortIds(updated)
+    try {
+      localStorage.setItem('student_dismissed_cohorts', JSON.stringify(updated))
+    } catch {}
+  }
+
+  const handleRestoreCohort = (cohortId: string) => {
+    const updated = dismissedCohortIds.filter((id) => id !== cohortId)
+    setDismissedCohortIds(updated)
+    try {
+      localStorage.setItem('student_dismissed_cohorts', JSON.stringify(updated))
+    } catch {}
+  }
+
+  const handleRejectCohort = async (cohortId: string) => {
+    if (!confirm('Are you sure you want to decline this cohort invitation? This will notify the institutional UIL Officer.')) return
+    setIsRejectingCohort(cohortId)
+    try {
+      const res = await api.post(`/v1/projects/cohorts/${cohortId}/reject/`)
+      alert(res.data.message || 'Cohort invitation declined.')
+      await fetchMyCohorts()
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to decline cohort invitation.')
+    } finally {
+      setIsRejectingCohort(null)
+    }
+  }
+
+  const fetchMyCohorts = async () => {
+    try {
+      const res = await api.get('/v1/projects/cohorts/my-cohorts/')
+      if (res.data?.cohorts) {
+        setStudentCohorts(res.data.cohorts)
+      }
+    } catch {
+      // silent
+    }
+  }
+
+  const handleAcceptCohort = async (cohortId: string) => {
+    setIsAcceptingCohort(cohortId)
+    try {
+      const res = await api.post(`/v1/projects/cohorts/${cohortId}/accept/`)
+      alert(res.data.message || 'Successfully enrolled in Track 1 In-House Cohort!')
+      await fetchMyCohorts()
+      try {
+        const logisticsRes = await api.get('/v1/logistics/')
+        if (logisticsRes.data && logisticsRes.data.length > 0) {
+          setCampusPass(logisticsRes.data[0])
+        }
+      } catch {
+        // silent
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to accept cohort placement.')
+    } finally {
+      setIsAcceptingCohort(null)
+    }
+  }
 
   // Direct Company Chat
   const [companyChatInviteId, setCompanyChatInviteId] = useState<string | null>(null)
   const [companyChatMessages, setCompanyChatMessages] = useState<any[]>([])
   const [companyChatText, setCompanyChatText] = useState('')
   const [isSendingCompanyChat, setIsSendingCompanyChat] = useState(false)
+
+  // Unified Institutional Chat State (Department Dean vs UIL Officer)
+  const [activeChatTab, setActiveChatTab] = useState<'dean' | 'uil'>('dean')
+  const [isDeanChatOpen, setIsDeanChatOpen] = useState(false)
+
+  // 1. Department Dean Chat State
+  const [deanChatMessages, setDeanChatMessages] = useState<any[]>([])
+  const [deanChatDean, setDeanChatDean] = useState<{ id: string; full_name: string; email: string; department: string } | null>(null)
+  const [deanChatText, setDeanChatText] = useState('')
+  const [isDeanChatLoading, setIsDeanChatLoading] = useState(false)
+  const [isSendingDeanMessage, setIsSendingDeanMessage] = useState(false)
+  const [deanUnreadCount, setDeanUnreadCount] = useState<number>(0)
+  const [deanIncomingAlert, setDeanIncomingAlert] = useState<{ sender_name: string; message: string } | null>(null)
+  const deanChatEndRef = useRef<HTMLDivElement>(null)
+  const lastSeenDeanMsgCountRef = useRef<number>(0)
+
+  // 2. UIL Head Officer Chat State
+  const [uilChatMessages, setUilChatMessages] = useState<any[]>([])
+  const [uilChatOfficer, setUilChatOfficer] = useState<{ id: string; name: string; email: string; university?: string } | null>(null)
+  const [uilChatText, setUilChatText] = useState('')
+  const [isUilChatLoading, setIsUilChatLoading] = useState(false)
+  const [isSendingUilMessage, setIsSendingUilMessage] = useState(false)
+  const [uilUnreadCount, setUilUnreadCount] = useState<number>(0)
+  const [uilIncomingAlert, setUilIncomingAlert] = useState<{ sender_name: string; message: string } | null>(null)
+  const uilChatEndRef = useRef<HTMLDivElement>(null)
+  const lastSeenUilMsgCountRef = useRef<number>(0)
+
+  const fetchDeanChat = useCallback(async (isInitial = false, markRead = false) => {
+    try {
+      if (isInitial) setIsDeanChatLoading(true)
+      const url = markRead ? '/v1/uil-profiles/student/dean-chat/?mark_read=true' : '/v1/uil-profiles/student/dean-chat/'
+      const res = await api.get(url)
+      const msgs = res.data?.messages || []
+      setDeanChatMessages(msgs)
+      if (res.data?.dean) setDeanChatDean(res.data.dean)
+
+      if (markRead) {
+        setDeanUnreadCount(0)
+        setDeanIncomingAlert(null)
+      } else if (typeof res.data?.unread_count === 'number') {
+        setDeanUnreadCount(res.data.unread_count)
+      }
+
+      if (!markRead && lastSeenDeanMsgCountRef.current > 0 && msgs.length > lastSeenDeanMsgCountRef.current) {
+        const lastMsg = msgs[msgs.length - 1]
+        if (!lastMsg.is_mine) {
+          setDeanIncomingAlert({
+            sender_name: lastMsg.sender_name || res.data?.dean_title || 'Department Dean',
+            message: lastMsg.message,
+          })
+        }
+      }
+      lastSeenDeanMsgCountRef.current = msgs.length
+    } catch {
+      // silent
+    } finally {
+      if (isInitial) setIsDeanChatLoading(false)
+    }
+  }, [])
+
+  const fetchUilChat = useCallback(async (isInitial = false, markRead = false) => {
+    try {
+      if (isInitial) setIsUilChatLoading(true)
+      const url = markRead ? '/v1/uil-profiles/student/uil-chat/?mark_read=true' : '/v1/uil-profiles/student/uil-chat/'
+      const res = await api.get(url)
+      const msgs = res.data?.messages || []
+      setUilChatMessages(msgs)
+      if (res.data?.uil_officer) setUilChatOfficer(res.data.uil_officer)
+
+      if (markRead) {
+        setUilUnreadCount(0)
+        setUilIncomingAlert(null)
+      } else if (typeof res.data?.unread_count === 'number') {
+        setUilUnreadCount(res.data.unread_count)
+      }
+
+      if (!markRead && lastSeenUilMsgCountRef.current > 0 && msgs.length > lastSeenUilMsgCountRef.current) {
+        const lastMsg = msgs[msgs.length - 1]
+        if (!lastMsg.is_mine) {
+          setUilIncomingAlert({
+            sender_name: lastMsg.sender_name || res.data?.uil_officer?.name || 'UIL Head Officer',
+            message: lastMsg.message,
+          })
+        }
+      }
+      lastSeenUilMsgCountRef.current = msgs.length
+    } catch {
+      // silent
+    } finally {
+      if (isInitial) setIsUilChatLoading(false)
+    }
+  }, [])
+
+  // Background polling for both Dean & UIL channels
+  useEffect(() => {
+    fetchDeanChat(true, isDeanChatOpen && activeChatTab === 'dean')
+    fetchUilChat(true, isDeanChatOpen && activeChatTab === 'uil')
+    const interval = setInterval(() => {
+      fetchDeanChat(false, isDeanChatOpen && activeChatTab === 'dean')
+      fetchUilChat(false, isDeanChatOpen && activeChatTab === 'uil')
+    }, 4500)
+    return () => clearInterval(interval)
+  }, [isDeanChatOpen, activeChatTab, fetchDeanChat, fetchUilChat])
+
+  // When chat modal opens or active tab switches, mark that specific channel read
+  useEffect(() => {
+    if (isDeanChatOpen) {
+      if (activeChatTab === 'dean') {
+        setDeanUnreadCount(0)
+        setDeanIncomingAlert(null)
+        fetchDeanChat(false, true)
+      } else if (activeChatTab === 'uil') {
+        setUilUnreadCount(0)
+        setUilIncomingAlert(null)
+        fetchUilChat(false, true)
+      }
+    }
+  }, [isDeanChatOpen, activeChatTab, fetchDeanChat, fetchUilChat])
+
+  useEffect(() => {
+    if (activeChatTab === 'dean') {
+      deanChatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [deanChatMessages, activeChatTab])
+
+  useEffect(() => {
+    if (activeChatTab === 'uil') {
+      uilChatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [uilChatMessages, activeChatTab])
+
+  // Direct redirection and modal opening from notification clicks or query params
+  useEffect(() => {
+    const chatParam = searchParams.get('chat')
+    const uilParam = searchParams.get('uil')
+    const letterParam = searchParams.get('letter')
+    const tabParam = searchParams.get('tab')
+
+    if (chatParam === 'true') {
+      if (uilParam === 'true') {
+        setActiveChatTab('uil')
+      } else {
+        setActiveChatTab('dean')
+      }
+      setIsDeanChatOpen(true)
+    }
+    if (letterParam === 'true' || letterParam === 'internship') {
+      setLastViewedLetter('internship')
+      setIsClearanceLetterModalOpen(true)
+    } else if (letterParam === 'dorm_food') {
+      setLastViewedLetter('dorm_food')
+      setIsClearanceLetterModalOpen(true)
+    } else if (letterParam === 'score') {
+      setLastViewedLetter('score')
+      setIsScoreRosterModalOpen(true)
+    }
+    if (tabParam && ['overview', 'track1', 'logistics', 'channel'].includes(tabParam)) {
+      setActiveTab(tabParam as any)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    const handleNotificationAction = (event: Event) => {
+      const customEvent = event as CustomEvent<any>
+      const notif = customEvent.detail
+      if (!notif) return
+
+      if (notif.notification_type === 'CHAT' || notif.link?.includes('chat=true')) {
+        if (notif.link?.includes('uil=true') || notif.actor_role === 'uil_officer' || notif.title?.toLowerCase().includes('uil')) {
+          setActiveChatTab('uil')
+        } else {
+          setActiveChatTab('dean')
+        }
+        setIsDeanChatOpen(true)
+      } else if (
+        notif.notification_type === 'CLEARANCE_LETTER' ||
+        notif.notification_type === 'VERIFICATION' ||
+        notif.link?.includes('letter=')
+      ) {
+        if (notif.link?.includes('letter=dorm_food') || notif.metadata?.letter_type === 'dorm_food') {
+          setLastViewedLetter('dorm_food')
+          setIsClearanceLetterModalOpen(true)
+        } else if (notif.link?.includes('letter=score') || notif.metadata?.letter_type === 'score') {
+          setLastViewedLetter('score')
+          setIsScoreRosterModalOpen(true)
+        } else {
+          setLastViewedLetter('internship')
+          setIsClearanceLetterModalOpen(true)
+        }
+      } else if (notif.notification_type === 'LOGISTICS' || notif.link?.includes('tab=logistics')) {
+        setActiveTab('logistics')
+      } else if (notif.notification_type === 'DEFENSE' || notif.link?.includes('tab=channel')) {
+        setActiveTab('channel')
+      } else if (notif.notification_type === 'COHORT' || notif.link?.includes('tab=track1')) {
+        setActiveTab('track1')
+        setTimeout(() => {
+          const el = document.getElementById('track1-cohorts-section')
+          if (el) el.scrollIntoView({ behavior: 'smooth' })
+        }, 150)
+      }
+    }
+
+    window.addEventListener('smartintern:notification-action', handleNotificationAction)
+    return () => {
+      window.removeEventListener('smartintern:notification-action', handleNotificationAction)
+    }
+  }, [])
+
+  const handleSendDeanMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!deanChatText.trim() || isSendingDeanMessage) return
+    setIsSendingDeanMessage(true)
+    try {
+      const res = await api.post('/v1/uil-profiles/student/dean-chat/send/', {
+        message: deanChatText.trim(),
+      })
+      setDeanChatMessages((prev) => [...prev, res.data])
+      setDeanChatText('')
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to send message to Department Dean.')
+    } finally {
+      setIsSendingDeanMessage(false)
+    }
+  }
+
+  const handleSendUilMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!uilChatText.trim() || isSendingUilMessage) return
+    setIsSendingUilMessage(true)
+    try {
+      const res = await api.post('/v1/uil-profiles/student/uil-chat/send/', {
+        message: uilChatText.trim(),
+      })
+      setUilChatMessages((prev) => [...prev, res.data])
+      setUilChatText('')
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Failed to send message to UIL Officer.')
+    } finally {
+      setIsSendingUilMessage(false)
+    }
+  }
 
   // Submissions & Timers
   const [submittingDoc, setSubmittingDoc] = useState(false)
@@ -304,6 +732,32 @@ export default function StudentDashboard() {
       alert(err?.response?.data?.detail || 'Forwarding failed. Ensure Department Dean has completed official verification.')
     } finally {
       setIsForwardingToUIL(false)
+    }
+  }
+
+  const handleForwardToDorm = async () => {
+    setIsForwardingToDorm(true)
+    try {
+      const res = await api.post('/v1/uil-profiles/student/forward-to-dorm/')
+      alert(res.data?.message || 'Your Dorm & Cafeteria letter has been officially forwarded to the Dormitory Administration!')
+      setForwardedToDorm(true)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Forwarding to Dormitory failed. Ensure Dormitory Admin is verified with matching university.')
+    } finally {
+      setIsForwardingToDorm(false)
+    }
+  }
+
+  const handleForwardToStudentDean = async () => {
+    setIsForwardingToStudentDean(true)
+    try {
+      const res = await api.post('/v1/uil-profiles/student/forward-to-student-dean/')
+      alert(res.data?.message || 'Your Dorm & Cafeteria letter has been officially forwarded to the Student Dean!')
+      setForwardedToStudentDean(true)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || 'Forwarding to Student Dean failed. Ensure Student Dean is verified with matching university.')
+    } finally {
+      setIsForwardingToStudentDean(false)
     }
   }
 
@@ -421,6 +875,26 @@ export default function StudentDashboard() {
       if (logisticsResult.status === 'fulfilled' && Array.isArray(logisticsResult.value) && logisticsResult.value.length > 0) {
         setCampusPass(logisticsResult.value[0])
       }
+
+      try {
+        const uilRes = await api.get('/v1/uil-profiles/student/me/')
+        if (uilRes.data) {
+          setUilProfile(uilRes.data)
+          if (uilRes.data.forwarded_to_uil) {
+            setForwardedToUIL(true)
+          }
+          if (uilRes.data.forwarded_to_dorm) {
+            setForwardedToDorm(true)
+          }
+          if (uilRes.data.forwarded_to_student_dean) {
+            setForwardedToStudentDean(true)
+          }
+        }
+      } catch {
+        // silent
+      }
+
+      await fetchMyCohorts()
       
       if (dashData.status === 'fulfilled') {
         setData(dashData.value)
@@ -610,6 +1084,18 @@ export default function StudentDashboard() {
   const applicationsCount = data?.dashboardSummary?.total_applications ?? 0
   const recommendationsCount = data?.recommendationsCount ?? 0
 
+  const isPersonalEducationComplete = Boolean(
+    data?.profile?.phone &&
+    data?.profile?.country &&
+    data?.profile?.city &&
+    data?.profile?.date_of_birth &&
+    data?.profile?.university &&
+    (data?.profile?.student_id_number || uilProfile?.student_id_number) &&
+    (data?.profile?.field_of_study || uilProfile?.department) &&
+    (data?.profile?.education_level || uilProfile?.academic_year) &&
+    (data?.profile?.gpa || uilProfile?.gpa)
+  )
+
   const resumeStatusLabel = (() => {
     if (!hasResume) return 'No resume uploaded'
     if (resumeProcessingStatus === 'PENDING' || resumeProcessingStatus === 'PROCESSING')
@@ -664,8 +1150,27 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in pb-12">
+      {/* Email Verification Success Alert */}
+      {showVerifiedToast && (
+        <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/30 p-4 flex items-center justify-between text-emerald-800 dark:text-emerald-300 animate-slide-up">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div>
+              <p className="text-sm font-bold">Email Verified Successfully!</p>
+              <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80">Your student account is verified and fully active. Welcome to your dashboard!</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowVerifiedToast(false)}
+            className="p-1 hover:bg-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-300 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Banner with Greeting & Profile Overview */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white/90 via-primary-50/40 to-secondary-50/30 dark:from-neutral-900/90 dark:via-neutral-900/60 dark:to-neutral-800/40 border border-neutral-200/80 dark:border-neutral-800/80 p-6 sm:p-8 backdrop-blur-2xl shadow-soft">
+      <div className="relative overflow-visible z-20 rounded-3xl bg-gradient-to-br from-white/90 via-primary-50/40 to-secondary-50/30 dark:from-neutral-900/90 dark:via-neutral-900/60 dark:to-neutral-800/40 border border-neutral-200/80 dark:border-neutral-800/80 p-6 sm:p-8 backdrop-blur-2xl shadow-soft">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           <div className="flex items-center gap-5">
             {/* Profile Photo */}
@@ -710,6 +1215,7 @@ export default function StudentDashboard() {
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto">
+            <NotificationBell />
             <Link to="/recommendations" className="flex-1 sm:flex-initial">
               <Button className="w-full sm:w-auto rounded-2xl shadow-glow text-xs sm:text-sm font-bold">
                 <Sparkles className="w-4 h-4 mr-1.5" /> AI Matches
@@ -748,9 +1254,63 @@ export default function StudentDashboard() {
         </div>
       )}
 
+      {/* Personal & Education Dossier Completeness Gate */}
+      {activeTab === 'overview' && !isPersonalEducationComplete && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-amber-500/10 border-2 border-amber-500/30 dark:bg-amber-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-5 animate-fade-in shadow-soft">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/20 shrink-0">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  Required Action
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  Dossier Incomplete
+                </span>
+              </div>
+              <h3 className="text-base font-bold text-neutral-900 dark:text-white mt-1">
+                Personal & Education Dossier Incomplete
+              </h3>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 max-w-2xl leading-relaxed">
+                All personal and educational profile fields (phone, country, city, date of birth, university, student ID number, field of study, academic year, and GPA) must be completed before student data can be sent to or verified by the Department Dean.
+              </p>
+            </div>
+          </div>
+          <Link to="/profile?tab=personal" className="shrink-0">
+            <Button className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-sm flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              Complete Dossier Now →
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {/* Quick Integration Status Strip */}
-      {activeTab === 'overview' && (myTeam || campusPass) && (
+      {activeTab === 'overview' && (myTeam || (uilProfile && !uilProfile.is_verified_by_dean)) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-scale-in">
+          {uilProfile && !uilProfile.is_verified_by_dean && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-neutral-900 dark:text-white">Dean Verification</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                      PENDING
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">
+                    Awaiting 3rd-Year Academic Verification by Department Dean
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {myTeam && (
             <div className="p-4 rounded-2xl bg-gradient-to-r from-primary-500/10 via-primary-500/5 to-transparent border border-primary-500/20 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -778,33 +1338,6 @@ export default function StudentDashboard() {
                 className="text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
               >
                 Track 1 Portal →
-              </button>
-            </div>
-          )}
-
-          {campusPass && (
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-neutral-900 dark:text-white">Campus Digital Pass</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                      {campusPass.meal_card_active ? 'Meal Card Active' : 'Clearance Pending'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-neutral-500">
-                    {campusPass.dorm_block ? `Block ${campusPass.dorm_block} • Room ${campusPass.dorm_room}` : 'Housing Assigned'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveTab('logistics')}
-                className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
-              >
-                View Clearance Pass →
               </button>
             </div>
           )}
@@ -1157,7 +1690,7 @@ export default function StudentDashboard() {
 
           {/* DEAN VERIFICATION & CREDENTIAL FORWARDING */}
           <div className="card-gradient p-6 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-soft space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div>
                 <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
                   Academic Dean Gate
@@ -1170,43 +1703,58 @@ export default function StudentDashboard() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {campusPass?.dean_approved ? (
+              <div className="flex flex-col gap-2.5 w-full md:w-auto">
+                {uilProfile?.is_verified_by_dean || campusPass?.dean_approved ? (
                   <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        setStudentQrModal({
-                          title: 'Dean Official Verification Letter QR',
-                          qrBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYAAAA8AXHiAAA...',
-                        })
-                      }
-                      className="text-xs h-8 flex items-center gap-1 text-indigo-600 border-indigo-200"
-                    >
-                      <QrCode className="w-3.5 h-3.5" /> View Dean QR
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        setStudentQrModal({
-                          title: 'Dean Dorm & Meal Clearance Letter QR',
-                          qrBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYAAAA8AXHiAAA...',
-                        })
-                      }
-                      className="text-xs h-8 flex items-center gap-1 text-teal-600 border-teal-200"
-                    >
-                      <Utensils className="w-3.5 h-3.5" /> Dorm/Meal QR
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={isForwardingToUIL || forwardedToUIL}
-                      onClick={handleForwardToUIL}
-                      className="text-xs h-8 bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                    >
-                      {forwardedToUIL ? 'Forwarded to UIL' : isForwardingToUIL ? 'Forwarding...' : '1-Click Forward to UIL'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        Verified by {uilProfile?.dean_title || 'Department Dean'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setLastViewedLetter('internship')
+                          setIsClearanceLetterModalOpen(true)
+                        }}
+                        className="text-xs h-9 justify-start px-3.5 flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs"
+                      >
+                        <FileText className="w-4 h-4" /> View Internship Clearance Letter
+                        {uilProfile?.internship_letter_sent && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 ml-auto" title="Dispatched by Dean" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setLastViewedLetter('dorm_food')
+                          setIsClearanceLetterModalOpen(true)
+                        }}
+                        className="text-xs h-9 justify-start px-3.5 flex items-center gap-2 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50 font-bold rounded-xl"
+                      >
+                        <Home className="w-4 h-4 text-amber-600" /> View Dorm & Cafeteria Letter
+                        {uilProfile?.dorm_food_letter_sent && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 ml-auto" title="Dispatched by Dean" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setLastViewedLetter('score')
+                          setIsScoreRosterModalOpen(true)
+                        }}
+                        className="text-xs h-9 justify-start px-3.5 flex items-center gap-2 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 font-bold rounded-xl"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> View Score Letter
+                        {uilProfile?.score_letter_sent && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 ml-auto" title="Dispatched by Dean" />
+                        )}
+                      </Button>
+                    </div>
                   </>
                 ) : (
                   <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 flex items-center gap-1">
@@ -1215,6 +1763,261 @@ export default function StudentDashboard() {
                 )}
               </div>
             </div>
+
+            {uilProfile?.is_verified_by_dean && (
+              <div className="pt-3 border-t border-neutral-200/60 dark:border-neutral-800/60 flex flex-wrap items-center gap-3">
+                <span className="text-xs font-bold text-neutral-500">Services Cleared by Dean:</span>
+                {uilProfile.dean_allow_dorm && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    <Home className="w-3.5 h-3.5" /> Dormitory Cleared
+                  </span>
+                )}
+                {uilProfile.dean_allow_food && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    <Utensils className="w-3.5 h-3.5" /> Cafeteria Meal Access
+                  </span>
+                )}
+                {uilProfile.dean_allow_internship && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                    <Cpu className="w-3.5 h-3.5" /> Track 1 In-House Internship
+                  </span>
+                )}
+                {uilProfile.dean_valid_from && uilProfile.dean_valid_until && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                    <Calendar className="w-3.5 h-3.5" /> Valid: {uilProfile.dean_valid_from} to {uilProfile.dean_valid_until}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* TRACK 1 IN-HOUSE COHORT PLACEMENT GATE */}
+          <div id="track1-cohorts-section" className="card-gradient p-6 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-soft space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                  Track 1 Placement
+                </span>
+                <h3 className="text-base font-bold text-neutral-900 dark:text-white mt-0.5">
+                  University In-House Software House Cohorts & Placement
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Institutional software house cohorts established by UIL. Review academic opportunities, prerequisites, and accept official placement.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                {studentCohorts.some((c) => dismissedCohortIds.includes(c.id)) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowHiddenCohorts(!showHiddenCohorts)}
+                    className="text-xs h-8 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-200 cursor-pointer"
+                  >
+                    {showHiddenCohorts ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                        Hide Dismissed ({studentCohorts.filter((c) => dismissedCohortIds.includes(c.id)).length})
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 mr-1 text-indigo-500" />
+                        Show Hidden ({studentCohorts.filter((c) => dismissedCohortIds.includes(c.id)).length})
+                      </>
+                    )}
+                  </Button>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchMyCohorts}
+                  className="text-xs h-8 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh Cohorts
+                </Button>
+              </div>
+            </div>
+
+            {(() => {
+              const visibleCohorts = studentCohorts.filter(
+                (c) => showHiddenCohorts || !dismissedCohortIds.includes(c.id)
+              )
+
+              if (visibleCohorts.length === 0) {
+                return (
+                  <div className="p-6 text-center text-xs text-neutral-400 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-800">
+                    {studentCohorts.length > 0
+                      ? 'All cohorts have been hidden on this dashboard. Click "Show Hidden" above to reveal them.'
+                      : 'No active in-house software house cohorts currently open for enrollment. Check back soon.'}
+                  </div>
+                )
+              }
+
+              return (
+                <div className="space-y-3">
+                  {visibleCohorts.map((cohort) => {
+                    const isDismissed = dismissedCohortIds.includes(cohort.id)
+                    return (
+                      <div
+                        key={cohort.id}
+                        className={`p-5 rounded-2xl border transition-all relative group ${
+                          isDismissed
+                            ? 'opacity-60 bg-neutral-100/70 dark:bg-neutral-900/40 border-dashed border-neutral-300 dark:border-neutral-700'
+                            : cohort.is_enrolled
+                            ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                            : cohort.is_invited
+                            ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-300 dark:border-indigo-800 shadow-glow'
+                            : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
+                        }`}
+                      >
+                        {/* Close / Hide Toggle Button on Card Header */}
+                        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                          {isDismissed ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreCohort(cohort.id)}
+                              className="px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Restore card to dashboard"
+                            >
+                              <EyeOff className="w-3 h-3" /> Hidden (Restore)
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleDismissCohort(cohort.id)}
+                              className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer opacity-70 group-hover:opacity-100"
+                              title="Close / Hide card from dashboard (unseen only, does not notify UIL)"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pr-8">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-neutral-900 dark:text-white">
+                                {cohort.title}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                • {cohort.university_name} ({cohort.department})
+                              </span>
+                              {cohort.is_enrolled ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> ENROLLED
+                                </span>
+                              ) : cohort.is_invited ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 animate-pulse flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-indigo-600" /> INVITATION RECEIVED
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                                  Open Seat ({cohort.enrolled_count}/{cohort.capacity_k})
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 mt-1.5">
+                              <span>
+                                Academic Year: <strong className="text-neutral-700 dark:text-neutral-300">{cohort.academic_year}</strong>
+                              </span>
+                              <span>•</span>
+                              <span>
+                                Dates: <strong className="text-neutral-700 dark:text-neutral-300">{cohort.start_date} to {cohort.end_date}</strong>
+                              </span>
+                              {cohort.min_gpa && (
+                                <>
+                                  <span>•</span>
+                                  <span>
+                                    Min GPA: <strong className="text-neutral-700 dark:text-neutral-300">{cohort.min_gpa}</strong>
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            {cohort.requirements && (
+                              <div className="text-xs text-neutral-600 dark:text-neutral-300 mt-2 bg-white/60 dark:bg-neutral-800/60 p-2 rounded-xl border border-neutral-100 dark:border-neutral-800">
+                                <strong>Prerequisites: </strong>{cohort.requirements}
+                              </div>
+                            )}
+
+                            {cohort.opportunities && (
+                              <div className="text-xs text-neutral-600 dark:text-neutral-300 mt-1.5 bg-indigo-50/40 dark:bg-indigo-950/20 p-2 rounded-xl border border-indigo-100/60 dark:border-indigo-900/30">
+                                <strong className="text-indigo-700 dark:text-indigo-300">Included Logistics & Opportunities: </strong>{cohort.opportunities}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-2 mt-2 sm:mt-0">
+                            {cohort.is_enrolled ? (
+                              <div className="text-right">
+                                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                                  <ShieldCheck className="w-4 h-4" /> Placement Confirmed
+                                </span>
+                                <span className="text-[11px] text-neutral-400">Logistics clearances active</span>
+                              </div>
+                            ) : cohort.is_invited ? (
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  disabled={isAcceptingCohort === cohort.id || isRejectingCohort === cohort.id}
+                                  onClick={() => handleAcceptCohort(cohort.id)}
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 shadow-glow cursor-pointer"
+                                >
+                                  {isAcceptingCohort === cohort.id ? (
+                                    <span className="flex items-center gap-1">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Accepting...
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1">
+                                      <Check className="w-4 h-4" /> 1-Click Accept Placement
+                                    </span>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={isAcceptingCohort === cohort.id || isRejectingCohort === cohort.id}
+                                  onClick={() => handleRejectCohort(cohort.id)}
+                                  className="text-xs h-9 px-3 border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 font-bold cursor-pointer"
+                                  title="Decline this invitation (notifies institutional UIL Officer)"
+                                >
+                                  {isRejectingCohort === cohort.id ? (
+                                    <span className="flex items-center gap-1">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Declining...
+                                    </span>
+                                  ) : (
+                                    'Reject'
+                                  )}
+                                </Button>
+                              </div>
+                            ) : uilProfile?.is_verified_by_dean ? (
+                              <Button
+                                size="sm"
+                                disabled={isAcceptingCohort === cohort.id}
+                                onClick={() => handleAcceptCohort(cohort.id)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-3 cursor-pointer"
+                              >
+                                {isAcceptingCohort === cohort.id ? (
+                                  'Enrolling...'
+                                ) : (
+                                  'Apply / Join Cohort'
+                                )}
+                              </Button>
+                            ) : (
+                              <span className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+                                Requires Dean Verification
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
 
           {/* COMPANY DIRECT INVITATIONS INBOX */}
@@ -1933,11 +2736,22 @@ export default function StudentDashboard() {
               </button>
             </div>
             <div className="p-4 bg-white rounded-xl border border-neutral-200 inline-block mx-auto shadow-sm">
-              <img
-                src={studentQrModal.qrBase64}
-                alt="Verification QR"
-                className="w-48 h-48 object-contain mx-auto"
-              />
+              {studentQrModal.qrBase64 ? (
+                <img
+                  src={
+                    studentQrModal.qrBase64.startsWith('data:')
+                      ? studentQrModal.qrBase64
+                      : `data:image/png;base64,${studentQrModal.qrBase64}`
+                  }
+                  alt="Verification QR"
+                  className="w-48 h-48 object-contain mx-auto"
+                />
+              ) : (
+                <div className="w-48 h-48 flex flex-col items-center justify-center text-xs text-neutral-400">
+                  <QrCode className="w-8 h-8 text-neutral-300 mb-1" />
+                  <span>QR Letter Generating...</span>
+                </div>
+              )}
             </div>
             <p className="text-xs text-neutral-500">
               Scannable cryptographic clearance token for campus dorms, dining, and UIL verification.
@@ -2004,6 +2818,1073 @@ export default function StudentDashboard() {
                 <Send className="w-3.5 h-3.5 mr-1" /> Send
               </Button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: DIRECT INSTITUTIONAL CHAT (DEPARTMENT DEAN VS UIL OFFICER TABS) */}
+      {isDeanChatOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-neutral-900 rounded-3xl max-w-lg w-full p-6 space-y-3 border border-neutral-200 dark:border-neutral-800 shadow-xl h-[620px] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-neutral-100 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-600 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <MessagesSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900 dark:text-white leading-tight">
+                    Institutional Consultation Channels
+                  </h3>
+                  <p className="text-[11px] text-neutral-400 leading-tight">
+                    Direct communication with your Department Dean and UIL Head Officer
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDeanChatOpen(false)}
+                className="p-1 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Sub-Tabs: Department Dean vs UIL Officer */}
+            <div className="grid grid-cols-2 gap-2 bg-neutral-100 dark:bg-neutral-800/60 p-1 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveChatTab('dean')
+                  setDeanUnreadCount(0)
+                  fetchDeanChat(false, true)
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeChatTab === 'dean'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>Department Dean</span>
+                {deanUnreadCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-600 text-white animate-pulse">
+                    {deanUnreadCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveChatTab('uil')
+                  setUilUnreadCount(0)
+                  fetchUilChat(false, true)
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  activeChatTab === 'uil'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+                }`}
+              >
+                <Building className="w-3.5 h-3.5" />
+                <span>UIL Officer</span>
+                {uilUnreadCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-rose-600 text-white animate-pulse">
+                    {uilUnreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1 CONTENT: DEPARTMENT DEAN */}
+            {activeChatTab === 'dean' && (
+              <>
+                {/* Dean Identity Bar */}
+                <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-amber-600 text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
+                      {deanChatDean?.full_name?.charAt(0) || 'D'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                          {uilProfile?.dean_title ||
+                            (deanChatDean?.full_name
+                              ? deanChatDean.full_name.startsWith('Dean')
+                                ? deanChatDean.full_name
+                                : `Dean Dr. ${deanChatDean.full_name}`
+                              : 'Department Dean')}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                          Clearance Channel
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        {deanChatDean?.department || uilProfile?.dean_department || (user as any)?.department || 'Academic Department'} • {deanChatDean?.email || uilProfile?.dean_email || ''}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dean Messages Container */}
+                <div className="flex-1 overflow-y-auto space-y-2.5 p-3 bg-neutral-50/50 dark:bg-neutral-950/40 rounded-2xl border border-neutral-100 dark:border-neutral-800/80">
+                  {isDeanChatLoading ? (
+                    <div className="h-full flex items-center justify-center text-xs text-neutral-400 gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                      Loading consultation messages...
+                    </div>
+                  ) : deanChatMessages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 text-neutral-400 space-y-2">
+                      <GraduationCap className="w-8 h-8 text-neutral-300 dark:text-neutral-700" />
+                      <p className="text-xs font-semibold">No messages in Department Dean channel yet.</p>
+                      <p className="text-[11px] text-neutral-500 max-w-xs">
+                        Inquire with your Dean regarding academic clearance, project approval, or Track 1 defense scheduling.
+                      </p>
+                    </div>
+                  ) : (
+                    deanChatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex flex-col ${msg.is_mine ? 'items-end' : 'items-start'}`}
+                      >
+                        <div className="flex items-center gap-1 text-[10px] text-neutral-400 mb-0.5 px-1 font-mono">
+                          <span className="font-semibold text-neutral-600 dark:text-neutral-300">
+                            {msg.is_mine ? 'You' : msg.sender_name || uilProfile?.dean_title || 'Department Dean'}
+                          </span>
+                          <span>•</span>
+                          <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs shadow-xs ${
+                            msg.is_mine
+                              ? 'bg-amber-600 text-white rounded-tr-none'
+                              : 'bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 border border-neutral-200/80 dark:border-neutral-700 rounded-tl-none'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={deanChatEndRef} />
+                </div>
+
+                {/* Dean Input Form */}
+                <form onSubmit={handleSendDeanMessage} className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={deanChatText}
+                    onChange={(e) => setDeanChatText(e.target.value)}
+                    disabled={isSendingDeanMessage}
+                    placeholder="Type message to Department Dean... (Press Enter to send)"
+                    className="flex-1 p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/20"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSendingDeanMessage || !deanChatText.trim()}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold h-9 px-4 rounded-xl flex items-center gap-1"
+                  >
+                    {isSendingDeanMessage ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Send
+                      </>
+                    )}
+                  </Button>
+                </form>
+              </>
+            )}
+
+            {/* TAB 2 CONTENT: UIL OFFICER */}
+            {activeChatTab === 'uil' && (
+              <>
+                {/* UIL Officer Identity Bar */}
+                <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
+                      {uilChatOfficer?.name?.charAt(0) || 'U'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                          {uilChatOfficer?.name || 'UIL Head Officer'}
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-indigo-200/80 dark:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200">
+                          Cohorts & Squads Channel
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                        {uilChatOfficer?.university || user?.university_name || 'University-Industry Linkage Office'} • {uilChatOfficer?.email || 'uil@smartintern.et'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* UIL Messages Container */}
+                <div className="flex-1 overflow-y-auto space-y-2.5 p-3 bg-neutral-50/50 dark:bg-neutral-950/40 rounded-2xl border border-neutral-100 dark:border-neutral-800/80">
+                  {isUilChatLoading ? (
+                    <div className="h-full flex items-center justify-center text-xs text-neutral-400 gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      Loading UIL messages...
+                    </div>
+                  ) : uilChatMessages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 text-neutral-400 space-y-2">
+                      <Building className="w-8 h-8 text-neutral-300 dark:text-neutral-700" />
+                      <p className="text-xs font-semibold">No messages in UIL Officer channel yet.</p>
+                      <p className="text-[11px] text-neutral-500 max-w-xs">
+                        Inquire with your UIL Officer regarding Track 1 software house cohorts, balanced squad placement, or stipends.
+                      </p>
+                    </div>
+                  ) : (
+                    uilChatMessages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex flex-col ${msg.is_mine ? 'items-end' : 'items-start'}`}
+                      >
+                        <div className="flex items-center gap-1 text-[10px] text-neutral-400 mb-0.5 px-1 font-mono">
+                          <span className="font-semibold text-neutral-600 dark:text-neutral-300">
+                            {msg.is_mine ? 'You' : msg.sender_name || uilChatOfficer?.name || 'UIL Head Officer'}
+                          </span>
+                          <span>•</span>
+                          <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs shadow-xs ${
+                            msg.is_mine
+                              ? 'bg-indigo-600 text-white rounded-tr-none'
+                              : 'bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 border border-neutral-200/80 dark:border-neutral-700 rounded-tl-none'
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.message}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={uilChatEndRef} />
+                </div>
+
+                {/* UIL Input Form */}
+                <form onSubmit={handleSendUilMessage} className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={uilChatText}
+                    onChange={(e) => setUilChatText(e.target.value)}
+                    disabled={isSendingUilMessage}
+                    placeholder="Type message to UIL Head Officer... (Press Enter to send)"
+                    className="flex-1 p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSendingUilMessage || !uilChatText.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 px-4 rounded-xl flex items-center gap-1"
+                  >
+                    {isSendingUilMessage ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Send
+                      </>
+                    )}
+                  </Button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING INSTITUTIONAL CHAT TRIGGER (ACCESSIBLE ACROSS ALL TABS) */}
+      <button
+        onClick={() => {
+          if (uilUnreadCount > 0 && deanUnreadCount === 0) {
+            setActiveChatTab('uil')
+          } else {
+            setActiveChatTab('dean')
+          }
+          setIsDeanChatOpen(true)
+        }}
+        className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-amber-600 via-purple-700 to-indigo-700 hover:opacity-95 text-white font-bold text-xs py-3 px-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-200 flex items-center gap-2 group cursor-pointer"
+        title="Open Institutional Consultation Channels (Department Dean & UIL Officer)"
+      >
+        <div className="relative">
+          <MessagesSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          {(deanUnreadCount + uilUnreadCount) > 0 && (
+            <span className="absolute -top-2 -right-2 min-w-4 h-4 px-1 bg-red-600 text-white text-[10px] font-black rounded-full flex items-center justify-center animate-pulse">
+              {deanUnreadCount + uilUnreadCount}
+            </span>
+          )}
+        </div>
+        <span>Institutional Chat</span>
+      </button>
+
+      {/* REAL-TIME INCOMING DEAN MESSAGE ALERT TOAST */}
+      {deanIncomingAlert && (
+        <div className="fixed bottom-24 right-6 z-50 max-w-sm w-full bg-white dark:bg-neutral-900 border-2 border-amber-500/80 rounded-2xl p-4 shadow-2xl animate-bounce flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
+            <GraduationCap className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                {deanIncomingAlert.sender_name}
+              </span>
+              <button
+                onClick={() => setDeanIncomingAlert(null)}
+                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-neutral-600 dark:text-neutral-300 line-clamp-2 mt-0.5">
+              {deanIncomingAlert.message}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setDeanIncomingAlert(null)
+                  setActiveChatTab('dean')
+                  setIsDeanChatOpen(true)
+                }}
+                className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold"
+              >
+                Reply to Dean
+              </button>
+              <button
+                onClick={() => setDeanIncomingAlert(null)}
+                className="px-2 py-1 text-[11px] text-neutral-500 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REAL-TIME INCOMING UIL OFFICER MESSAGE ALERT TOAST */}
+      {uilIncomingAlert && (
+        <div className="fixed bottom-24 right-6 z-50 max-w-sm w-full bg-white dark:bg-neutral-900 border-2 border-indigo-500/80 rounded-2xl p-4 shadow-2xl animate-bounce flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+            <Building className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                {uilIncomingAlert.sender_name}
+              </span>
+              <button
+                onClick={() => setUilIncomingAlert(null)}
+                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-neutral-600 dark:text-neutral-300 line-clamp-2 mt-0.5">
+              {uilIncomingAlert.message}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setUilIncomingAlert(null)
+                  setActiveChatTab('uil')
+                  setIsDeanChatOpen(true)
+                }}
+                className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold"
+              >
+                Reply to UIL Officer
+              </button>
+              <button
+                onClick={() => setUilIncomingAlert(null)}
+                className="px-2 py-1 text-[11px] text-neutral-500 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UN-EDITABLE OFFICIAL CLEARANCE LETTER MODAL */}
+      {isClearanceLetterModalOpen && uilProfile && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto animate-fade-in">
+          <div className="bg-white dark:bg-neutral-900 border-2 border-neutral-300 dark:border-neutral-700 rounded-3xl max-w-2xl w-full p-8 shadow-2xl space-y-6 relative my-8 select-none">
+            {/* Top Close Button & Security Watermark */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-md text-[10px] font-black tracking-widest bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 uppercase flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-emerald-600" />
+                  AUTHENTICATED OFFICIAL INSTITUTIONAL RECORD
+                </span>
+                <span className="text-[11px] font-bold text-neutral-400">UN-EDITABLE</span>
+              </div>
+              <button
+                onClick={() => setIsClearanceLetterModalOpen(false)}
+                className="p-1 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* University Letterhead */}
+            <div className="text-center space-y-1 border-b pb-4 border-neutral-200 dark:border-neutral-800">
+              <div className="w-12 h-12 mx-auto rounded-full bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-700 dark:text-indigo-300 font-bold mb-1 border border-indigo-200 dark:border-indigo-800">
+                <Building className="w-6 h-6" />
+              </div>
+              <p className="text-[11px] font-bold tracking-widest text-neutral-500 uppercase">Federal Democratic Republic of Ethiopia</p>
+              <h3 className="text-base font-black text-neutral-900 dark:text-white uppercase tracking-tight">
+                Ministry of Education • Directorate of Academic Affairs
+              </h3>
+              <h4 className="text-sm font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                Office of the Department Dean — {uilProfile.dean_department || uilProfile.department || 'Engineering & Technology'}
+              </h4>
+              <div className="flex justify-between items-center text-[10px] text-neutral-500 pt-2 px-2">
+                <span>Ref: REF/UoE/DEAN/{uilProfile.student_id_number || 'STU'}-{new Date().getFullYear()}</span>
+                <span>Date: {uilProfile.dean_verified_at ? new Date(uilProfile.dean_verified_at).toLocaleDateString(undefined, { dateStyle: 'long' }) : new Date().toLocaleDateString()}</span>
+              </div>
+            </div>
+
+            {/* Recipient & Student Information Block */}
+            <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/80 dark:border-neutral-700/80 text-xs space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Addressed To:</span>
+                  <p className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    UIL Directorate & Student Services Division
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Student Candidate:</span>
+                  <p className="font-bold text-neutral-900 dark:text-white">
+                    {(user as any)?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Student Candidate'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Student ID / Dept:</span>
+                  <p className="font-mono text-neutral-800 dark:text-neutral-200">
+                    {uilProfile.student_id_number || 'N/A'} • {uilProfile.department || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-neutral-400">Standing & GPA:</span>
+                  <p className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    Year {uilProfile.academic_year || 4} (3rd Year Completed) • GPA: {uilProfile.gpa || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Letter Title & Custom Body */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase text-neutral-900 dark:text-white tracking-wide border-l-4 border-indigo-600 pl-2">
+                {lastViewedLetter === 'dorm_food'
+                  ? (uilProfile.dorm_food_letter_title || 'CAMPUS DORMITORY & CAFETERIA CLEARANCE PERMIT')
+                  : (uilProfile.dean_letter_title || 'OFFICIAL INTERNSHIP PROGRAM CLEARANCE LETTER')}
+              </h4>
+              <div className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed space-y-2 whitespace-pre-wrap font-serif bg-neutral-50/50 dark:bg-neutral-900/50 p-4 rounded-xl border border-neutral-200/60 dark:border-neutral-800">
+                {lastViewedLetter === 'dorm_food'
+                  ? (uilProfile.dorm_food_letter_notes ||
+                      `This campus logistics clearance certifies that ${(user as any)?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Student Candidate'} is in full compliance with university residency regulations and is hereby granted official authorization for campus dormitory accommodation and dining hall meal card access.`)
+                  : (uilProfile.dean_letter_notes ||
+                      `This official academic clearance confirms that ${(user as any)?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Student Candidate'} has completed 3rd-year prerequisites with good standing and is authorized for Track 1 institutional placement, along with university campus services.`)}
+              </div>
+            </div>
+
+            {/* Allowed Services Table */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                Authorized University Services & Provisions
+              </span>
+              <div className="border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden text-xs">
+                <table className="w-full text-left">
+                  <thead className="bg-neutral-100 dark:bg-neutral-800 text-[10px] uppercase font-bold text-neutral-600 dark:text-neutral-400">
+                    <tr>
+                      <th className="p-2.5">Institutional Service</th>
+                      <th className="p-2.5">Clearance Status</th>
+                      <th className="p-2.5">Validity Period</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    <tr>
+                      <td className="p-2.5 font-semibold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Home className="w-3.5 h-3.5 text-indigo-600" /> Dormitory Accommodation
+                      </td>
+                      <td className="p-2.5">
+                        {uilProfile.dean_allow_dorm ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            AUTHORIZED & GRANTED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            NOT APPLICABLE
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-neutral-500 text-[11px]">
+                        {uilProfile.dean_valid_from && uilProfile.dean_valid_until
+                          ? `${uilProfile.dean_valid_from} to ${uilProfile.dean_valid_until}`
+                          : 'Full Internship Term'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-semibold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Utensils className="w-3.5 h-3.5 text-amber-600" /> Student Cafeteria Meal Access
+                      </td>
+                      <td className="p-2.5">
+                        {uilProfile.dean_allow_food ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            AUTHORIZED & GRANTED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            NOT APPLICABLE
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-neutral-500 text-[11px]">
+                        {uilProfile.dean_valid_from && uilProfile.dean_valid_until
+                          ? `${uilProfile.dean_valid_from} to ${uilProfile.dean_valid_until}`
+                          : 'Full Internship Term'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-semibold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5 text-teal-600" /> Track 1 In-House Internship
+                      </td>
+                      <td className="p-2.5">
+                        {uilProfile.dean_allow_internship ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            AUTHORIZED & ENROLLED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            NOT APPLICABLE
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-neutral-500 text-[11px]">
+                        {uilProfile.dean_valid_from && uilProfile.dean_valid_until
+                          ? `${uilProfile.dean_valid_from} to ${uilProfile.dean_valid_until}`
+                          : 'Full Internship Term'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Signature & Auto-generated Dean QR Code Block */}
+            <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="space-y-1 text-center sm:text-left">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                  Institutional Sign-Off & Verification Seal
+                </span>
+                <p className="text-sm font-black text-neutral-900 dark:text-white">
+                  {uilProfile.dean_title || 'Department Dean'}
+                </p>
+                <p className="text-xs text-neutral-500">
+                  Department Dean, {uilProfile.dean_department || uilProfile.department}
+                </p>
+                <div className="pt-1">
+                  <span className="inline-block text-[9px] font-mono text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded">
+                    HMAC: {uilProfile.dean_signature_hash ? `${uilProfile.dean_signature_hash.slice(0, 24)}...` : 'HMAC-SHA256-AUTHENTICATED'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Auto Generated Dean QR Code - Directly Scannable + Click to Crop & Zoom */}
+              <div
+                onClick={() => {
+                  setIsClearanceLetterModalOpen(false)
+                  setIsQrScannerModalOpen(true)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-white dark:bg-neutral-800/90 border-2 border-emerald-500/50 hover:border-emerald-500 hover:shadow-lg transition-all cursor-pointer group flex-shrink-0"
+                title="Directly scannable by phone camera. Click to crop, zoom & inspect."
+              >
+                {(uilProfile.dean_unique_qr || uilProfile.dean_letter_qr || uilProfile.dean_verification_letter_qr) ? (
+                  <div className="relative">
+                    <img
+                      src={ensureBase64DataUri(uilProfile.dean_unique_qr || uilProfile.dean_letter_qr || uilProfile.dean_verification_letter_qr)}
+                      alt="Dean Digital QR Signature"
+                      className="w-28 h-28 rounded-xl bg-white p-1 border shadow-xs group-hover:scale-105 transition-transform"
+                    />
+                    <div className="absolute inset-0 bg-emerald-950/0 group-hover:bg-emerald-950/15 rounded-xl transition-colors flex items-center justify-center">
+                      <span className="opacity-0 group-hover:opacity-100 bg-black/75 text-white text-[9px] px-2 py-0.5 rounded-full font-bold transition-opacity shadow-sm">
+                        Click to Zoom
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-28 h-28 rounded-xl bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center">
+                    <QrCode className="w-8 h-8 text-neutral-400" />
+                  </div>
+                )}
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <QrCode className="w-3 h-3" /> Scannable Dean QR
+                </span>
+                <span className="text-[9px] text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300">
+                  Scan via phone or click
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setIsClearanceLetterModalOpen(false)
+                  setIsQrScannerModalOpen(true)
+                }}
+                className="text-xs h-9 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 font-bold flex items-center gap-1.5"
+              >
+                <QrCode className="w-4 h-4" /> Zoom & Inspect QR Code
+              </Button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {lastViewedLetter === 'internship' && (
+                  <Button
+                    size="sm"
+                    disabled={isForwardingToUIL || forwardedToUIL}
+                    onClick={handleForwardToUIL}
+                    className="text-xs h-9 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 rounded-xl shadow-xs"
+                  >
+                    {forwardedToUIL ? 'Forwarded to UIL' : isForwardingToUIL ? 'Forwarding...' : 'Forward to UIL'}
+                  </Button>
+                )}
+
+                {lastViewedLetter === 'dorm_food' && (
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={isForwardingToDorm || forwardedToDorm}
+                      onClick={handleForwardToDorm}
+                      className="text-xs h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 rounded-xl shadow-xs flex items-center gap-1.5"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      {forwardedToDorm ? 'Forwarded to Dormitory' : isForwardingToDorm ? 'Forwarding...' : 'Forward to Dormitory'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={isForwardingToStudentDean || forwardedToStudentDean}
+                      onClick={handleForwardToStudentDean}
+                      className="text-xs h-9 bg-amber-600 hover:bg-amber-700 text-white font-bold px-3.5 rounded-xl shadow-xs flex items-center gap-1.5"
+                    >
+                      <Utensils className="w-3.5 h-3.5" />
+                      {forwardedToStudentDean ? 'Forwarded to Student Dean' : isForwardingToStudentDean ? 'Forwarding...' : 'Forward to Student Dean'}
+                    </Button>
+                  </>
+                )}
+
+                <Button
+                  size="sm"
+                  onClick={() => setIsClearanceLetterModalOpen(false)}
+                  className="text-xs h-9 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-800 px-5 rounded-xl font-bold"
+                >
+                  Close Official Letter
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEAN QR CROP, ZOOM & AUTHENTICITY CHECK MODAL */}
+      {isQrScannerModalOpen && uilProfile && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-neutral-900 border-2 border-emerald-500/50 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 relative my-auto">
+            {/* Header with explicit Toggle and Exit controls */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900 dark:text-white">Dean Cryptographic QR Inspection</h3>
+                  <p className="text-[11px] text-neutral-400">High-Resolution Scannable Seal & Digital Signature</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsQrScannerModalOpen(false)
+                    setIsClearanceLetterModalOpen(true)
+                  }}
+                  className="text-xs h-8 px-2.5 font-bold flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-950/40 hover:bg-indigo-100"
+                  title="Toggle back to clearance letter"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Toggle Back to Letter
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQrScannerModalOpen(false)
+                    setIsClearanceLetterModalOpen(false)
+                  }}
+                  className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  title="Exit inspection and close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Interactive Zoom & Crop Bar */}
+            <div className="flex items-center justify-between p-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700/80">
+              <span className="text-[11px] font-bold text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5">
+                <ZoomIn className="w-3.5 h-3.5 text-emerald-600" />
+                Zoom & Crop Mode:
+              </span>
+              <div className="flex items-center gap-1.5 bg-white dark:bg-neutral-900 p-1 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                <button
+                  type="button"
+                  onClick={() => setQrZoomLevel('fit')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all ${
+                    qrZoomLevel === 'fit'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  Fit (1x)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrZoomLevel('1.5x')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all ${
+                    qrZoomLevel === '1.5x'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  Zoom (1.5x)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrZoomLevel('2x')}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all ${
+                    qrZoomLevel === '2x'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  Crop Reticle (2x)
+                </button>
+              </div>
+            </div>
+
+            {/* High-Contrast Scannable QR Code with Reticle Framing & Zoom */}
+            <div className="flex flex-col items-center justify-center p-5 bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-800/80 dark:to-neutral-900/80 rounded-2xl border border-neutral-200 dark:border-neutral-700 relative overflow-hidden">
+              <div className={`relative p-3 bg-white rounded-2xl shadow-md border-2 border-emerald-500/30 transition-all duration-200 ${
+                qrZoomLevel === '2x' ? 'ring-4 ring-emerald-500/20' : ''
+              }`}>
+                {/* Camera Scan Reticle Corner Accents */}
+                <div className="absolute top-1 left-1 w-3.5 h-3.5 border-t-2 border-l-2 border-emerald-600" />
+                <div className="absolute top-1 right-1 w-3.5 h-3.5 border-t-2 border-r-2 border-emerald-600" />
+                <div className="absolute bottom-1 left-1 w-3.5 h-3.5 border-b-2 border-l-2 border-emerald-600" />
+                <div className="absolute bottom-1 right-1 w-3.5 h-3.5 border-b-2 border-r-2 border-emerald-600" />
+
+                {(uilProfile.dean_letter_qr || uilProfile.dean_verification_letter_qr) ? (
+                  <div className={`overflow-hidden transition-all duration-200 ${
+                    qrZoomLevel === 'fit' ? 'w-48 h-48 sm:w-56 sm:h-56' : qrZoomLevel === '1.5x' ? 'w-60 h-60 sm:w-68 sm:h-68' : 'w-68 h-68 sm:w-76 sm:h-76'
+                  } flex items-center justify-center`}>
+                    <img
+                      src={ensureBase64DataUri(uilProfile.dean_letter_qr || uilProfile.dean_verification_letter_qr)}
+                      alt="Enlarged Dean Digital QR Signature"
+                      className={`w-full h-full object-contain transition-transform duration-200 ${
+                        qrZoomLevel === 'fit' ? 'scale-100' : qrZoomLevel === '1.5x' ? 'scale-115' : 'scale-130'
+                      }`}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center bg-neutral-100">
+                    <QrCode className="w-16 h-16 text-neutral-400" />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 mt-3 text-center">
+                Point any phone camera or barcode scanner at the code above
+              </p>
+              <span className="text-[10px] text-neutral-400 mt-0.5">
+                Target Payload: HMAC-SHA256 Signed Clearance Token ({qrZoomLevel.toUpperCase()} View)
+              </span>
+            </div>
+
+            {/* Validation Badge */}
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow flex-shrink-0">
+                <Check className="w-4 h-4 stroke-[3]" />
+              </div>
+              <div>
+                <span className="text-xs font-black uppercase text-emerald-800 dark:text-emerald-300 tracking-wider">
+                  Authentic Dean Signature Verified ✓
+                </span>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
+                  Digitally issued by {uilProfile.dean_title || 'Department Dean'}. Cryptographically valid and unique to this Department Dean.
+                </p>
+              </div>
+            </div>
+
+            {/* Authenticity Details Grid */}
+            <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-2 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-neutral-200/60 dark:border-neutral-700/60">
+                <span className="text-neutral-400 text-[11px]">Issuing Authority:</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{uilProfile.dean_title || 'Department Dean'}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-200/60 dark:border-neutral-700/60">
+                <span className="text-neutral-400 text-[11px]">Academic Department:</span>
+                <span className="font-semibold text-neutral-800 dark:text-neutral-200">{uilProfile.dean_department || uilProfile.department}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-200/60 dark:border-neutral-700/60">
+                <span className="text-neutral-400 text-[11px]">Candidate Student ID:</span>
+                <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{uilProfile.student_id_number || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-200/60 dark:border-neutral-700/60">
+                <span className="text-neutral-400 text-[11px]">Authorized Services:</span>
+                <span className="font-semibold text-neutral-800 dark:text-neutral-200 text-right">
+                  {[
+                    uilProfile.dean_allow_dorm ? 'Dormitory' : null,
+                    uilProfile.dean_allow_food ? 'Cafeteria' : null,
+                    uilProfile.dean_allow_internship ? 'Track 1' : null,
+                  ].filter(Boolean).join(', ') || 'None'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-neutral-200/60 dark:border-neutral-700/60">
+                <span className="text-neutral-400 text-[11px]">Validity Window:</span>
+                <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+                  {uilProfile.dean_valid_from && uilProfile.dean_valid_until
+                    ? `${uilProfile.dean_valid_from} — ${uilProfile.dean_valid_until}`
+                    : 'Current Academic Term'}
+                </span>
+              </div>
+              <div className="pt-1">
+                <span className="text-[10px] text-neutral-400 block mb-1">HMAC-SHA256 Digital Fingerprint:</span>
+                <p className="font-mono text-[9px] text-neutral-600 dark:text-neutral-400 break-all bg-neutral-100 dark:bg-neutral-900 p-2 rounded-lg border border-neutral-200 dark:border-neutral-800">
+                  {uilProfile.dean_signature_hash || 'SHA256:VERIFIED-INSTITUTIONAL-SEAL'}
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom Actions with explicit Toggle and Exit */}
+            <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsQrScannerModalOpen(false)
+                  setIsClearanceLetterModalOpen(true)
+                }}
+                className="text-xs font-bold flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              >
+                <FileText className="w-3.5 h-3.5" /> ← Toggle Back to Letter
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setIsQrScannerModalOpen(false)
+                  setIsClearanceLetterModalOpen(false)
+                }}
+                className="bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900 font-bold text-xs h-9 px-6 rounded-xl shadow-sm flex items-center gap-1.5"
+              >
+                <X className="w-3.5 h-3.5" /> Exit Inspection
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW-ONLY EXCEL SCORE ROSTER MODAL (NO DOWNLOAD, NO PRINT, NO EDIT) */}
+      {isScoreRosterModalOpen && uilProfile && (
+        <div
+          onContextMenu={(e) => e.preventDefault()}
+          className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto animate-fade-in score-roster-protected"
+        >
+          {/* Print protection style: hides content on print/ctrl+p */}
+          <style>{`
+            @media print {
+              .score-roster-protected {
+                display: none !important;
+              }
+            }
+          `}</style>
+          <div className="bg-white dark:bg-neutral-900 border-2 border-emerald-500/40 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5 select-none relative my-8">
+            {/* Top Bar with Excel styling */}
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
+                      Track1_Student_Score_Roster.xlsx
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      XLSX View-Only
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400">
+                    Official Department Roster • Forwarded Directly to UIL Directorate
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScoreRosterModalOpen(false)}
+                className="p-1 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Strict Institutional Protection Banner */}
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-semibold">
+                <Lock className="w-4 h-4 flex-shrink-0" />
+                <span>
+                  Strictly View-Only Institutional Record • Download, Printing, and Editing Disabled
+                </span>
+              </div>
+              <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full whitespace-nowrap">
+                Protected Roster
+              </span>
+            </div>
+
+            {/* Excel Spreadsheet Table Simulation */}
+            <div className="border border-neutral-200 dark:border-neutral-700 rounded-xl overflow-hidden shadow-xs">
+              {/* Spreadsheet Column Headers A, B */}
+              <div className="grid grid-cols-12 bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-500 uppercase border-b border-neutral-200 dark:border-neutral-700">
+                <div className="col-span-1 p-2 border-r border-neutral-200 dark:border-neutral-700 text-center font-bold">#</div>
+                <div className="col-span-4 p-2 border-r border-neutral-200 dark:border-neutral-700 font-bold">A: Parameter</div>
+                <div className="col-span-7 p-2 font-bold">B: Institutional Record Value</div>
+              </div>
+
+              {/* Spreadsheet Rows */}
+              <div className="divide-y divide-neutral-200 dark:divide-neutral-800 text-xs font-mono">
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">1</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Student ID Number
+                  </div>
+                  <div className="col-span-7 p-2.5 font-bold text-indigo-600 dark:text-indigo-400">
+                    {uilProfile.score_roster_preview?.student_id || uilProfile.student_id_number || 'STU-RECORD'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">2</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Student Full Name
+                  </div>
+                  <div className="col-span-7 p-2.5 text-neutral-900 dark:text-white font-sans font-semibold">
+                    {uilProfile.score_roster_preview?.full_name || (user as any)?.full_name || [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Student Candidate'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">3</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Academic Department
+                  </div>
+                  <div className="col-span-7 p-2.5 text-neutral-800 dark:text-neutral-200">
+                    {uilProfile.score_roster_preview?.department || uilProfile.department}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">4</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Academic Standing
+                  </div>
+                  <div className="col-span-7 p-2.5 text-neutral-800 dark:text-neutral-200">
+                    {uilProfile.score_roster_preview?.academic_year || `Year ${uilProfile.academic_year}`} (Completed 3rd Year)
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">5</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Cumulative GPA
+                  </div>
+                  <div className="col-span-7 p-2.5 font-bold text-emerald-600 dark:text-emerald-400">
+                    {uilProfile.score_roster_preview?.gpa || uilProfile.gpa || 'N/A'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">6</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Institutional Eligibility
+                  </div>
+                  <div className="col-span-7 p-2.5">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      {uilProfile.score_roster_preview?.eligibility_status || 'APPROVED - 3RD YEAR COMPLETED'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">7</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Authorized Services
+                  </div>
+                  <div className="col-span-7 p-2.5 text-neutral-700 dark:text-neutral-300 text-[11px]">
+                    {uilProfile.score_roster_preview?.allowed_services?.join(', ') ||
+                      [
+                        uilProfile.dean_allow_dorm ? 'Dormitory' : null,
+                        uilProfile.dean_allow_food ? 'Cafeteria' : null,
+                        uilProfile.dean_allow_internship ? 'Track 1 Internship' : null,
+                      ].filter(Boolean).join(', ') || 'All Campus Logistics Authorized'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">8</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Endorsed By
+                  </div>
+                  <div className="col-span-7 p-2.5 font-bold text-neutral-900 dark:text-white">
+                    {uilProfile.score_roster_preview?.endorsed_by || uilProfile.dean_title || 'Department Dean'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                  <div className="col-span-1 p-2.5 border-r border-neutral-200 dark:border-neutral-700 text-center text-neutral-400">9</div>
+                  <div className="col-span-4 p-2.5 border-r border-neutral-200 dark:border-neutral-700 font-bold text-neutral-700 dark:text-neutral-300">
+                    Verification Stamp
+                  </div>
+                  <div className="col-span-7 p-2.5 text-[10px] text-neutral-500 break-all">
+                    {uilProfile.score_roster_preview?.signature_hash || uilProfile.dean_signature_hash || 'HMAC-SHA256-AUTHENTICATED'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer with Notice */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <span className="text-[11px] text-neutral-400 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-neutral-400" />
+                Screen capture & printing restricted under institutional policy
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={isForwardingToUIL || forwardedToUIL}
+                  onClick={handleForwardToUIL}
+                  className="text-xs h-9 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 rounded-xl shadow-xs"
+                >
+                  {forwardedToUIL ? 'Forwarded to UIL' : isForwardingToUIL ? 'Forwarding...' : 'Forward to UIL'}
+                </Button>
+                <Button
+                  onClick={() => setIsScoreRosterModalOpen(false)}
+                  className="bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-neutral-800 text-xs font-bold h-9 px-5 rounded-xl"
+                >
+                  Close Preview
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

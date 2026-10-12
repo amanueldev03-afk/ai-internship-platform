@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, useParams, Link } from 'react-router-dom'
-import { useAppDispatch } from '@/hooks/redux'
-import { setCredentials } from '@/features/auth/authSlice'
 import * as authApi from '@/services/authApi'
-import type { User } from '@/types'
 
 export default function VerifyEmailPage() {
   const navigate = useNavigate()
-  const dispatch = useAppDispatch()
   const [searchParams] = useSearchParams()
   const routeParams = useParams<{ uid?: string; token?: string }>()
 
@@ -19,7 +15,6 @@ export default function VerifyEmailPage() {
   )
   const [errorMessage, setErrorMessage] = useState('')
   const [targetDestination, setTargetDestination] = useState('/dashboard')
-  const [hasAutoLoggedIn, setHasAutoLoggedIn] = useState(false)
 
   // Resend verification state
   const [resendEmail, setResendEmail] = useState('')
@@ -43,43 +38,38 @@ export default function VerifyEmailPage() {
         const response = await authApi.verifyEmail(uid, token)
         if (!isMounted) return
 
-        if (response.access && response.user) {
-          localStorage.setItem('access_token', response.access)
-          if (response.refresh) {
-            localStorage.setItem('refresh_token', response.refresh)
-          }
+        const userEmail = response.user?.email || ''
+        const userRole = response.user?.role ? String(response.user.role).toLowerCase() : ''
+        const params = new URLSearchParams({ verified: 'true' })
+        if (userEmail) params.set('email', userEmail)
+        if (userRole) params.set('role', userRole)
+        const loginUrl = `/login?${params.toString()}`
 
-          const userObj: User = {
-            id: response.user.id,
-            email: response.user.email,
-            username: response.user.username,
-            role: (response.user.role as any) || 'student',
-          }
+        setTargetDestination(loginUrl)
+        setStatus('success')
 
-          dispatch(
-            setCredentials({
-              user: userObj,
-              accessToken: response.access,
-              refreshToken: response.refresh || '',
-            })
-          )
-
-          const dest = userObj.role === 'admin' ? '/admin/dashboard' : '/dashboard'
-          setTargetDestination(dest)
-          setHasAutoLoggedIn(true)
-          setStatus('success')
-
-          redirectTimer = setTimeout(() => {
-            navigate(dest, { replace: true })
-          }, 1500)
-        } else {
-          setStatus('success')
-        }
+        redirectTimer = setTimeout(() => {
+          navigate(loginUrl, { replace: true })
+        }, 1200)
       } catch (error: any) {
         if (!isMounted) return
-        const detail = error.response?.data?.detail
-        if (detail === 'Email has already been verified.') {
+        const detail = error.response?.data?.detail || error.response?.data?.message
+        const userData = error.response?.data?.user
+
+        if (detail === 'Email has already been verified.' || userData) {
+          const userEmail = userData?.email || ''
+          const userRole = userData?.role ? String(userData.role).toLowerCase() : ''
+          const params = new URLSearchParams({ verified: 'true' })
+          if (userEmail) params.set('email', userEmail)
+          if (userRole) params.set('role', userRole)
+          const loginUrl = `/login?${params.toString()}`
+
+          setTargetDestination(loginUrl)
           setStatus('already_verified')
+
+          redirectTimer = setTimeout(() => {
+            navigate(loginUrl, { replace: true })
+          }, 1200)
         } else if (detail === 'Invalid or expired verification token.') {
           setStatus('error')
           setErrorMessage('This verification link has expired or is invalid. Please request a new verification email below.')
@@ -96,7 +86,7 @@ export default function VerifyEmailPage() {
       isMounted = false
       if (redirectTimer) clearTimeout(redirectTimer)
     }
-  }, [uid, token, dispatch, navigate])
+  }, [uid, token, navigate])
 
   const handleResend = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,16 +150,14 @@ export default function VerifyEmailPage() {
             <div>
               <h1 className="text-2xl font-bold gradient-text dark:text-white">Email Verified!</h1>
               <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                {hasAutoLoggedIn
-                  ? 'Your account is now activated. Redirecting you to your dashboard...'
-                  : 'Your account is now activated. You can now access your dashboard.'}
+                Your email address has been verified and your account is active. Redirecting you to sign in...
               </p>
             </div>
             <button
-              onClick={() => navigate(hasAutoLoggedIn ? targetDestination : '/login', { replace: true })}
+              onClick={() => navigate(targetDestination, { replace: true })}
               className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
-              {hasAutoLoggedIn ? 'Go to Dashboard' : 'Continue to Login'}
+              Continue to Login
             </button>
           </div>
         )}
@@ -182,16 +170,16 @@ export default function VerifyEmailPage() {
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold gradient-text dark:text-white">Already Verified</h1>
+              <h1 className="text-2xl font-bold gradient-text dark:text-white">Account Already Verified</h1>
               <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                This email address has already been verified. You can log in directly.
+                This email address is already verified and active. Redirecting you to sign in...
               </p>
             </div>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate(targetDestination, { replace: true })}
               className="btn-primary w-full inline-flex justify-center items-center py-2.5 px-4 rounded-xl shadow-glow text-sm font-semibold transition-all duration-200 hover:scale-105"
             >
-              Go to Login
+              Continue to Login
             </button>
           </div>
         )}

@@ -16,6 +16,7 @@ import {
   KeyRound,
   CreditCard,
   ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/hooks/redux'
 import { login, clearError } from '@/features/auth/authSlice'
@@ -195,6 +196,8 @@ export default function LoginPage() {
   )
 
   const roleParam = searchParams.get('role')?.toLowerCase()
+  const emailParam = searchParams.get('email')?.trim()
+  const isVerifiedSuccess = searchParams.get('verified') === 'true'
   const initialRole: LoginRoleTab = mapRoleParamToLoginRole(roleParam)
 
   const [activeRole, setActiveRole] = useState<LoginRoleTab>(initialRole)
@@ -207,17 +210,30 @@ export default function LoginPage() {
 
   const handleRoleChange = (roleId: LoginRoleTab) => {
     setActiveRole(roleId)
-    setSearchParams({ role: roleId }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('role', roleId)
+        return next
+      },
+      { replace: true }
+    )
   }
 
   const activeRoleConfig = ROLE_TABS.find((t) => t.id === activeRole) || ROLE_TABS[0]
   const ActiveIcon = activeRoleConfig.icon
 
   const [formData, setFormData] = useState({
-    email: '',
+    email: emailParam || '',
     password: '',
   })
   const [clientError, setClientError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (emailParam && !formData.email) {
+      setFormData((prev) => ({ ...prev, email: emailParam }))
+    }
+  }, [emailParam])
 
   useEffect(() => {
     if (isInitialized && isAuthenticated) {
@@ -268,7 +284,7 @@ export default function LoginPage() {
       if (from && from !== '/login' && from !== '/register') {
         navigate(from, { replace: true })
       } else {
-        navigate(getDashboardPathForRole(currentRole), { replace: true })
+        navigate(getDashboardPathForRole(currentRole), { replace: true, state: { verifiedJustNow: isVerifiedSuccess } })
       }
     }
   }
@@ -284,14 +300,23 @@ export default function LoginPage() {
     )
   }
 
+  const errorMsg =
+    typeof error === 'string'
+      ? error
+      : Array.isArray(error)
+      ? (error as string[]).join(', ')
+      : error && typeof error === 'object'
+      ? JSON.stringify(error)
+      : ''
+
   const isUnverifiedAccount =
-    error && (error.toLowerCase().includes('verify your email') || error.toLowerCase().includes('inactive'))
+    errorMsg && (errorMsg.toLowerCase().includes('verify your email') || errorMsg.toLowerCase().includes('inactive'))
 
   const isPendingStaffApproval =
-    error && error.toLowerCase().includes('institutional administrator approval')
+    errorMsg && errorMsg.toLowerCase().includes('institutional administrator approval')
 
   const isPendingAdvisorApproval =
-    error && error.toLowerCase().includes('pending approval by the uil officer')
+    errorMsg && errorMsg.toLowerCase().includes('pending approval by the uil officer')
 
   const googleOAuthUrl = getGoogleOAuthUrl()
 
@@ -368,6 +393,21 @@ export default function LoginPage() {
           </div>
         </div>
 
+        {/* Email Successfully Verified Alert Banner */}
+        {isVerifiedSuccess && (
+          <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 p-4 border border-emerald-200 dark:border-emerald-800 animate-scale-in" role="alert">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+              <div>
+                <h3 className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Email Verified Successfully!</h3>
+                <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                  Your email address has been verified and your account is active. Please enter your password to sign in.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Unverified Email Warning */}
         {isUnverifiedAccount && (
           <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 border border-amber-200 dark:border-amber-800 animate-scale-in" role="alert">
@@ -420,11 +460,11 @@ export default function LoginPage() {
         )}
 
         {/* General Error Alert */}
-        {(clientError || (error && !isUnverifiedAccount && !isPendingStaffApproval && !isPendingAdvisorApproval)) && (
+        {(clientError || (errorMsg && !isUnverifiedAccount && !isPendingStaffApproval && !isPendingAdvisorApproval)) && (
           <div className="rounded-2xl bg-error-50 dark:bg-error-950/40 p-4 border border-error-200 dark:border-error-800 animate-scale-in" role="alert">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-5 w-5 text-error-600 dark:text-error-400 shrink-0" />
-              <p className="text-xs font-medium text-error-700 dark:text-error-300">{clientError || error}</p>
+              <p className="text-xs font-medium text-error-700 dark:text-error-300">{clientError || errorMsg}</p>
             </div>
           </div>
         )}
@@ -470,15 +510,17 @@ export default function LoginPage() {
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
           <div>
             <label htmlFor="email" className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-1.5">
-              {activeRole === 'admin' ? 'Username or Email address' : 'Email address'}
+              {['admin', 'student_union', 'dorm_admin', 'dept_dean', 'uil_officer'].includes(activeRole)
+                ? 'Username or Email address'
+                : 'Email address'}
             </label>
             <div className="relative flex items-center">
               <Mail className="w-4 h-4 text-neutral-400 absolute left-4 pointer-events-none" />
               <input
                 id="email"
                 name="email"
-                type={activeRole === 'admin' ? 'text' : 'email'}
-                autoComplete={activeRole === 'admin' ? 'username' : 'email'}
+                type="text"
+                autoComplete="username"
                 required
                 value={formData.email}
                 onChange={handleChange}
@@ -489,6 +531,10 @@ export default function LoginPage() {
                     ? 'user@company.com'
                     : activeRole === 'admin'
                     ? 'admin1 or admin1@smartintern.et'
+                    : activeRole === 'student_union'
+                    ? 'union1 or union@smartintern.et'
+                    : activeRole === 'dorm_admin'
+                    ? 'dorm1 or dorm@smartintern.et'
                     : 'user@university.edu.et'
                 }
               />
@@ -542,15 +588,68 @@ export default function LoginPage() {
           <div className="text-center pt-2 space-y-2">
             {activeRole === 'admin' ? (
               <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 text-left space-y-1">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
-                  <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  Administrator Credentials
+                <div className="flex items-center justify-between text-xs font-bold text-amber-700 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    Administrator Credentials
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ email: 'admin1', password: 'Admin@1234' })}
+                    className="text-[10px] text-primary-600 dark:text-primary-400 hover:underline font-bold"
+                  >
+                    Quick Fill
+                  </button>
                 </div>
                 <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
                   Username: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">admin1</code> | Password: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">Admin@1234</code>
                 </p>
                 <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
                   Administrator accounts are pre-provisioned and cannot be registered publicly.
+                </p>
+              </div>
+            ) : activeRole === 'student_union' ? (
+              <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-3 text-left space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-700 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5">
+                    <Utensils className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    Student Union Credentials
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ email: 'union1', password: 'Password123!' })}
+                    className="text-[10px] text-primary-600 dark:text-primary-400 hover:underline font-bold"
+                  >
+                    Quick Fill
+                  </button>
+                </div>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  Username: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">union1</code> | Password: <code className="font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded">Password123!</code>
+                </p>
+                <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Official Campus Dining Representative (Addis Ababa University).
+                </p>
+              </div>
+            ) : activeRole === 'dorm_admin' ? (
+              <div className="rounded-2xl bg-blue-500/10 border border-blue-500/20 p-3 text-left space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-blue-700 dark:text-blue-400">
+                  <div className="flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    Dormitory Administrator Credentials
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ email: 'dorm1', password: 'Password123!' })}
+                    className="text-[10px] text-primary-600 dark:text-primary-400 hover:underline font-bold"
+                  >
+                    Quick Fill
+                  </button>
+                </div>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  Username: <code className="font-mono font-bold bg-blue-500/20 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded">dorm1</code> | Password: <code className="font-mono font-bold bg-blue-500/20 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded">Password123!</code>
+                </p>
+                <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Official Campus Housing Administrator (Addis Ababa University).
                 </p>
               </div>
             ) : (

@@ -23,6 +23,7 @@ export function AdminLayout() {
 
   const navigation = [
     { name: t("nav.dashboard", "Dashboard"), href: "/admin/dashboard", icon: LayoutDashboard },
+    { name: t("nav.students", "Student Accounts"), href: "/admin/students", icon: Users },
     { name: t("nav.users", "Users"), href: "/admin/users", icon: Users },
     { name: t("nav.companies", "Companies"), href: "/admin/companies", icon: Building2 },
     { name: t("nav.internships", "Internships"), href: "/admin/internships", icon: Briefcase },

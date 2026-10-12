@@ -20,10 +20,10 @@ export default function AppLayout() {
 
       <div
         className={`flex-1 min-w-0 transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'lg:pl-20' : 'lg:pl-64'
+          isCollapsed ? 'lg:pl-24' : 'lg:pl-[17.5rem]'
         }`}
       >
-        <main className="min-h-screen">
+        <main className="min-h-screen p-2 sm:p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

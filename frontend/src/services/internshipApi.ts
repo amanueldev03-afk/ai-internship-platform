@@ -102,4 +102,22 @@ export async function trackApplication(
   return response.data
 }
 
+/**
+ * Direct on-platform internship application with verified university profile credentials.
+ */
+export async function applyDirectlyToInternship(
+  internshipId: number,
+  notes?: string
+): Promise<any> {
+  const response = await api.post(
+    '/internships/applications/add/',
+    {
+      internship: internshipId,
+      notes: notes || 'Direct on-platform application with verified university student credentials.',
+    }
+  )
+  return response.data
+}
+
+
 
